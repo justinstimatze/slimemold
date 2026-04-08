@@ -1,0 +1,40 @@
+version: 2
+
+builds:
+  - id: slimemold
+    binary: slimemold
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+
+archives:
+  - id: default
+    formats: ['tar.gz']
+    name_template: "slimemold_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+checksum:
+  name_template: 'checksums.txt'
+
+changelog:
+  use: github
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^ci:'
+
+release:
+  github:
+    owner: justinstimatze
+    name: slimemold
+  draft: false
+  prerelease: auto

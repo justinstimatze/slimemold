@@ -1,0 +1,344 @@
+package store
+
+import (
+	"os"
+	"testing"
+
+	"github.com/justinstimatze/slimemold/types"
+)
+
+func testDB(t *testing.T) *DB {
+	t.Helper()
+	dir := t.TempDir()
+	db, err := Open(dir, "test-project")
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	t.Cleanup(func() { db.Close() })
+	return db
+}
+
+func TestOpenCreatesDir(t *testing.T) {
+	dir := t.TempDir() + "/sub/deep"
+	db, err := Open(dir, "p")
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	db.Close()
+
+	if _, err := os.Stat(dir + "/p/graph.sqlite"); err != nil {
+		t.Fatalf("expected database file: %v", err)
+	}
+}
+
+func TestCreateAndGetClaim(t *testing.T) {
+	db := testDB(t)
+
+	c := &types.Claim{
+		Text:      "dopamine encodes prediction error",
+		Basis:     types.BasisResearch,
+		Source:    "Schultz 1997",
+		SessionID: "s1",
+		Project:   "test-project",
+		Speaker:   types.SpeakerAssistant,
+	}
+	if err := db.CreateClaim(c); err != nil {
+		t.Fatalf("CreateClaim: %v", err)
+	}
+	if c.ID == "" {
+		t.Fatal("expected ID to be set")
+	}
+
+	got, err := db.GetClaim(c.ID)
+	if err != nil {
+		t.Fatalf("GetClaim: %v", err)
+	}
+	if got.Text != c.Text {
+		t.Errorf("text = %q, want %q", got.Text, c.Text)
+	}
+	if got.Basis != types.BasisResearch {
+		t.Errorf("basis = %q, want research", got.Basis)
+	}
+	if got.Source != "Schultz 1997" {
+		t.Errorf("source = %q, want Schultz 1997", got.Source)
+	}
+}
+
+func TestCreateAndGetEdge(t *testing.T) {
+	db := testDB(t)
+
+	c1 := &types.Claim{Text: "claim A", Basis: types.BasisResearch, SessionID: "s1", Project: "test-project", Speaker: types.SpeakerUser}
+	c2 := &types.Claim{Text: "claim B", Basis: types.BasisVibes, SessionID: "s1", Project: "test-project", Speaker: types.SpeakerUser}
+	db.CreateClaim(c1)
+	db.CreateClaim(c2)
+
+	e := &types.Edge{FromID: c1.ID, ToID: c2.ID, Relation: types.RelSupports}
+	if _, err := db.CreateEdge(e); err != nil {
+		t.Fatalf("CreateEdge: %v", err)
+	}
+
+	edges, err := db.GetEdgesForClaim(c1.ID)
+	if err != nil {
+		t.Fatalf("GetEdgesForClaim: %v", err)
+	}
+	if len(edges) != 1 {
+		t.Fatalf("got %d edges, want 1", len(edges))
+	}
+	if edges[0].Relation != types.RelSupports {
+		t.Errorf("relation = %q, want supports", edges[0].Relation)
+	}
+}
+
+func TestGetClaimsByProject(t *testing.T) {
+	db := testDB(t)
+
+	for _, text := range []string{"alpha", "beta", "gamma"} {
+		db.CreateClaim(&types.Claim{Text: text, Basis: types.BasisVibes, SessionID: "s1", Project: "test-project", Speaker: types.SpeakerUser})
+	}
+	// Different project
+	db.CreateClaim(&types.Claim{Text: "other", Basis: types.BasisVibes, SessionID: "s1", Project: "other-project", Speaker: types.SpeakerUser})
+
+	claims, err := db.GetClaimsByProject("test-project")
+	if err != nil {
+		t.Fatalf("GetClaimsByProject: %v", err)
+	}
+	if len(claims) != 3 {
+		t.Errorf("got %d claims, want 3", len(claims))
+	}
+}
+
+func TestSearchClaims(t *testing.T) {
+	db := testDB(t)
+
+	db.CreateClaim(&types.Claim{Text: "dopamine encodes prediction error", Basis: types.BasisResearch, SessionID: "s1", Project: "test-project", Speaker: types.SpeakerUser})
+	db.CreateClaim(&types.Claim{Text: "slime mold forages unevenly", Basis: types.BasisAnalogy, SessionID: "s1", Project: "test-project", Speaker: types.SpeakerUser})
+
+	results, err := db.SearchClaims("test-project", "dopamine", "")
+	if err != nil {
+		t.Fatalf("SearchClaims: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("got %d results, want 1", len(results))
+	}
+
+	// Filter by basis
+	results, err = db.SearchClaims("test-project", "dopamine", "analogy")
+	if err != nil {
+		t.Fatalf("SearchClaims with basis: %v", err)
+	}
+	if len(results) != 0 {
+		t.Errorf("got %d results, want 0 (wrong basis)", len(results))
+	}
+}
+
+func TestFindClaimByText(t *testing.T) {
+	db := testDB(t)
+
+	db.CreateClaim(&types.Claim{Text: "Exact Match Claim", Basis: types.BasisVibes, SessionID: "s1", Project: "test-project", Speaker: types.SpeakerUser})
+
+	got, err := db.FindClaimByText("test-project", "exact match claim")
+	if err != nil {
+		t.Fatalf("FindClaimByText: %v", err)
+	}
+	if got == nil {
+		t.Fatal("expected match, got nil")
+	}
+	if got.Text != "Exact Match Claim" {
+		t.Errorf("text = %q", got.Text)
+	}
+
+	got, err = db.FindClaimByText("test-project", "nonexistent")
+	if err != nil {
+		t.Fatalf("FindClaimByText: %v", err)
+	}
+	if got != nil {
+		t.Errorf("expected nil, got %+v", got)
+	}
+}
+
+func TestChallengeClaim(t *testing.T) {
+	db := testDB(t)
+
+	c := &types.Claim{Text: "weak claim", Basis: types.BasisVibes, SessionID: "s1", Project: "test-project", Speaker: types.SpeakerUser}
+	db.CreateClaim(c)
+
+	if err := db.ChallengeClaim(c.ID, "weakened", "revised: stronger claim", "research", "found source"); err != nil {
+		t.Fatalf("ChallengeClaim: %v", err)
+	}
+
+	got, _ := db.GetClaim(c.ID)
+	if !got.Challenged {
+		t.Error("expected challenged = true")
+	}
+	if got.Text != "revised: stronger claim" {
+		t.Errorf("text = %q, want revised", got.Text)
+	}
+	if got.Basis != types.BasisResearch {
+		t.Errorf("basis = %q, want research", got.Basis)
+	}
+}
+
+func TestMergeClaims(t *testing.T) {
+	db := testDB(t)
+
+	c1 := &types.Claim{Text: "keep this", Basis: types.BasisResearch, SessionID: "s1", Project: "test-project", Speaker: types.SpeakerUser}
+	c2 := &types.Claim{Text: "absorb this", Basis: types.BasisVibes, SessionID: "s1", Project: "test-project", Speaker: types.SpeakerUser}
+	c3 := &types.Claim{Text: "downstream", Basis: types.BasisDeduction, SessionID: "s1", Project: "test-project", Speaker: types.SpeakerUser}
+	db.CreateClaim(c1)
+	db.CreateClaim(c2)
+	db.CreateClaim(c3)
+
+	// c2 supports c3
+	db.CreateEdge(&types.Edge{FromID: c2.ID, ToID: c3.ID, Relation: types.RelSupports})
+
+	if err := db.MergeClaims(c1.ID, c2.ID); err != nil {
+		t.Fatalf("MergeClaims: %v", err)
+	}
+
+	// c2 should be gone
+	_, err := db.GetClaim(c2.ID)
+	if err == nil {
+		t.Error("expected absorbed claim to be deleted")
+	}
+
+	// Edge should now point from c1 to c3
+	edges, _ := db.GetEdgesForClaim(c1.ID)
+	if len(edges) != 1 {
+		t.Fatalf("got %d edges, want 1", len(edges))
+	}
+	if edges[0].FromID != c1.ID || edges[0].ToID != c3.ID {
+		t.Errorf("edge from=%s to=%s, want %s→%s", edges[0].FromID, edges[0].ToID, c1.ID, c3.ID)
+	}
+}
+
+func TestCountClaimsAndEdges(t *testing.T) {
+	db := testDB(t)
+
+	c1 := &types.Claim{Text: "a", Basis: types.BasisVibes, SessionID: "s1", Project: "test-project", Speaker: types.SpeakerUser}
+	c2 := &types.Claim{Text: "b", Basis: types.BasisVibes, SessionID: "s1", Project: "test-project", Speaker: types.SpeakerUser}
+	db.CreateClaim(c1)
+	db.CreateClaim(c2)
+	db.CreateEdge(&types.Edge{FromID: c1.ID, ToID: c2.ID, Relation: types.RelSupports})
+
+	n, _ := db.CountClaims("test-project")
+	if n != 2 {
+		t.Errorf("claims = %d, want 2", n)
+	}
+	n, _ = db.CountEdges("test-project")
+	if n != 1 {
+		t.Errorf("edges = %d, want 1", n)
+	}
+}
+
+func TestDeleteProject(t *testing.T) {
+	db := testDB(t)
+
+	c := &types.Claim{Text: "doomed", Basis: types.BasisVibes, SessionID: "s1", Project: "test-project", Speaker: types.SpeakerUser}
+	db.CreateClaim(c)
+
+	if err := db.DeleteProject("test-project"); err != nil {
+		t.Fatalf("DeleteProject: %v", err)
+	}
+
+	n, _ := db.CountClaims("test-project")
+	if n != 0 {
+		t.Errorf("claims = %d after delete, want 0", n)
+	}
+}
+
+func TestCreateAudit(t *testing.T) {
+	db := testDB(t)
+
+	a := &types.Audit{
+		Project:       "test-project",
+		SessionID:     "s1",
+		Findings:      "2 critical findings",
+		ClaimCount:    10,
+		EdgeCount:     15,
+		CriticalCount: 2,
+	}
+	if err := db.CreateAudit(a); err != nil {
+		t.Fatalf("CreateAudit: %v", err)
+	}
+	if a.ID == "" {
+		t.Error("expected ID to be set")
+	}
+}
+
+func TestTransactionCommit(t *testing.T) {
+	db := testDB(t)
+
+	txDB, err := db.Begin()
+	if err != nil {
+		t.Fatalf("Begin: %v", err)
+	}
+
+	txDB.CreateClaim(&types.Claim{ID: "tx-claim", Text: "in transaction", Basis: types.BasisVibes, SessionID: "s1", Project: "test-project", Speaker: types.SpeakerUser})
+
+	if err := txDB.Commit(); err != nil {
+		t.Fatalf("Commit: %v", err)
+	}
+
+	// Claim should be visible via the original db handle
+	c, err := db.GetClaim("tx-claim")
+	if err != nil {
+		t.Fatalf("GetClaim after commit: %v", err)
+	}
+	if c.Text != "in transaction" {
+		t.Errorf("claim text = %q, want %q", c.Text, "in transaction")
+	}
+}
+
+func TestTransactionRollback(t *testing.T) {
+	db := testDB(t)
+
+	txDB, err := db.Begin()
+	if err != nil {
+		t.Fatalf("Begin: %v", err)
+	}
+
+	txDB.CreateClaim(&types.Claim{ID: "rolled-back", Text: "should not persist", Basis: types.BasisVibes, SessionID: "s1", Project: "test-project", Speaker: types.SpeakerUser})
+
+	if err := txDB.Rollback(); err != nil {
+		t.Fatalf("Rollback: %v", err)
+	}
+
+	// Claim should NOT be visible
+	_, err = db.GetClaim("rolled-back")
+	if err == nil {
+		t.Error("claim should not exist after rollback")
+	}
+}
+
+func TestInTxNestedSafe(t *testing.T) {
+	db := testDB(t)
+
+	// Begin an outer transaction
+	txDB, err := db.Begin()
+	if err != nil {
+		t.Fatalf("Begin: %v", err)
+	}
+
+	// Create two claims within the transaction
+	txDB.CreateClaim(&types.Claim{ID: "keep", Text: "keeper", Basis: types.BasisVibes, SessionID: "s1", Project: "test-project", Speaker: types.SpeakerUser})
+	txDB.CreateClaim(&types.Claim{ID: "absorb", Text: "absorbed", Basis: types.BasisVibes, SessionID: "s1", Project: "test-project", Speaker: types.SpeakerUser})
+	txDB.CreateEdge(&types.Edge{FromID: "absorb", ToID: "keep", Relation: types.RelSupports})
+
+	// MergeClaims uses inTx internally — should NOT deadlock when already in a transaction
+	if err := txDB.MergeClaims("keep", "absorb"); err != nil {
+		t.Fatalf("MergeClaims inside transaction: %v", err)
+	}
+
+	if err := txDB.Commit(); err != nil {
+		t.Fatalf("Commit: %v", err)
+	}
+
+	// Only "keep" should survive
+	claims, _ := db.GetClaimsByProject("test-project")
+	if len(claims) != 1 {
+		t.Errorf("claims after merge = %d, want 1", len(claims))
+	}
+	if len(claims) > 0 && claims[0].ID != "keep" {
+		t.Errorf("surviving claim = %s, want keep", claims[0].ID)
+	}
+}

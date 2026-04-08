@@ -1,0 +1,45 @@
+version: "2"
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+
+linters:
+  disable:
+    - errcheck
+  enable:
+    # Defaults
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+
+    # Style
+    - misspell
+
+    # Bugs
+    - bodyclose
+    - durationcheck
+    - nilerr
+
+    # Complexity
+    - cyclop
+    - gocognit
+    - nestif
+
+    # Security
+    - gosec
+
+  settings:
+    cyclop:
+      max-complexity: 40
+    gocognit:
+      min-complexity: 80
+    nestif:
+      min-complexity: 12
+    gosec:
+      excludes:
+        - G104  # unhandled errors (covered by errcheck which we handle manually)
+        - G115  # integer overflow uint->int
+        - G304  # file inclusion via variable (expected: we read transcript files)
