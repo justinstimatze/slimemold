@@ -1,0 +1,49 @@
+version: "2"
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+
+linters:
+  disable:
+    - errcheck
+  enable:
+    # Defaults
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+
+    # Style
+    - misspell
+
+    # Bugs
+    - bodyclose
+    - durationcheck
+    - nilerr
+
+    # Complexity
+    - cyclop
+    - gocognit
+    - nestif
+
+    # Security
+    - gosec
+
+  settings:
+    cyclop:
+      max-complexity: 40
+    gocognit:
+      min-complexity: 80
+    nestif:
+      min-complexity: 16
+    gosec:
+      excludes:
+        - G104  # unhandled errors (covered by errcheck which we handle manually)
+        - G115  # integer overflow uint->int
+        - G304  # file inclusion via variable (expected: we read transcript files)
+        - G306  # WriteFile permissions > 0600 (config files need 0644)
+        - G401  # weak crypto (md5 used for non-cryptographic hashing)
+        - G501  # blocklisted import crypto/md5
+        - G703  # path traversal via taint (paths are constructed, not user-supplied)

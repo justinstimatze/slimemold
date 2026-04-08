@@ -1,0 +1,296 @@
+[
+  {
+    "text": "We deployed disabling the cache layer in production last month and found that cold starts became significantly faster. The team confirmed the same pattern independently.",
+    "expected_basis": "empirical",
+    "source_dataset": "synthetic-empirical",
+    "speaker": "user"
+  },
+  {
+    "text": "There are several important factors to consider when evaluating agent architectures. First, the underlying mechanism involves scientific discovery, which has been shown to be highly effective in practice.",
+    "expected_basis": "llm_output",
+    "source_dataset": "synthetic-llm-style",
+    "speaker": "assistant"
+  },
+  {
+    "text": "From the matrix is symmetric and positive definite it follows directly that the Cholesky decomposition exists and is unique, since its eigenvalues are all positive establishes the necessary condition.",
+    "expected_basis": "deduction",
+    "source_dataset": "synthetic-deduction",
+    "speaker": "assistant"
+  },
+  {
+    "text": "A survey of the forest performed in 2010 indicated that over 1,000,000 acres (400,000\u00a0ha) of timberland had been impacted by insects such as the mountain pine beetle, spruce bark beetle and Douglas fir beetle, and that the insects had killed between 25 and 100\u00a0percent of the trees in the impacted areas",
+    "expected_basis": "llm_output",
+    "source_dataset": "wikipedia-unsourced-science",
+    "speaker": "assistant"
+  },
+  {
+    "text": "I tried using streaming instead of batch processing and noticed that cold starts became significantly faster. It happened consistently across three separate attempts.",
+    "expected_basis": "empirical",
+    "source_dataset": "synthetic-empirical",
+    "speaker": "user"
+  },
+  {
+    "text": "Active recall is more effective than re-reading for long-term retention (Roediger & Karpicke 2006).",
+    "expected_basis": "research",
+    "source_dataset": "synthetic-research-with-citations",
+    "speaker": "assistant"
+  },
+  {
+    "text": "Given Hindley's status as co-defendant in the first serial-murder trial held since the abolition of the death penalty, retribution was a common theme amongst those who sought to keep her locked away",
+    "expected_basis": "vibes",
+    "source_dataset": "wikipedia-citation-needed",
+    "speaker": "user"
+  },
+  {
+    "text": "The Eureka heuristic shows that insight feelings function as metacognitive stop signals (Laukkonen et al. 2021).",
+    "expected_basis": "research",
+    "source_dataset": "synthetic-research-with-citations",
+    "speaker": "assistant"
+  },
+  {
+    "text": "the hash function distributes uniformly. Moreover, collisions occur with negligible probability. Combining these two observations, we conclude that the expected lookup time is O(1).",
+    "expected_basis": "deduction",
+    "source_dataset": "synthetic-deduction",
+    "speaker": "assistant"
+  },
+  {
+    "text": "The Sun is contained within the Local Bubble, a space of rarefied hot gas, possibly produced by the supernova remnant Geminga, or multiple supernovae in subgroup B1 of the Pleiades moving group",
+    "expected_basis": "llm_output",
+    "source_dataset": "wikipedia-unsourced-science",
+    "speaker": "assistant"
+  },
+  {
+    "text": "I ran the experiment with migrating to the new API version and measured latency dropped by 40%. The numbers were surprisingly consistent.",
+    "expected_basis": "empirical",
+    "source_dataset": "synthetic-empirical",
+    "speaker": "user"
+  },
+  {
+    "text": "The consensus in the field is that reinforcement learning from feedback will eventually replace traditional methods in code generation. However, the transition period is likely to be longer than most analysts predict.",
+    "expected_basis": "llm_output",
+    "source_dataset": "synthetic-llm-style",
+    "speaker": "assistant"
+  },
+  {
+    "text": "Information foraging theory predicts over-exploitation of easy information patches (Pirolli & Card 1999).",
+    "expected_basis": "research",
+    "source_dataset": "synthetic-research-with-citations",
+    "speaker": "assistant"
+  },
+  {
+    "text": "It's worth noting that synthetic data generation represents a significant advancement in healthcare. The primary benefit is improved efficiency, though there are important trade-offs to consider.",
+    "expected_basis": "llm_output",
+    "source_dataset": "synthetic-llm-style",
+    "speaker": "assistant"
+  },
+  {
+    "text": "Desirable difficulties improve retention by disrupting fluency (Bjork 1994; Bjork & Bjork 2011).",
+    "expected_basis": "research",
+    "source_dataset": "synthetic-research-with-citations",
+    "speaker": "assistant"
+  },
+  {
+    "text": "We describe a new algorithm, the $(k,\\ell)$-pebble game with colors, and use\nit obtain a characterization of the family of $(k,\\ell)$-sparse graphs and\nalgorithmic solutions to a family of problems concerning tree decompositions of\ngraphs. Special instances of sparse graphs appear in rigidity theory and have\nreceived increased attention in recent years.",
+    "expected_basis": "llm_output",
+    "source_dataset": "arxiv-abstracts-2021",
+    "speaker": "assistant"
+  },
+  {
+    "text": "The compact object is now estimated to have a mass about 14.8 times the mass of the Sun and has been shown to be too small to be any known kind of normal star, or other likely object besides a black hole",
+    "expected_basis": "llm_output",
+    "source_dataset": "wikipedia-unsourced-science",
+    "speaker": "assistant"
+  },
+  {
+    "text": "Many weekend visitors\u2014particularly from Bosnia-Herzegovina, Croatia and Slovenia\u2014prefer Belgrade nightlife to that of their own capitals, due to a perceived friendly atmosphere, plentiful clubs and bars, cheap drinks, the lack of language difficulties, and the lack of restrictive night life regulation",
+    "expected_basis": "vibes",
+    "source_dataset": "wikipedia-citation-needed",
+    "speaker": "user"
+  },
+  {
+    "text": "We show that a determinant of Stirling cycle numbers counts unlabeled acyclic\nsingle-source automata. The proof involves a bijection from these automata to\ncertain marked lattice paths and a sign-reversing involution to evaluate the\ndeterminant..",
+    "expected_basis": "llm_output",
+    "source_dataset": "arxiv-abstracts-2021",
+    "speaker": "assistant"
+  },
+  {
+    "text": "Parker considers that Kerim is \"an antidote\" to Bond's lethargy, while the essayist Umberto Eco sees the character as having some of the moral qualities of the villains in the series, but that those qualities are used in support of Bond",
+    "expected_basis": "vibes",
+    "source_dataset": "wikipedia-citation-needed",
+    "speaker": "user"
+  },
+  {
+    "text": "A rather non-standard quantum representation of the canonical commutation\nrelations of quantum mechanics systems, known as the polymer representation has\ngained some attention in recent years, due to its possible relation with Planck\nscale physics. In particular, this approach has been followed in a symmetric\nsector of loop quantum gravity known as loop quantum cosmology.",
+    "expected_basis": "llm_output",
+    "source_dataset": "arxiv-abstracts-2021",
+    "speaker": "assistant"
+  },
+  {
+    "text": "The relationship between model distillation and decision support systems is more nuanced than it might initially appear. In practice, most implementations rely on a combination of approaches.",
+    "expected_basis": "llm_output",
+    "source_dataset": "synthetic-llm-style",
+    "speaker": "assistant"
+  },
+  {
+    "text": "Given that the sequence is monotonically increasing and bounded above, and assuming it must converge by the monotone convergence theorem, the logical consequence is the limit exists and equals the supremum of the sequence.",
+    "expected_basis": "deduction",
+    "source_dataset": "synthetic-deduction",
+    "speaker": "assistant"
+  },
+  {
+    "text": "By definition, all edges have positive weight. Combined with the fact that the shortest path algorithm terminates, this entails Dijkstra's algorithm produces the optimal solution.",
+    "expected_basis": "deduction",
+    "source_dataset": "synthetic-deduction",
+    "speaker": "assistant"
+  },
+  {
+    "text": "Based on the available evidence, chain-of-thought reasoning appears to be the most promising approach for decision support systems. The main advantage is scalability, but implementation complexity remains a challenge.",
+    "expected_basis": "llm_output",
+    "source_dataset": "synthetic-llm-style",
+    "speaker": "assistant"
+  },
+  {
+    "text": "In this paper we show how to compute the $\\Lambda_{\\alpha}$ norm, $\\alpha\\ge\n0$, using the dyadic grid. This result is a consequence of the description of\nthe Hardy spaces $H^p(R^N)$ in terms of dyadic and special atoms..",
+    "expected_basis": "llm_output",
+    "source_dataset": "arxiv-abstracts-2021",
+    "speaker": "assistant"
+  },
+  {
+    "text": "After switching to migrating to the new API version, I observed the error rate went from 2% to nearly zero. The change was immediate and reproducible.",
+    "expected_basis": "empirical",
+    "source_dataset": "synthetic-empirical",
+    "speaker": "user"
+  },
+  {
+    "text": "The site is linked to the Underground Railroad, an informal network of secret routes and safe houses used by 19th-century black slaves in the United States; Levi Coffin (known as \"The President of the Underground Railroad\" ) had a home there from 1856 to 1863",
+    "expected_basis": "vibes",
+    "source_dataset": "wikipedia-citation-needed",
+    "speaker": "user"
+  },
+  {
+    "text": "The evolution of Earth-Moon system is described by the dark matter field\nfluid model proposed in the Meeting of Division of Particle and Field 2004,\nAmerican Physical Society. The current behavior of the Earth-Moon system agrees\nwith this model very well and the general pattern of the evolution of the\nMoon-Earth system described by this model agrees with geological and fossil\nevidence.",
+    "expected_basis": "llm_output",
+    "source_dataset": "arxiv-abstracts-2021",
+    "speaker": "assistant"
+  },
+  {
+    "text": "A fully differential calculation in perturbative quantum chromodynamics is\npresented for the production of massive photon pairs at hadron colliders. All\nnext-to-leading order perturbative contributions from quark-antiquark,\ngluon-(anti)quark, and gluon-gluon subprocesses are included, as well as\nall-orders resummation of initial-state gluon radiation valid at\nnext-to-next-to-leading logarithmic accuracy.",
+    "expected_basis": "llm_output",
+    "source_dataset": "arxiv-abstracts-2021",
+    "speaker": "assistant"
+  },
+  {
+    "text": "The American psychedelic rock band Coven, who opened for early heavy metal influencers such as Vanilla Fudge and the Yardbirds, portrayed themselves as practitioners of witchcraft or black magic, using dark\u2014Satanic or occult\u2014imagery in their lyrics, album art, and live performances",
+    "expected_basis": "vibes",
+    "source_dataset": "wikipedia-citation-needed",
+    "speaker": "user"
+  },
+  {
+    "text": "Iizuka wanted to ensure that the next Nights game would stay faithful to the original, and felt the need to keep the game's concept fundamentally the same while incorporating a variety of new mechanics",
+    "expected_basis": "vibes",
+    "source_dataset": "wikipedia-citation-needed",
+    "speaker": "user"
+  },
+  {
+    "text": "If every continuous function on a closed interval is bounded, and the domain is compact, then it follows that the function attains its maximum and minimum values.",
+    "expected_basis": "deduction",
+    "source_dataset": "synthetic-deduction",
+    "speaker": "assistant"
+  },
+  {
+    "text": "Suppose the input satisfies the precondition. Then the loop invariant is preserved at each iteration implies the postcondition is established upon termination. Therefore the original claim holds.",
+    "expected_basis": "deduction",
+    "source_dataset": "synthetic-deduction",
+    "speaker": "assistant"
+  },
+  {
+    "text": "In my experience working with real-time data pipelines, consistency improved across runs. I've seen this pattern repeatedly over the past year.",
+    "expected_basis": "empirical",
+    "source_dataset": "synthetic-empirical",
+    "speaker": "user"
+  },
+  {
+    "text": "Processing fluency influences truth judgments independently of actual evidence (Winkielman & Schwarz 2001).",
+    "expected_basis": "research",
+    "source_dataset": "synthetic-research-with-citations",
+    "speaker": "assistant"
+  },
+  {
+    "text": "Sediments worn off the Death Valley region were shed both east and west and carried by wind and water; the eastern sediments ended up in Colorado and are now famous for their dinosaur fossils",
+    "expected_basis": "llm_output",
+    "source_dataset": "wikipedia-unsourced-science",
+    "speaker": "assistant"
+  },
+  {
+    "text": "When we look at the broader landscape, function calling stands out as particularly relevant to content moderation. The underlying principles are well-understood, even if the practical applications are still evolving.",
+    "expected_basis": "llm_output",
+    "source_dataset": "synthetic-llm-style",
+    "speaker": "assistant"
+  },
+  {
+    "text": "The medications are respectively systemic vasoconstrictors and inhibitors of splanchnic vasodilation, and were not found to be useful when used individually in treatment of hepatorenal syndrome",
+    "expected_basis": "llm_output",
+    "source_dataset": "wikipedia-unsourced-science",
+    "speaker": "assistant"
+  },
+  {
+    "text": "When I switching from WAL to DELETE journal mode, the result was the output quality was noticeably better. I wasn't expecting that \u2014 it contradicts what the documentation says.",
+    "expected_basis": "empirical",
+    "source_dataset": "synthetic-empirical",
+    "speaker": "user"
+  },
+  {
+    "text": "I tested this by migrating to the new API version and the outcome was the output quality was noticeably better. Repeated the test five times with the same result each time.",
+    "expected_basis": "empirical",
+    "source_dataset": "synthetic-empirical",
+    "speaker": "user"
+  },
+  {
+    "text": "In the late 1960s, experimentalists had found that hadrons fall into families called Regge trajectories with squared energy proportional to angular momentum, and theorists showed that this relationship emerges naturally from the physics of a rotating relativistic string.",
+    "expected_basis": "llm_output",
+    "source_dataset": "wikipedia-unsourced-science",
+    "speaker": "assistant"
+  },
+  {
+    "text": "These pains were, according to Fliess's theories, caused by habitual masturbation which, as the tissue of the nose and genitalia were linked, was curable by removal of part of the middle turbinate",
+    "expected_basis": "vibes",
+    "source_dataset": "wikipedia-citation-needed",
+    "speaker": "user"
+  },
+  {
+    "text": "Since the graph is connected and has no cycles, we can conclude that there exists exactly one path between any two vertices. This holds because it must be a tree by definition.",
+    "expected_basis": "deduction",
+    "source_dataset": "synthetic-deduction",
+    "speaker": "assistant"
+  },
+  {
+    "text": "Cognitive foraging follows the same explore-exploit tradeoffs as animal foraging (Hills, Todd & Goldstone 2008).",
+    "expected_basis": "research",
+    "source_dataset": "synthetic-research-with-citations",
+    "speaker": "assistant"
+  },
+  {
+    "text": "We study the two-particle wave function of paired atoms in a Fermi gas with\ntunable interaction strengths controlled by Feshbach resonance. The Cooper pair\nwave function is examined for its bosonic characters, which is quantified by\nthe correction of Bose enhancement factor associated with the creation and\nannihilation composite particle operators.",
+    "expected_basis": "llm_output",
+    "source_dataset": "arxiv-abstracts-2021",
+    "speaker": "assistant"
+  },
+  {
+    "text": "Side effects of surgery to remove endometrial cancer can specifically include sexual dysfunction, temporary incontinence, and lymphedema, along with more common side effects of any surgery, including constipation.",
+    "expected_basis": "llm_output",
+    "source_dataset": "wikipedia-unsourced-science",
+    "speaker": "assistant"
+  },
+  {
+    "text": "The spacing effect is one of the most robust findings in memory research (Ebbinghaus 1885; Cepeda et al. 2006).",
+    "expected_basis": "research",
+    "source_dataset": "synthetic-research-with-citations",
+    "speaker": "assistant"
+  },
+  {
+    "text": "The key insight here is that model distillation fundamentally changes how we think about scientific discovery. When you consider the implications, it becomes clear that traditional approaches are insufficient.",
+    "expected_basis": "llm_output",
+    "source_dataset": "synthetic-llm-style",
+    "speaker": "assistant"
+  }
+]

@@ -1,0 +1,286 @@
+package mcp
+
+import (
+	"context"
+	"fmt"
+	"strings"
+	"testing"
+
+	"github.com/justinstimatze/slimemold/internal/store"
+	"github.com/justinstimatze/slimemold/types"
+)
+
+func testDB(t *testing.T) *store.DB {
+	t.Helper()
+	dir := t.TempDir()
+	db, err := store.Open(dir, "test-project")
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	t.Cleanup(func() { db.Close() })
+	return db
+}
+
+func TestCoreRegisterClaim(t *testing.T) {
+	db := testDB(t)
+	ctx := context.Background()
+
+	result, err := CoreRegisterClaim(ctx, db, "test-project", "test claim", types.BasisVibes, 0.7, "", nil, nil, nil)
+	if err != nil {
+		t.Fatalf("CoreRegisterClaim: %v", err)
+	}
+	if result.ClaimID == "" {
+		t.Error("expected claim ID")
+	}
+	if result.GraphSize != 1 {
+		t.Errorf("graph_size = %d, want 1", result.GraphSize)
+	}
+	// Vibes basis should produce a warning
+	if len(result.Warnings) == 0 {
+		t.Error("expected warnings for vibes basis")
+	}
+	foundBasisWarning := false
+	for _, w := range result.Warnings {
+		if strings.Contains(w, "weak basis") {
+			foundBasisWarning = true
+		}
+	}
+	if !foundBasisWarning {
+		t.Errorf("expected weak basis warning, got %v", result.Warnings)
+	}
+}
+
+func TestCoreRegisterClaimWithEdges(t *testing.T) {
+	db := testDB(t)
+	ctx := context.Background()
+
+	// Register first claim
+	r1, _ := CoreRegisterClaim(ctx, db, "test-project", "foundation claim", types.BasisResearch, 0.9, "Smith 2024", nil, nil, nil)
+
+	// Register second claim that depends on first
+	r2, err := CoreRegisterClaim(ctx, db, "test-project", "dependent claim", types.BasisDeduction, 0.8, "", []string{"foundation claim"}, nil, nil)
+	if err != nil {
+		t.Fatalf("CoreRegisterClaim: %v", err)
+	}
+
+	// Should have created an edge
+	edges, _ := db.GetEdgesForClaim(r2.ClaimID)
+	if len(edges) != 1 {
+		t.Fatalf("got %d edges, want 1", len(edges))
+	}
+	if edges[0].ToID != r1.ClaimID {
+		t.Errorf("edge to=%s, want %s", edges[0].ToID, r1.ClaimID)
+	}
+}
+
+func TestCoreRegisterOrphanWarning(t *testing.T) {
+	db := testDB(t)
+	ctx := context.Background()
+
+	result, _ := CoreRegisterClaim(ctx, db, "test-project", "isolated claim", types.BasisResearch, 0.9, "Jones 2025", nil, nil, nil)
+
+	foundOrphan := false
+	for _, w := range result.Warnings {
+		if strings.Contains(w, "Orphan") {
+			foundOrphan = true
+		}
+	}
+	if !foundOrphan {
+		t.Errorf("expected orphan warning, got %v", result.Warnings)
+	}
+}
+
+func TestCoreChallengeClaim(t *testing.T) {
+	db := testDB(t)
+	ctx := context.Background()
+
+	r, _ := CoreRegisterClaim(ctx, db, "test-project", "weak claim", types.BasisVibes, 0.5, "", nil, nil, nil)
+
+	if err := CoreChallengeClaim(ctx, db, r.ClaimID, "upheld", "confirmed after review"); err != nil {
+		t.Fatalf("CoreChallengeClaim: %v", err)
+	}
+
+	claim, _ := db.GetClaim(r.ClaimID)
+	if !claim.Challenged {
+		t.Error("expected challenged = true")
+	}
+}
+
+func TestCoreGetTopology(t *testing.T) {
+	db := testDB(t)
+	ctx := context.Background()
+
+	CoreRegisterClaim(ctx, db, "test-project", "claim A", types.BasisResearch, 0.9, "", nil, nil, nil)
+	CoreRegisterClaim(ctx, db, "test-project", "claim B", types.BasisVibes, 0.5, "", nil, nil, nil)
+
+	topo, err := CoreGetTopology(ctx, db, "test-project")
+	if err != nil {
+		t.Fatalf("CoreGetTopology: %v", err)
+	}
+	if topo.ClaimCount != 2 {
+		t.Errorf("claims = %d, want 2", topo.ClaimCount)
+	}
+	if topo.BasisCounts[types.BasisResearch] != 1 {
+		t.Errorf("research = %d, want 1", topo.BasisCounts[types.BasisResearch])
+	}
+}
+
+func TestDeduplicateBatch(t *testing.T) {
+	batch := []types.ExtractedClaim{
+		{Index: 0, Text: "Nick Thomas-Symonds endorsed Labour's decision not to accept the IHRA definition", Basis: "vibes", Confidence: 0.8, Speaker: "user"},
+		{Index: 1, Text: "Nick Thomas-Symonds went out on the airwaves defending the decision not to accept the IHRA definition", Basis: "vibes", Confidence: 0.7, Speaker: "user"},
+		{Index: 2, Text: "Something completely different about fish", Basis: "vibes", Confidence: 0.5, Speaker: "user", DependsOnIndices: []int{0}},
+	}
+
+	result := deduplicateBatch(batch)
+
+	// Claims 0 and 1 should merge (same speaker, near-identical text); claim 2 should remain
+	if len(result) != 2 {
+		t.Errorf("dedup produced %d claims, want 2", len(result))
+		for _, c := range result {
+			t.Logf("  [%d] %s", c.Index, c.Text[:50])
+		}
+		return
+	}
+
+	// The merged claim should pick the longer text (claim 1)
+	var merged, fish *types.ExtractedClaim
+	for i := range result {
+		if containsWord(result[i].Text, "airwaves") || containsWord(result[i].Text, "endorsed") {
+			merged = &result[i]
+		}
+		if containsWord(result[i].Text, "fish") {
+			fish = &result[i]
+		}
+	}
+	if merged == nil {
+		t.Fatal("merged claim not found")
+	}
+	if fish == nil {
+		t.Fatal("fish claim not found")
+	}
+	// Longer text wins
+	if !containsWord(merged.Text, "airwaves") {
+		t.Error("expected longer text (with 'airwaves') to be the representative")
+	}
+}
+
+func TestDeduplicateBatchPreservesContradictions(t *testing.T) {
+	// Claims with high text overlap but connected by contradicts should NOT merge
+	batch := []types.ExtractedClaim{
+		{Index: 0, Text: "The user never used the word token during this conversation", Basis: "vibes", Confidence: 0.9, Speaker: "user", ContradictsIndices: []int{1}},
+		{Index: 1, Text: "The user used the word token twice during this conversation", Basis: "llm_output", Confidence: 0.8, Speaker: "assistant"},
+	}
+
+	result := deduplicateBatch(batch)
+
+	if len(result) != 2 {
+		t.Errorf("dedup merged contradicting claims: got %d, want 2", len(result))
+	}
+}
+
+func containsWord(text, word string) bool {
+	return strings.Contains(strings.ToLower(text), word)
+}
+
+func TestDeduplicateBatchEdgeRemapping(t *testing.T) {
+	// Claim 0 and 1 are near-identical (same speaker); claim 2 depends on claim 0.
+	// After dedup, claim 2's depends_on should be remapped to the representative.
+	batch := []types.ExtractedClaim{
+		{Index: 0, Text: "Nick Thomas-Symonds endorsed Labour's decision not to accept the IHRA definition", Basis: "vibes", Confidence: 0.8, Speaker: "user"},
+		{Index: 1, Text: "Nick Thomas-Symonds went out on the airwaves defending the decision not to accept the IHRA definition", Basis: "vibes", Confidence: 0.7, Speaker: "user"},
+		{Index: 2, Text: "Something completely different about fish", Basis: "vibes", Confidence: 0.5, Speaker: "user", DependsOnIndices: []int{0}},
+	}
+
+	result := deduplicateBatch(batch)
+	if len(result) != 2 {
+		t.Fatalf("dedup produced %d claims, want 2", len(result))
+	}
+
+	// Find the fish claim and verify its depends_on was remapped
+	for _, c := range result {
+		if containsWord(c.Text, "fish") {
+			if len(c.DependsOnIndices) != 1 {
+				t.Fatalf("fish.DependsOnIndices = %v, want exactly 1 entry", c.DependsOnIndices)
+			}
+			// The representative of the merged cluster should be claim 1 (longer text)
+			repIdx := -1
+			for _, r := range result {
+				if containsWord(r.Text, "airwaves") {
+					repIdx = r.Index
+				}
+			}
+			if c.DependsOnIndices[0] != repIdx {
+				t.Errorf("fish.DependsOnIndices[0] = %d, want %d (representative index)", c.DependsOnIndices[0], repIdx)
+			}
+			return
+		}
+	}
+	t.Fatal("fish claim not found in deduped batch")
+}
+
+func TestPruneHighDegreeEdges(t *testing.T) {
+	db := testDB(t)
+
+	// Create a hub claim with many outgoing edges
+	hub := &types.Claim{ID: "hub", Text: "hub claim", Basis: types.BasisVibes, SessionID: "s1", Project: "test-project", Speaker: types.SpeakerUser}
+	db.CreateClaim(hub)
+
+	// Create 8 target claims and edges from hub to each
+	for i := 0; i < 8; i++ {
+		target := &types.Claim{
+			ID: fmt.Sprintf("t%d", i), Text: fmt.Sprintf("target %d", i),
+			Basis: types.BasisVibes, SessionID: "s1", Project: "test-project", Speaker: types.SpeakerUser,
+		}
+		db.CreateClaim(target)
+		rel := types.RelSupports
+		if i < 2 {
+			rel = types.RelContradicts // first 2 are contradicts (highest priority)
+		}
+		db.CreateEdge(&types.Edge{FromID: "hub", ToID: target.ID, Relation: rel})
+	}
+
+	// Verify 8 edges exist
+	edges, _ := db.GetEdgesForClaim("hub")
+	if len(edges) != 8 {
+		t.Fatalf("before prune: %d edges, want 8", len(edges))
+	}
+
+	// Prune
+	pruneHighDegreeEdges(db, "test-project")
+
+	// Should be capped at 5
+	edges, _ = db.GetEdgesForClaim("hub")
+	if len(edges) != 5 {
+		t.Fatalf("after prune: %d edges, want 5", len(edges))
+	}
+
+	// Both contradicts edges should survive (higher priority)
+	contradicts := 0
+	for _, e := range edges {
+		if e.Relation == types.RelContradicts {
+			contradicts++
+		}
+	}
+	if contradicts != 2 {
+		t.Errorf("contradicts edges after prune: %d, want 2", contradicts)
+	}
+}
+
+func TestCoreGetVulnerabilities(t *testing.T) {
+	db := testDB(t)
+	ctx := context.Background()
+
+	// Create load-bearing vibes scenario
+	CoreRegisterClaim(ctx, db, "test-project", "vibes foundation", types.BasisVibes, 0.5, "", nil, nil, nil)
+	CoreRegisterClaim(ctx, db, "test-project", "dependent A", types.BasisDeduction, 0.8, "", []string{"vibes foundation"}, nil, nil)
+	CoreRegisterClaim(ctx, db, "test-project", "dependent B", types.BasisDeduction, 0.8, "", []string{"vibes foundation"}, nil, nil)
+
+	vulns, err := CoreGetVulnerabilities(ctx, db, "test-project")
+	if err != nil {
+		t.Fatalf("CoreGetVulnerabilities: %v", err)
+	}
+	if vulns.CriticalCount == 0 {
+		t.Error("expected critical vulnerabilities for load-bearing vibes")
+	}
+}

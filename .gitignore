@@ -1,0 +1,15 @@
+slimemold
+.env
+*.sqlite
+.mcp.json
+
+# defn database
+.defn/
+.codex/
+
+# plancheck artifacts
+.plancheck-debug.json
+
+# benchmark artifacts
+benchmarks/*/samples.json
+benchmarks/*/results.json

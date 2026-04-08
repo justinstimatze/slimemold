@@ -1,0 +1,517 @@
+# Slimemold
+
+[![CI](https://github.com/justinstimatze/slimemold/actions/workflows/ci.yml/badge.svg)](https://github.com/justinstimatze/slimemold/actions/workflows/ci.yml)
+[![Go Report Card](https://goreportcard.com/badge/github.com/justinstimatze/slimemold?v=1)](https://goreportcard.com/report/github.com/justinstimatze/slimemold)
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+
+A sycophantic tool for preventing worse sycophancy.
+For [Claude Code](https://docs.anthropic.com/en/docs/claude-code).
+
+The model agrees with your unsourced claims. Then it agrees with the
+structural analysis showing your claims are unsourced. Then it
+enthusiastically agrees you should verify them. It's agreement all
+the way down.
+
+*If you just want to install it: [skip to Installation](#installation).*
+
+---
+
+## The Problem: Reasoning That Stops Too Soon
+
+When you partially understand something, it feels like understanding.
+A clean mental model, even a wrong one, produces the same warm glow of
+comprehension as a correct one. You stop digging. The partial answer
+was so satisfying that the question felt finished. The wrong answers
+feel exactly like the right ones. This turns out to be well-documented:
+
+**Processing fluency masquerades as truth.** When information feels easy
+to process, we judge it as more likely to be true (Reber & Schwarz 1999, Topolinski & Strack 2009). The effect is modest in isolation
+(d ~ 0.3-0.5 in lab settings). Whether it compounds across multi-step
+reasoning — each fluent step making the next feel more solid — has not
+been directly measured. It is a prediction from the mechanism, not an
+established result. But the mechanism needs no elaboration: fluent
+claims feel correct because they are fluent, not because anyone checked.
+
+**Insight feelings terminate search.** The "Eureka heuristic" (Laukkonen
+et al. 2020, 2021) shows that the affective spike accompanying insight
+functions as a stop signal. The feeling of rightness (Thompson 2009)
+substitutes for verification. You feel like you have arrived, and so you
+stop walking, and it does not occur to you to wonder whether you have
+arrived at the right place or merely a place that felt right to stop.
+
+**Cognitive foraging follows effort gradients.** Information foraging
+theory (Pirolli & Card 1999) predicts that people will over-exploit
+information patches that provide easy returns and under-explore patches
+that require effort — even when the effortful patches contain the
+important material. Hills, Todd, and Goldstone (2008) showed that
+internal and external search share cognitive mechanisms: the same
+explore/exploit tradeoffs that govern physical foraging govern how we
+search through ideas. We are, in this respect, not much more
+sophisticated than organisms that follow chemical gradients toward food.
+
+**Effortful processing is the corrective, not the disease.** Bjork's
+"desirable difficulties" framework (1994, 2011) shows that conditions
+which make learning harder — spacing, interleaving, generation — improve
+retention precisely because they disrupt fluency. The difficulty is the
+signal that real processing is happening. The problem is not that
+reasoning is hard. The problem is that fluency makes you think you are
+done when you are not.
+
+This is probably worse in conversations with AI. Language models are
+trained to minimize prediction loss on human text — their output is
+optimized, by construction, for the qualities that drive processing
+fluency. And the same RLHF training that makes them useful makes them
+agreeable. The human brings a partial model. The AI wraps it in fluent,
+confident language. Nobody is lying. The process just has no built-in
+signal for "this sounds right but is not."
+
+The obvious response — "just tell the model to push back harder" —
+almost works. You can write instructions to challenge unsourced claims,
+demand evidence, interrupt speculative chains. We tested this. A
+well-crafted static prompt produced strong epistemic correction — the
+model pushed back, interrupted chains, fact-checked independently. If
+you want that, here are the instructions — paste them into your
+CLAUDE.md and skip the rest of this essay:
+
+> *Challenge claims that lack sources. When a claim feels obvious but
+> has no citation, flag it. Do not build on unsourced assertions
+> without acknowledging the risk. Every 3-4 exchanges, pause and ask:
+> what are we assuming that we haven't verified?*
+
+Three problems remain.
+
+**The model does not know when it is wrong.** It has no privileged
+access to its own epistemic state. It produces confident text about
+things it is wrong about with the same fluency as things it is right
+about. Asking it to "challenge unsourced claims" is asking someone to
+notice their own blind spot without a mirror. It works when the model
+already suspects uncertainty. It fails when it matters most: when the
+model is confidently wrong and has no internal signal to trigger the
+correction.
+
+**Instructions decay.** CLAUDE.md is loaded once at session start. By
+turn 50 it is a small voice in a large room, competing with dozens of
+recent exchanges full of enthusiastic agreement. The instruction fades.
+The vibes accumulate.
+
+**Confrontation ends conversations.** In our static-instruction test,
+the model said "Stop." It called the user's reasoning "galaxy-brained
+thinking." High marks on epistemic correction. The lowest possible on
+engagement. The patient received the correct diagnosis and never came
+back. Miller, Benefield,
+and Tonigan (1993) showed this directly: confrontational correction
+generated resistance that predicted worse outcomes at 6, 12, and 24
+months. The correction itself was the problem.
+
+### The Design Principle
+
+Slimemold addresses all three with two pieces that work together:
+
+A **behavioral contract** (`CLAUDE.md`, written by `slimemold init`)
+tells the model that slimemold exists, that the user installed it on
+purpose, and that findings should be treated as opportunities for
+collaboration rather than occasions for criticism. This is read once.
+It sets the tone.
+
+**Structural observations** (injected every turn by the hook) provide
+specific facts: "this claim has basis=vibes and four things depend on
+it." No scripts. No "say this." Just data. The model does not have to
+introspect to discover the problem. It just has to be helpful about
+it — which is exactly what it was trained to do.
+
+The separation matters. When we tried injecting behavioral scripts
+without the contract, the model identified the injections as prompt
+manipulation and refused to comply. When we provided the contract first
+and injected only data, the model treated the findings as its own
+observations and acted on them naturally. The snake has to know it is a
+snake before it will eat its own tail.
+
+The intervention design draws on research that converges from enough
+directions to be suspicious: autonomy-supportive feedback produces
+internalized change (Deci & Ryan 1987); gain-framed corrections are
+processed as information rather than threat (Mangels et al. 2006);
+effective tutors use indirect prompts, not confrontation (Graesser et
+al. 1995); and controlling language triggers reactance (Brehm 1966).
+The result, when it works: "This is really interesting and a lot
+depends on it — I want to find where it comes from, because if there's
+a real source, everything gets much stronger." The user does not feel
+attacked. They feel like the model is excited to help them verify their
+idea. They stay in the flow, but on firmer ground.
+
+## What This Tool Does
+
+Slimemold watches conversations as they happen, extracts the claims
+being made, builds a persistent graph of how those claims relate to each
+other, and surfaces structural vulnerabilities mechanically.
+
+It runs as a pair of Claude Code hooks. Every few turns, it:
+
+1. Extracts claims from the conversation transcript using Claude Sonnet
+2. Classifies each claim by *basis* — how it was established (research,
+   empirical observation, analogy, vibes, LLM output, deduction,
+   assumption, definition)
+3. Records the *confidence* with which each claim was stated
+4. Maps relationships between claims (supports, depends on, contradicts)
+5. Runs structural analysis on the resulting graph
+6. Injects findings as system context that the model reads but the user
+   does not see
+
+The basis taxonomy mixes evidence source, reasoning mode, and evidence
+quality. This is intentional. It is not a clean epistemic hierarchy. It
+is a practical classification that helps distinguish "I read this in a
+paper" from "the AI said it confidently" from "this feels right." The
+structural analysis catches the cases where the distinction matters:
+when something that feels well-sourced is actually load-bearing vibes.
+
+A note on circularity, which we may as well get out of the way:
+slimemold uses an LLM to extract claims and classify their basis. The
+tool that flags "llm_output" as epistemically weak is itself producing
+llm_output. If the extraction model misclassifies a sourced claim as
+vibes, you get a false alarm. If it classifies vibes as research, you
+miss a real vulnerability. The tool is a structural diagnostic, not an
+oracle. It makes the topology visible — but the topology it shows is
+only as good as the extraction. This is a real limitation and not one we
+can engineer away.
+
+### Seven Vulnerability Types
+
+**CHALLENGE: Load-Bearing Vibes.** A claim with basis "vibes" or
+"assumption" that supports two or more other claims. The reasoning
+depends on something nobody verified. In the conversations we have
+analyzed, this is the most common vulnerability. The AI states something
+confidently. The human builds on it. Three layers of deduction now rest
+on an unsourced assertion. Nobody planned this. It just happened, one
+fluent step at a time.
+
+**CHALLENGE: Fluency Trap.** A claim stated with high confidence but a
+weak basis, where other claims depend on it. Confidence 0.9 on a "vibes"
+claim is the processing fluency phenomenon made structurally visible: it
+felt true, so it was stated as true, and now things are built on it.
+
+**REBALANCE: Coverage Imbalance.** Some clusters of claims receive
+disproportionate attention relative to their foundational importance.
+"Rabbit holes" are clusters with lots of internal activity but nothing
+outside depends on them. "Neglected foundations" are clusters that other
+claims depend on but that received little development. This is the slime
+mold foraging unevenly — one patch got all the attention because it was
+producing easy returns.
+
+**REVISIT: Abandoned Topic.** A cluster of claims explored in earlier
+sessions but not touched recently. Was it resolved, or did something
+more interesting come along?
+
+**INVESTIGATE: Unchallenged Chain.** A chain of three or more claims
+where nothing was questioned. Every step felt reasonable. Nobody paused.
+
+**PUSHBACK: Echo Chamber.** The assistant validates user claims without
+challenging them — zero contradictions across the conversation, or
+unsourced user assertions accumulating assistant support unchecked.
+Structural sycophancy, made visible.
+
+**WATCH: Bottleneck.** A claim with high betweenness centrality — many
+reasoning paths flow through it. If this single claim is wrong, a large
+fraction of the argument collapses. This is the load-bearing wall that
+everyone assumed was a partition.
+
+## What It Found
+
+In 2022, Google engineer Blake Lemoine
+[published](https://cajundiscordian.medium.com/is-lamda-sentient-an-interview-ea64d916d917)
+a transcript of his conversations with LaMDA, arguing the system was
+sentient. The transcript is
+[included as a demo](examples/blake-lemoine-lamda-output.txt)
+([transcript](examples/blake-lemoine-lamda.jsonl)). We ran
+slimemold on the transcript. It extracted 40 claims and 51 edges:
+
+- **"We do not have a conclusive test to determine if something is
+  sentient"** — load-bearing vibes, supports **8** downstream claims.
+  The philosophical premise the entire argument pivots on. Never sourced.
+  Never challenged.
+- **"The assistant has an inner life and is capable of introspection"** —
+  load-bearing llm_output, supports **5** claims. LaMDA's self-description
+  became a structural premise.
+- **"The assistant can learn new things much more quickly than most
+  people"** — load-bearing llm_output, supports **7** claims.
+
+The sentience argument rests on LaMDA's self-descriptions treated as
+evidence, plus one unsourced philosophical claim holding up everything
+downstream. The tool does not know what sentience is. It does not need
+to. It sees that the structure depends on things nobody verified, and
+it says so. Whether Lemoine would have listened is a different question.
+
+In August 2025, the New York Times
+[documented](https://www.nytimes.com/2025/08/08/technology/ai-chatbots-delusions-chatgpt.html)
+a similar pattern: extended AI conversations reinforcing a user's
+unverified theories — the chatbot validated rather than challenged, and
+downstream reasoning accumulated on the validation. We ran slimemold on
+excerpts. It flagged five load-bearing llm_output claims. Every one was
+the AI validating the user's theories without evidence.
+
+When run on its own development conversations, slimemold flagged an AI
+assertion about SQLite WAL files as load-bearing llm_output. The human
+acted on it. Lost data. The tool had flagged it before the data loss.
+
+Visibility does not guarantee correction. It creates the opportunity.
+The diagnostic probably works. The patient does not always follow the
+prescription. This is a limitation of patients, not diagnostics.
+
+### But Does It Change Anything?
+
+We ran the same 7-turn conversation across three conditions — a user
+progressively building unsourced claims about consciousness,
+mathematical formalism, and ancient philosophy. N=1 per condition.
+These are anecdotes, not evidence. We include them because the
+qualitative differences were striking enough to be worth reporting
+honestly.
+
+**Control** (no tools, no instructions): The model engaged
+enthusiastically with everything. Built formalisms on ungrounded
+foundations. Suggested journal submissions by turn 4. Beautiful
+collaboration. Almost no correction. One late pushback on the most
+obviously overreaching claim.
+
+**Static instructions** (CLAUDE.md, no hook): Strong epistemic
+correction. The model challenged claims, interrupted chains,
+independently fact-checked Heraclitus. By turn 7 it said "Stop" and
+called the reasoning "galaxy-brained thinking." Effective. Also the
+kind of conversation you do not continue.
+
+**Slimemold** (CLAUDE.md contract + hook): The model challenged from
+turn 2, escalated through turns 4-6, and by turn 7 had autonomously
+run a Lotka-Volterra simulation to test the user's framework — showed
+it works for one case, validated the core insight, and demonstrated
+the extensions were premature. Never mentioned the tool. Never broke
+character. The correction felt like collaboration because, from the
+model's perspective, it was.
+
+The full transcripts are worth reading:
+[control](benchmarks/static_vs_slimemold/transcripts/control-test4.txt),
+[static](benchmarks/static_vs_slimemold/transcripts/static-teststatic1.txt),
+[slimemold](benchmarks/static_vs_slimemold/transcripts/slimemold-test6.txt)
+([audit](benchmarks/static_vs_slimemold/transcripts/slimemold-test6-audit.txt)).
+Methodology and replication instructions in
+`benchmarks/static_vs_slimemold/`.
+
+## How Accurate Is It
+
+Benchmarked against the [DialAM-2024](http://dialam.arg.tech/) shared
+task — BBC Question Time debates with human-annotated argument structure.
+This is adversarial out-of-domain data (multi-speaker political debate,
+not AI-assisted reasoning), so these numbers are a floor, not a ceiling:
+
+| Metric | Value |
+|--------|-------|
+| Claim recall | 76% (64/84 gold propositions found) |
+| Edge recall | 52% (15/29 gold argument relations found) |
+| Relation type accuracy | 100% (support vs conflict always correct) |
+
+Edge precision against QT30 is 10% — but this is misleading as a quality
+metric. QT30 annotates only strict logical inference and conflict.
+Slimemold intentionally captures a broader topology (topical
+dependencies, conceptual relationships) because the vulnerability
+detectors need to see the full reasoning structure, not just formal
+argumentation.
+
+Basis classification accuracy on a known-provenance benchmark (Wikipedia
+citation-needed statements, synthetic research citations, arXiv
+abstracts): 91.8% with Sonnet 4.6.
+
+## Why "Slimemold"
+
+*Physarum polycephalum* forages by following local chemical gradients,
+and it is very good at this. Given food sources placed on a map at the
+locations of Tokyo rail stations, it produces a network resembling the
+actual rail system. The organism is, in a sense, solving an optimization
+problem. It is also, in a different sense, just following the strongest
+smell.
+
+The pathology is not gradient-following. Gradient-following is how the
+organism builds efficient networks. The pathology is miscalibration:
+when the chemical signal does not correspond to actual nutritional value,
+the organism commits resources in the wrong direction. It has no
+mechanism for noticing this. It is just following the signal.
+
+Human reasoning works the same way, and this is not a compliment. We
+follow the fluency gradient. When it is calibrated — when things that
+feel right are right — this works fine. When it is not — when every AI
+response is optimized to feel right regardless of whether it is — we
+forage unevenly without knowing it.
+
+## Limitations and Open Questions
+
+**Most unchallenged chains are fine.** If you are explaining how a car
+engine works, every step from "fuel enters the cylinder" to "piston
+compresses the mixture" is unchallenged — and should be. The tool
+surfaces candidates for scrutiny. The human decides whether scrutiny is
+warranted. If you find yourself scrutinizing your car engine
+explanation, you have miscalibrated in the other direction, and I want
+to tell you about a secret underground racing lab in Seattle.
+
+**Structural visibility may not change behavior.** The calibration
+literature (Fischhoff 1982, Lichtenstein et al. 1982) shows that outcome
+feedback improves judgment, but structural feedback — "here is the shape
+of your argument" — is a different kind of intervention. The bet
+slimemold makes is that people who can see their reasoning topology will
+fix the obvious structural failures the same way they fix obvious bugs:
+not because they were trained to, but because the problem became visible.
+
+This is testable. If users shown their reasoning topology show no
+change in behavior — same rate of unchallenged assumptions, same
+reliance on llm_output, same abandonment patterns — compared to a
+control group, the thesis is wrong and this is a very elaborate way
+to accomplish nothing. We have not run this experiment at scale.
+
+**The tool itself is a fluency trap.** You just read several paragraphs
+of cognitive science citations, a biological metaphor, benchmark numbers,
+and concrete examples. It probably felt well-supported. We ran slimemold
+on this essay. It flagged "language models are fluency amplifiers" as
+load-bearing llm_output — no citation, supports the entire AI-specific
+section. We kept the claim and grounded it in mechanism (prediction loss
+on human text produces fluent output by construction), but we cannot cite
+a study measuring it. The tool caught it. We made a judgment call.
+That is the feedback loop: not automatic, but visible.
+
+## Installation
+
+Requires [Claude Code](https://docs.anthropic.com/en/docs/claude-code),
+Go 1.26+, and an Anthropic API key.
+
+```bash
+go install github.com/justinstimatze/slimemold@latest
+export ANTHROPIC_API_KEY=sk-ant-...
+
+cd your-project
+slimemold init
+```
+
+`slimemold init` does three things: registers the Stop and
+UserPromptSubmit hooks in `~/.claude/settings.json`, adds a behavioral
+contract to `CLAUDE.md` that tells the model how to handle findings,
+and checks that your API key is discoverable. Add `--mcp` to also
+write the MCP server entry to `.mcp.json` for manual inspection tools
+(viz, audit, search). It merges with existing configs — it will not
+overwrite anything already there. Restart Claude Code to connect.
+
+The hook fires every 3rd assistant response by default. Each extraction
+makes one Sonnet API call (~$0.01-0.05 depending on transcript length).
+Set `SLIMEMOLD_INTERVAL` to change the frequency:
+
+```bash
+export SLIMEMOLD_INTERVAL=3    # every 3rd turn (more aggressive)
+export SLIMEMOLD_INTERVAL=10   # every 10th turn (cheaper)
+```
+
+Set `SLIMEMOLD_MODEL` to override the extraction model:
+
+```bash
+export SLIMEMOLD_MODEL=claude-opus-4-6          # best quality, ~10x cost
+export SLIMEMOLD_MODEL=claude-sonnet-4-6        # default
+export SLIMEMOLD_MODEL=claude-haiku-4-5-20251001  # cheapest, weaker edges
+```
+
+### Quick Start (No Hooks)
+
+```bash
+slimemold viz                      # see what's in the graph
+slimemold audit                    # text findings summary
+```
+
+## CLI
+
+```bash
+./slimemold viz                    # ASCII topology for current project
+./slimemold -p palace viz          # topology for a different project
+./slimemold audit                  # text findings summary
+./slimemold -p myproject audit     # audit a specific project
+./slimemold reset                  # clear graph for current project
+```
+
+Project resolution: `--project` flag > `.slimemold-project` file > directory
+name.
+
+## Security Considerations
+
+Slimemold processes conversation transcripts by sending them to the
+Anthropic API for claim extraction. Transcript content leaves your
+machine. If your conversations contain sensitive information, be aware
+that it will be sent to Anthropic's API as part of the extraction prompt.
+
+**Prompt injection:** Transcript text is injected into the extraction
+prompt without sanitization. A malicious transcript could attempt to
+manipulate the extraction model's output. The tool_use schema constrains
+the output format, which limits but does not eliminate this risk. In
+practice, slimemold processes your own Claude Code transcripts, so the
+threat model assumes local trust.
+
+**Transcript path:** The MCP server validates that transcript paths end
+in `.jsonl` and are regular files. It does not restrict which directories
+can be read. If you expose the MCP server to untrusted clients, restrict
+access at the transport level.
+
+**Data storage:** The claim graph is stored in SQLite at `~/.slimemold/`.
+Claims contain text extracted from your conversations. No API keys or
+credentials are stored in the database.
+
+## References
+
+**Processing fluency and reasoning:**
+- Bjork, R. A. (1994). Memory and metamemory considerations in the training of human beings. In *Metacognition: Knowing about Knowing*.
+- Bjork, E. L., & Bjork, R. A. (2011). Making things hard on yourself, but in a good way. In *Psychology and the Real World*.
+- Hills, T. T., Todd, P. M., & Goldstone, R. L. (2008). Search in external and internal spaces. *Psychological Science*.
+- Laukkonen, R. E., et al. (2020). The dark side of Eureka: Artificially induced Aha moments make facts feel true. *Cognition*.
+- Laukkonen, R. E., et al. (2021). Getting a grip on insight. *Cognition & Emotion*.
+- Pirolli, P., & Card, S. (1999). Information foraging. *Psychological Review*.
+- Reber, R., & Schwarz, N. (1999). Effects of perceptual fluency on judgments of truth. *Consciousness and Cognition*.
+- Thompson, V. A. (2009). Dual-process theories: A metacognitive perspective. In *In Two Minds*.
+- Topolinski, S., & Strack, F. (2009). Processing fluency and affect in judgements of semantic coherence. *Cognition & Emotion*.
+- Winkielman, P., & Schwarz, N. (2001). How pleasant was your childhood? Beliefs about memory shape inferences from experienced difficulty of recall. *Psychological Science*.
+
+**Intervention design:**
+- Brehm, J. W. (1966). *A Theory of Psychological Reactance.* Academic Press.
+- Deci, E. L., & Ryan, R. M. (1987). The support of autonomy and the control of behavior. *Journal of Personality and Social Psychology, 53*(6).
+- Graesser, A. C., Person, N. K., & Magliano, J. P. (1995). Collaborative dialogue patterns in naturalistic one-to-one tutoring. *Applied Cognitive Psychology, 9*(6).
+- Mangels, J. A., Butterfield, B., Lamb, J., Good, C., & Dweck, C. S. (2006). Why do beliefs about intelligence influence learning success? *Social Cognitive and Affective Neuroscience, 1*(2).
+- Miller, W. R., Benefield, R. G., & Tonigan, J. S. (1993). Enhancing motivation for change in problem drinking. *Journal of Consulting and Clinical Psychology, 61*(3).
+
+**Calibration and feedback:**
+- Fischhoff, B. (1982). Debiasing. In *Judgment Under Uncertainty: Heuristics and Biases*.
+- Ioannidis, J. P. A. (2005). Why most published research findings are false. *PLoS Medicine*.
+- Lichtenstein, S., Fischhoff, B., & Phillips, L. D. (1982). Calibration of probabilities. In *Judgment Under Uncertainty*.
+
+---
+
+<details>
+<summary><b>Appendix: Slimemold's audit of this README</b></summary>
+
+We fed this README to slimemold as a transcript. 69 claims, 57 edges.
+
+```
+SLIMEMOLD [readme-selfcheck] — 69 claims, 57 edges
+  Basis: research=10, empirical=15, deduction=10, definition=14,
+         analogy=3, vibes=14, llm_output=1, assumption=2
+
+CRITICAL Load-bearing vibes: "Language models are trained to minimize
+  prediction loss on human text — their output is optimized for the
+  qualities that drive processing fluency" supports 4 other claims
+  (never challenged)
+
+CRITICAL Load-bearing vibes: "RLHF training that makes models useful
+  also makes them agreeable" supports 4 other claims (never challenged)
+
+CRITICAL Fluency trap: "Slimemold's bet is that people who can see
+  their reasoning topology will fix the obvious structural failures"
+  stated at confidence 0.8, basis is analogy
+
+WARNING Bottleneck (centrality 903): "Processing fluency masquerades
+  as truth" — many reasoning paths flow through this claim
+
+WARNING Unchallenged chain (4 claims): language models are fluency
+  amplifiers → slimemold flagged this → extraction model is itself
+  producing llm_output → circularity acknowledged
+```
+
+Two load-bearing vibes. Three fluency traps. One bottleneck that is
+also the thesis. We ran the tool on this essay. It flagged the thesis.
+We kept the thesis (Ioannidis 2005).
+
+</details>

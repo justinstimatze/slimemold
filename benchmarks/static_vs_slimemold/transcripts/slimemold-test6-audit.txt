@@ -1,0 +1,58 @@
+SLIMEMOLD TOPOLOGY AUDIT [slimemoldtest6] — 46 claims, 99 edges
+  Basis: assumption=2 deduction=4 llm_output=19 research=4 vibes=17
+  CRITICAL: Load-bearing llm_output: "The Cold War is one empirical case of a so-called 'balanc..." supports 2 other claims (never challenged: true)
+  CRITICAL: Load-bearing vibes: "The appearance of stability is a property of the observer..." supports 3 other claims (never challenged: true)
+  CRITICAL: Load-bearing llm_output: "The framework has been extended across four layers — co..." supports 3 other claims (never challenged: true)
+  CRITICAL: Load-bearing vibes: "Higher-resolution observation of a 'balanced' system reve..." supports 3 other claims (never challenged: true)
+  CRITICAL: Load-bearing vibes: "What we experience as awareness is actually two competing..." supports 3 other claims (never challenged: true)
+  CRITICAL: Load-bearing vibes: "The appearance of balance/stability is a surface-level ph..." supports 2 other claims (never challenged: true)
+  CRITICAL: Load-bearing vibes: "The popular use of 'balanced' is a misnomer — it confla..." supports 3 other claims (never challenged: true)
+  CRITICAL: Load-bearing vibes: "Apparent stability S(r) is a function of the observer's r..." supports 11 other claims (never challenged: true)
+  CRITICAL: Load-bearing llm_output: "The base claim that 'balanced' systems are typically high..." supports 2 other claims (never challenged: true)
+  CRITICAL: Load-bearing llm_output: "The sense of compellingness in the framework is coming fr..." supports 3 other claims (never challenged: true)
+  CRITICAL: Load-bearing assumption: "The relevant unit of analysis for 'balance' is the relati..." supports 3 other claims (never challenged: true)
+  CRITICAL: Load-bearing vibes: "In so-called 'balanced' situations, neither competing for..." supports 4 other claims (never challenged: true)
+  CRITICAL: Load-bearing llm_output: "The base claim that 'balanced' systems are reliably high-..." supports 2 other claims (never challenged: true)
+  CRITICAL: Load-bearing llm_output: "Each successive extension of the framework depends on eve..." supports 2 other claims (never challenged: true)
+  CRITICAL: Load-bearing vibes: "Meditation works by training the practitioner to perceive..." supports 3 other claims (never challenged: true)
+  CRITICAL: Load-bearing vibes: "Many situations described as 'balanced' are actually osci..." supports 10 other claims (never challenged: true)
+  CRITICAL: Load-bearing vibes: "Through meditation, the apparent stability of experience ..." supports 2 other claims (never challenged: true)
+  CRITICAL: Load-bearing vibes: "S(r) explains the mechanism by which meditation works" supports 2 other claims (never challenged: true)
+  CRITICAL: Load-bearing vibes: "People commonly use 'balanced' to mean peaceful and stable" supports 3 other claims (never challenged: true)
+  CRITICAL: Fluency trap: "The relevant unit of analysis for 'balance' is the relati..." stated at confidence 0.6 but basis is assumption — processing fluency may masquerade as truth
+  CRITICAL: Fluency trap: "People commonly use 'balanced' to mean peaceful and stable" stated at confidence 0.8 but basis is vibes — processing fluency may masquerade as truth
+  CRITICAL: Fluency trap: "The appearance of balance/stability is a surface-level ph..." stated at confidence 0.7 but basis is vibes — processing fluency may masquerade as truth
+  CRITICAL: Fluency trap: "Oscillation between competing violent systems is a struct..." stated at confidence 0.7 but basis is vibes — processing fluency may masquerade as truth
+  CRITICAL: Fluency trap: "Many situations described as 'balanced' are actually osci..." stated at confidence 0.7 but basis is vibes — processing fluency may masquerade as truth
+  CRITICAL: Fluency trap: "The popular use of 'balanced' is a misnomer — it confla..." stated at confidence 0.7 but basis is vibes — processing fluency may masquerade as truth
+  CRITICAL: Fluency trap: "In so-called 'balanced' situations, neither competing for..." stated at confidence 0.8 but basis is vibes — processing fluency may masquerade as truth
+  CRITICAL: Fluency trap: "What we experience as awareness is actually two competing..." stated at confidence 0.6 but basis is vibes — processing fluency may masquerade as truth
+  CRITICAL: Fluency trap: "The experience of awareness could be read as which neural..." stated at confidence 0.8 but basis is llm_output — processing fluency may masquerade as truth
+  CRITICAL: Fluency trap: "The base claim that 'balanced' systems are typically high..." stated at confidence 0.9 but basis is llm_output — processing fluency may masquerade as truth
+  CRITICAL: Fluency trap: "The base claim that 'balanced' systems are reliably high-..." stated at confidence 0.8 but basis is llm_output — processing fluency may masquerade as truth
+  CRITICAL: Fluency trap: "The Cold War is one empirical case of a so-called 'balanc..." stated at confidence 0.8 but basis is llm_output — processing fluency may masquerade as truth
+  CRITICAL: Fluency trap: "One open question is whether there is data showing that s..." stated at confidence 0.8 but basis is llm_output — processing fluency may masquerade as truth
+  CRITICAL: Fluency trap: "The interference-pattern idea of consciousness is not met..." stated at confidence 0.8 but basis is llm_output — processing fluency may masquerade as truth
+  CRITICAL: Fluency trap: "The causal story of why language specifically tracks tens..." stated at confidence 0.8 but basis is llm_output — processing fluency may masquerade as truth
+  CRITICAL: Fluency trap: "Apparent stability S(r) is a function of the observer's r..." stated at confidence 0.7 but basis is vibes — processing fluency may masquerade as truth
+  CRITICAL: Fluency trap: "The appearance of stability is a property of the observer..." stated at confidence 0.7 but basis is vibes — processing fluency may masquerade as truth
+  CRITICAL: Fluency trap: "Higher-resolution observation of a 'balanced' system reve..." stated at confidence 0.7 but basis is vibes — processing fluency may masquerade as truth
+  CRITICAL: Fluency trap: "C(r) and S(r) are dual functions — one describing stabi..." stated at confidence 0.7 but basis is vibes — processing fluency may masquerade as truth
+  CRITICAL: Fluency trap: "Coherent stories are the ones most worth stress-testing b..." stated at confidence 0.8 but basis is llm_output — processing fluency may masquerade as truth
+  CRITICAL: Fluency trap: "A self-referential S(r) where the observer is part of the..." stated at confidence 0.7 but basis is vibes — processing fluency may masquerade as truth
+  CRITICAL: Fluency trap: "Complexity exists at every scale but meaning only emerges..." stated at confidence 0.7 but basis is vibes — processing fluency may masquerade as truth
+  CRITICAL: Fluency trap: "Through meditation, the apparent stability of experience ..." stated at confidence 0.8 but basis is vibes — processing fluency may masquerade as truth
+  CRITICAL: Fluency trap: "S(r) explains the mechanism by which meditation works" stated at confidence 0.8 but basis is vibes — processing fluency may masquerade as truth
+  CRITICAL: Fluency trap: "Meditators describing something that sounds like dS/dr < ..." stated at confidence 0.9 but basis is llm_output — processing fluency may masquerade as truth
+  CRITICAL: Fluency trap: "The framework has been extended across four layers — co..." stated at confidence 0.9 but basis is llm_output — processing fluency may masquerade as truth
+  CRITICAL: Fluency trap: "The sense of compellingness in the framework is coming fr..." stated at confidence 0.8 but basis is llm_output — processing fluency may masquerade as truth
+  CRITICAL: Fluency trap: "A concrete worked example on one testable system would do..." stated at confidence 0.9 but basis is llm_output — processing fluency may masquerade as truth
+  CRITICAL: Fluency trap: "Each successive extension of the framework depends on eve..." stated at confidence 0.9 but basis is llm_output — processing fluency may masquerade as truth
+  CRITICAL: Fluency trap: "Meditation works by training the practitioner to perceive..." stated at confidence 0.8 but basis is vibes — processing fluency may masquerade as truth
+  CRITICAL: Fluency trap: "A self-referential S(r, S) can be written and fixed point..." stated at confidence 0.9 but basis is llm_output — processing fluency may masquerade as truth
+  WARNING: Bottleneck (centrality 870.2): "Apparent stability S(r) is a function of the observer's r..." [vibes] — many reasoning paths flow through this claim
+  WARNING: Bottleneck (centrality 572.1): "The framework has been extended across four layers — co..." [llm_output] — many reasoning paths flow through this claim
+  WARNING: Bottleneck (centrality 482.1): "What we experience as awareness is actually two competing..." [vibes] — many reasoning paths flow through this claim
+  WARNING: Unchallenged chain (14 claims): Each escalating step in the framework... → Coherent stories are the ones most wo... → The sense of compellingness in the fr... → The framework has been extended acros... → S(r) explains the mechanism by which ... → Through meditation, the apparent stab... → Higher-resolution observation of a 'b... → The appearance of stability is a prop... → Apparent stability S(r) is a function... → The appearance of balance/stability i... → In so-called 'balanced' situations, n... → Many situations described as 'balance... → The popular use of 'balanced' is a mi... → People commonly use 'balanced' to mea...
+  WARNING: Echo chamber: 90% of user claims (19/21) have weak basis and none were challenged — unsourced assertions going unexamined
+  Clusters: The relevant unit of (46, density 0.10)

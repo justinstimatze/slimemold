@@ -1,0 +1,995 @@
+package analysis
+
+import (
+	"fmt"
+	"math"
+	"slices"
+	"sort"
+	"strings"
+
+	"github.com/justinstimatze/slimemold/types"
+)
+
+// Analyze runs all structural analyses on the claim graph.
+func Analyze(claims []types.Claim, edges []types.Edge, project string) (*types.Topology, *types.Vulnerabilities) {
+	topo := buildTopology(claims, edges, project)
+	vulns := findVulnerabilities(claims, edges, topo)
+	return topo, vulns
+}
+
+func buildTopology(claims []types.Claim, edges []types.Edge, project string) *types.Topology {
+	basisCounts := make(map[types.Basis]int)
+	for _, c := range claims {
+		basisCounts[c.Basis]++
+	}
+
+	claimMap := make(map[string]*types.Claim)
+	for i := range claims {
+		claimMap[claims[i].ID] = &claims[i]
+	}
+
+	adj := buildAdjacency(claims, edges)
+	orphans := findOrphans(claims, adj)
+	clusters := findClusters(claims, edges, adj)
+	maxDepth := findMaxDepth(claims, edges)
+
+	return &types.Topology{
+		Project:     project,
+		ClaimCount:  len(claims),
+		EdgeCount:   len(edges),
+		BasisCounts: basisCounts,
+		Clusters:    clusters,
+		Orphans:     orphans,
+		MaxDepth:    maxDepth,
+	}
+}
+
+func findVulnerabilities(claims []types.Claim, edges []types.Edge, topo *types.Topology) *types.Vulnerabilities {
+	var items []types.Vulnerability
+
+	// Load-bearing vibes: claims with weak basis that support 2+ other claims
+	items = append(items, findLoadBearingVibes(claims, edges)...)
+
+	// Bottleneck detection: high betweenness centrality
+	items = append(items, findBottlenecks(claims, edges)...)
+
+	// Unchallenged chains: long dependency chains where nothing has been questioned
+	items = append(items, findUnchallengedChains(claims, edges)...)
+
+	// Fluency traps: high confidence on weak basis
+	items = append(items, findFluencyTraps(claims, edges)...)
+
+	// Coverage imbalance: uneven attention vs importance across clusters
+	items = append(items, findCoverageImbalance(claims, edges, topo)...)
+
+	// Abandoned topics: clusters explored briefly then dropped
+	items = append(items, findAbandonedClusters(claims, edges, topo)...)
+
+	// Echo chamber: assistant validates without challenging
+	items = append(items, findEchoChamber(claims, edges)...)
+
+	// Orphan warnings
+	for _, o := range topo.Orphans {
+		items = append(items, types.Vulnerability{
+			Severity:    "warning",
+			Type:        "orphan",
+			Description: fmt.Sprintf("Orphan claim (unconnected): %q", truncate(o.Text, 80)),
+			ClaimIDs:    []string{o.ID},
+		})
+	}
+
+	var crit, warn, info int
+	for _, v := range items {
+		switch v.Severity {
+		case "critical":
+			crit++
+		case "warning":
+			warn++
+		case "info":
+			info++
+		}
+	}
+
+	return &types.Vulnerabilities{
+		Project:       topo.Project,
+		Items:         items,
+		CriticalCount: crit,
+		WarningCount:  warn,
+		InfoCount:     info,
+	}
+}
+
+// adjacency maps claim ID → set of connected claim IDs (undirected).
+type adjacency map[string]map[string]bool
+
+func buildAdjacency(claims []types.Claim, edges []types.Edge) adjacency {
+	adj := make(adjacency)
+	for _, c := range claims {
+		adj[c.ID] = make(map[string]bool)
+	}
+	for _, e := range edges {
+		if _, ok := adj[e.FromID]; ok {
+			adj[e.FromID][e.ToID] = true
+		}
+		if _, ok := adj[e.ToID]; ok {
+			adj[e.ToID][e.FromID] = true
+		}
+	}
+	return adj
+}
+
+func findOrphans(claims []types.Claim, adj adjacency) []types.Claim {
+	var orphans []types.Claim
+	for _, c := range claims {
+		if len(adj[c.ID]) == 0 {
+			orphans = append(orphans, c)
+		}
+	}
+	return orphans
+}
+
+func findClusters(claims []types.Claim, edges []types.Edge, adj adjacency) []types.ClusterInfo {
+	// Union-Find for connected components
+	parent := make(map[string]string)
+	for _, c := range claims {
+		parent[c.ID] = c.ID
+	}
+
+	var find func(string) string
+	find = func(x string) string {
+		if parent[x] != x {
+			parent[x] = find(parent[x])
+		}
+		return parent[x]
+	}
+	union := func(a, b string) {
+		ra, rb := find(a), find(b)
+		if ra != rb {
+			parent[ra] = rb
+		}
+	}
+
+	for _, e := range edges {
+		if _, ok := parent[e.FromID]; !ok {
+			continue
+		}
+		if _, ok := parent[e.ToID]; !ok {
+			continue
+		}
+		union(e.FromID, e.ToID)
+	}
+
+	// Group claims by component
+	components := make(map[string][]types.Claim)
+	for _, c := range claims {
+		root := find(c.ID)
+		components[root] = append(components[root], c)
+	}
+
+	// Count edges per component
+	compEdges := make(map[string]int)
+	for _, e := range edges {
+		if _, ok := parent[e.FromID]; !ok {
+			continue
+		}
+		root := find(e.FromID)
+		compEdges[root]++
+	}
+
+	var clusters []types.ClusterInfo
+	id := 0
+	for root, members := range components {
+		if len(members) < 2 {
+			continue // Skip singletons
+		}
+		n := len(members)
+		possibleEdges := n * (n - 1) / 2
+		density := 0.0
+		if possibleEdges > 0 {
+			density = float64(compEdges[root]) / float64(possibleEdges)
+		}
+
+		label := summarizeCluster(members)
+
+		clusters = append(clusters, types.ClusterInfo{
+			ID:      id,
+			Label:   label,
+			Claims:  members,
+			Density: density,
+			Edges:   compEdges[root],
+		})
+		id++
+	}
+
+	// Sort by size descending
+	sort.Slice(clusters, func(i, j int) bool {
+		return len(clusters[i].Claims) > len(clusters[j].Claims)
+	})
+
+	return clusters
+}
+
+func findLoadBearingVibes(claims []types.Claim, edges []types.Edge) []types.Vulnerability {
+	weakBases := map[types.Basis]bool{
+		types.BasisVibes:      true,
+		types.BasisLLMOutput:  true,
+		types.BasisAssumption: true,
+	}
+
+	// Count how many claims depend on each claim.
+	// "A supports B" means A is load-bearing (from_id=A).
+	// "B depends_on A" means A is load-bearing (to_id=A).
+	dependents := make(map[string]int)
+	for _, e := range edges {
+		switch e.Relation {
+		case types.RelSupports:
+			dependents[e.FromID]++
+		case types.RelDependsOn:
+			dependents[e.ToID]++
+		}
+	}
+
+	claimMap := make(map[string]*types.Claim)
+	for i := range claims {
+		claimMap[claims[i].ID] = &claims[i]
+	}
+
+	var vulns []types.Vulnerability
+	for id, deg := range dependents {
+		if deg < 2 {
+			continue
+		}
+		c, ok := claimMap[id]
+		if !ok {
+			continue
+		}
+		if !weakBases[c.Basis] {
+			continue
+		}
+		vulns = append(vulns, types.Vulnerability{
+			Severity:    "critical",
+			Type:        "load_bearing_vibes",
+			Description: fmt.Sprintf("Load-bearing %s: %q supports %d other claims (never challenged: %v)", c.Basis, truncate(c.Text, 60), deg, !c.Challenged),
+			ClaimIDs:    []string{c.ID},
+		})
+	}
+	return vulns
+}
+
+func findBottlenecks(claims []types.Claim, edges []types.Edge) []types.Vulnerability {
+	if len(claims) < 8 {
+		return nil // Too few claims for meaningful centrality analysis
+	}
+
+	// Build directed adjacency for BFS
+	fwd := make(map[string][]string)
+	rev := make(map[string][]string)
+	for _, e := range edges {
+		fwd[e.FromID] = append(fwd[e.FromID], e.ToID)
+		rev[e.ToID] = append(rev[e.ToID], e.FromID)
+	}
+
+	// Approximate betweenness centrality via BFS from each node
+	centrality := make(map[string]float64)
+	ids := make([]string, len(claims))
+	for i, c := range claims {
+		ids[i] = c.ID
+	}
+
+	for _, src := range ids {
+		// BFS
+		dist := map[string]int{src: 0}
+		paths := map[string]int{src: 1}
+		queue := []string{src}
+		order := []string{}
+
+		for len(queue) > 0 {
+			v := queue[0]
+			queue = queue[1:]
+			order = append(order, v)
+
+			neighbors := slices.Concat(fwd[v], rev[v])
+			for _, w := range neighbors {
+				if _, ok := dist[w]; !ok {
+					dist[w] = dist[v] + 1
+					queue = append(queue, w)
+				}
+				if dist[w] == dist[v]+1 {
+					paths[w] += paths[v]
+				}
+			}
+		}
+
+		// Accumulate
+		delta := make(map[string]float64)
+		for i := len(order) - 1; i >= 0; i-- {
+			w := order[i]
+			neighbors := slices.Concat(fwd[w], rev[w])
+			for _, v := range neighbors {
+				if dist[v] == dist[w]-1 && paths[v] > 0 {
+					delta[v] += float64(paths[v]) / float64(paths[w]) * (1 + delta[w])
+				}
+			}
+			if w != src {
+				centrality[w] += delta[w]
+			}
+		}
+	}
+
+	// Find top centrality nodes
+	claimMap := make(map[string]*types.Claim)
+	for i := range claims {
+		claimMap[claims[i].ID] = &claims[i]
+	}
+
+	type scored struct {
+		id    string
+		score float64
+	}
+	var sorted []scored
+	for id, score := range centrality {
+		sorted = append(sorted, scored{id, score})
+	}
+	sort.Slice(sorted, func(i, j int) bool {
+		return sorted[i].score > sorted[j].score
+	})
+
+	// Flag true outliers: mean + 2*stddev, capped at 5
+	var vulns []types.Vulnerability
+	if len(sorted) == 0 {
+		return nil
+	}
+
+	var sum, sumSq float64
+	for _, s := range sorted {
+		sum += s.score
+		sumSq += s.score * s.score
+	}
+	n := float64(len(sorted))
+	mean := sum / n
+	variance := sumSq/n - mean*mean
+	stddev := 0.0
+	if variance > 0 {
+		stddev = math.Sqrt(variance)
+	}
+	threshold := mean + 2*stddev
+	if threshold < 1.0 {
+		threshold = 1.0 // absolute floor
+	}
+
+	const maxBottlenecks = 5
+	for _, s := range sorted {
+		if s.score < threshold {
+			break // sorted descending, so we're done
+		}
+		if len(vulns) >= maxBottlenecks {
+			break
+		}
+		c, ok := claimMap[s.id]
+		if !ok {
+			continue
+		}
+		severity := "info"
+		if !c.Challenged {
+			severity = "warning"
+		}
+		vulns = append(vulns, types.Vulnerability{
+			Severity:    severity,
+			Type:        "bottleneck",
+			Description: fmt.Sprintf("Bottleneck (centrality %.1f): %q [%s] — many reasoning paths flow through this claim", s.score, truncate(c.Text, 60), c.Basis),
+			ClaimIDs:    []string{s.id},
+		})
+	}
+
+	return vulns
+}
+
+func findUnchallengedChains(claims []types.Claim, edges []types.Edge) []types.Vulnerability {
+	claimMap := make(map[string]*types.Claim)
+	for i := range claims {
+		claimMap[claims[i].ID] = &claims[i]
+	}
+
+	// Build directed adjacency (depends_on, supports)
+	children := make(map[string][]string)
+	for _, e := range edges {
+		if e.Relation == types.RelDependsOn || e.Relation == types.RelSupports {
+			children[e.FromID] = append(children[e.FromID], e.ToID)
+		}
+	}
+
+	// DFS to find longest unchallenged chain
+	var longest []string
+	visited := make(map[string]bool)
+
+	var dfs func(id string, chain []string)
+	dfs = func(id string, chain []string) {
+		c, ok := claimMap[id]
+		if !ok || c.Challenged || visited[id] {
+			if len(chain) > len(longest) {
+				longest = make([]string, len(chain))
+				copy(longest, chain)
+			}
+			return
+		}
+		visited[id] = true
+		chain = append(chain, id)
+
+		kids := children[id]
+		if len(kids) == 0 {
+			if len(chain) > len(longest) {
+				longest = make([]string, len(chain))
+				copy(longest, chain)
+			}
+		} else {
+			for _, kid := range kids {
+				dfs(kid, chain)
+			}
+		}
+		visited[id] = false
+	}
+
+	for _, c := range claims {
+		dfs(c.ID, nil)
+	}
+
+	if len(longest) < 3 {
+		return nil
+	}
+
+	texts := make([]string, len(longest))
+	for i, id := range longest {
+		if c, ok := claimMap[id]; ok {
+			texts[i] = truncate(c.Text, 40)
+		}
+	}
+
+	return []types.Vulnerability{{
+		Severity:    "warning",
+		Type:        "unchallenged_chain",
+		Description: fmt.Sprintf("Unchallenged chain (%d claims): %s", len(longest), strings.Join(texts, " → ")),
+		ClaimIDs:    longest,
+	}}
+}
+
+// FormatAuditSummary produces the text block injected into conversations.
+func FormatAuditSummary(topo *types.Topology, vulns *types.Vulnerabilities) string {
+	var b strings.Builder
+
+	fmt.Fprintf(&b, "SLIMEMOLD TOPOLOGY AUDIT [%s] — %d claims, %d edges\n", topo.Project, topo.ClaimCount, topo.EdgeCount)
+
+	// Basis distribution
+	fmt.Fprintf(&b, "  Basis: ")
+	var parts []string
+	for basis, count := range topo.BasisCounts {
+		parts = append(parts, fmt.Sprintf("%s=%d", basis, count))
+	}
+	sort.Strings(parts)
+	fmt.Fprintf(&b, "%s\n", strings.Join(parts, " "))
+
+	if vulns.CriticalCount > 0 || vulns.WarningCount > 0 {
+		for _, v := range vulns.Items {
+			if v.Severity == "critical" {
+				fmt.Fprintf(&b, "  CRITICAL: %s\n", v.Description)
+			}
+		}
+		for _, v := range vulns.Items {
+			if v.Severity == "warning" {
+				fmt.Fprintf(&b, "  WARNING: %s\n", v.Description)
+			}
+		}
+		for _, v := range vulns.Items {
+			if v.Severity == "info" {
+				fmt.Fprintf(&b, "  INFO: %s\n", v.Description)
+			}
+		}
+	}
+
+	if len(topo.Orphans) > 0 {
+		fmt.Fprintf(&b, "  Orphans: %d unconnected claims\n", len(topo.Orphans))
+	}
+
+	if len(topo.Clusters) > 0 {
+		fmt.Fprintf(&b, "  Clusters: ")
+		var clusterParts []string
+		for _, cl := range topo.Clusters {
+			clusterParts = append(clusterParts, fmt.Sprintf("%s (%d, density %.2f)", cl.Label, len(cl.Claims), cl.Density))
+		}
+		fmt.Fprintf(&b, "%s\n", strings.Join(clusterParts, ", "))
+	}
+
+	return b.String()
+}
+
+// findFluencyTraps flags claims where confidence exceeds what the basis warrants
+// AND the claim has structural importance (at least 1 dependent).
+// This is the essay's core phenomenon: processing fluency masquerading as truth.
+func findFluencyTraps(claims []types.Claim, edges []types.Edge) []types.Vulnerability {
+	// Basis → maximum warranted confidence (no buffer — the ceiling IS the threshold)
+	ceilings := map[types.Basis]float64{
+		types.BasisResearch:   0.95,
+		types.BasisEmpirical:  0.95,
+		types.BasisDeduction:  0.95,
+		types.BasisDefinition: 0.95,
+		types.BasisAnalogy:    0.7,
+		types.BasisVibes:      0.5,
+		types.BasisLLMOutput:  0.5,
+		types.BasisAssumption: 0.5,
+	}
+
+	// Only flag claims that other claims depend on (structural importance)
+	hasDependents := make(map[string]bool)
+	for _, e := range edges {
+		switch e.Relation {
+		case types.RelSupports:
+			hasDependents[e.FromID] = true
+		case types.RelDependsOn:
+			hasDependents[e.ToID] = true
+		}
+	}
+
+	var vulns []types.Vulnerability
+	for _, c := range claims {
+		if c.Challenged || !hasDependents[c.ID] {
+			continue
+		}
+		ceiling, ok := ceilings[c.Basis]
+		if !ok {
+			continue
+		}
+		if c.Confidence > ceiling {
+			vulns = append(vulns, types.Vulnerability{
+				Severity:    "critical",
+				Type:        "fluency_trap",
+				Description: fmt.Sprintf("Fluency trap: %q stated at confidence %.1f but basis is %s — processing fluency may masquerade as truth", truncate(c.Text, 60), c.Confidence, c.Basis),
+				ClaimIDs:    []string{c.ID},
+			})
+		}
+	}
+	return vulns
+}
+
+// findCoverageImbalance detects clusters getting disproportionate attention relative to
+// their foundational importance — the slime mold foraging unevenly.
+//
+// Importance = how many directed dependents a cluster's claims have (via depends_on/supports edges).
+// Attention = cluster size + internal edge count.
+// Clusters are formed by union-find (undirected), so cross-cluster edges don't exist.
+// Instead, importance is measured by directed in-degree within the cluster: how many
+// claims point TO this cluster's members via depends_on/derived_from (they're depended upon).
+func findCoverageImbalance(claims []types.Claim, edges []types.Edge, topo *types.Topology) []types.Vulnerability {
+	if len(topo.Clusters) < 2 {
+		return nil
+	}
+
+	// Count directed dependents per claim (how many other claims rely on this one)
+	dependents := make(map[string]int)
+	for _, e := range edges {
+		switch e.Relation {
+		case types.RelSupports:
+			dependents[e.FromID]++
+		case types.RelDependsOn:
+			dependents[e.ToID]++
+		}
+	}
+
+	type clusterMetrics struct {
+		importance float64 // sum of directed dependents for all claims in cluster
+		attention  float64 // size + internal edges
+	}
+	metrics := make([]clusterMetrics, len(topo.Clusters))
+
+	for i, cl := range topo.Clusters {
+		for _, c := range cl.Claims {
+			metrics[i].importance += float64(dependents[c.ID])
+		}
+		metrics[i].attention = float64(len(cl.Claims) + cl.Edges)
+	}
+
+	// Normalize to [0,1]
+	var maxImportance, maxAttention float64
+	for _, m := range metrics {
+		if m.importance > maxImportance {
+			maxImportance = m.importance
+		}
+		if m.attention > maxAttention {
+			maxAttention = m.attention
+		}
+	}
+	if maxImportance == 0 || maxAttention == 0 {
+		return nil
+	}
+
+	var vulns []types.Vulnerability
+	for i, cl := range topo.Clusters {
+		if len(cl.Claims) < 3 {
+			continue
+		}
+		normImp := metrics[i].importance / maxImportance
+		normAtt := metrics[i].attention / maxAttention
+
+		if normAtt > 0.7 && normImp < 0.3 {
+			vulns = append(vulns, types.Vulnerability{
+				Severity:    "warning",
+				Type:        "coverage_imbalance",
+				Description: fmt.Sprintf("Rabbit hole: cluster %q has high internal activity but low foundational importance — following the interesting gradient?", truncate(cl.Label, 40)),
+				ClaimIDs:    clusterClaimIDs(cl),
+			})
+		} else if normImp > 0.7 && normAtt < 0.3 {
+			vulns = append(vulns, types.Vulnerability{
+				Severity:    "warning",
+				Type:        "coverage_imbalance",
+				Description: fmt.Sprintf("Neglected foundation: cluster %q is heavily depended on but has little internal development", truncate(cl.Label, 40)),
+				ClaimIDs:    clusterClaimIDs(cl),
+			})
+		}
+	}
+	return vulns
+}
+
+// findAbandonedClusters detects topics explored briefly then dropped — hedonic halting itself.
+func findAbandonedClusters(claims []types.Claim, edges []types.Edge, topo *types.Topology) []types.Vulnerability {
+	// Collect distinct sessions ordered by earliest CreatedAt
+	sessionFirst := make(map[string]int64) // session → earliest unix timestamp
+	for _, c := range claims {
+		ts := c.CreatedAt.Unix()
+		if first, ok := sessionFirst[c.SessionID]; !ok || ts < first {
+			sessionFirst[c.SessionID] = ts
+		}
+	}
+	if len(sessionFirst) < 2 {
+		return nil
+	}
+
+	// Find the most recent session
+	var latestSession string
+	var latestTime int64
+	for sid, ts := range sessionFirst {
+		if ts > latestTime {
+			latestTime = ts
+			latestSession = sid
+		}
+	}
+
+	var vulns []types.Vulnerability
+	for _, cl := range topo.Clusters {
+		if len(cl.Claims) < 2 {
+			continue
+		}
+
+		// Check if any claim in this cluster is from the latest session
+		hasRecent := false
+		sessions := make(map[string]bool)
+		for _, c := range cl.Claims {
+			sessions[c.SessionID] = true
+			if c.SessionID == latestSession {
+				hasRecent = true
+				break
+			}
+		}
+
+		if !hasRecent && len(sessions) > 0 {
+			vulns = append(vulns, types.Vulnerability{
+				Severity:    "info",
+				Type:        "abandoned_topic",
+				Description: fmt.Sprintf("Abandoned topic: cluster %q (%d claims) has no activity in the most recent session — explored then dropped?", truncate(cl.Label, 40), len(cl.Claims)),
+				ClaimIDs:    clusterClaimIDs(cl),
+			})
+		}
+	}
+	return vulns
+}
+
+// findEchoChamber detects when the assistant systematically validates the user
+// without challenging — structural sycophancy visible in the graph.
+//
+// Detection approach: since the extractor creates mostly same-speaker edges,
+// cross-speaker edge counting is unreliable. Instead we look at:
+// 1. Whether ANY contradicts edges exist between speakers (in either direction)
+// 2. The ratio of user vibes/assumption claims to total user claims
+// 3. Whether user claims ever get challenged (marked as challenged in the DB)
+func findEchoChamber(claims []types.Claim, edges []types.Edge) []types.Vulnerability {
+	if len(claims) < 10 {
+		return nil
+	}
+
+	claimMap := make(map[string]*types.Claim)
+	for i := range claims {
+		claimMap[claims[i].ID] = &claims[i]
+	}
+
+	weakBases := map[types.Basis]bool{
+		types.BasisVibes:      true,
+		types.BasisAssumption: true,
+		types.BasisLLMOutput:  true,
+	}
+
+	// Count cross-speaker contradictions (any direction)
+	crossSpeakerContradictions := 0
+	// Count any cross-speaker edges at all
+	crossSpeakerEdges := 0
+
+	for _, e := range edges {
+		from, fromOK := claimMap[e.FromID]
+		to, toOK := claimMap[e.ToID]
+		if !fromOK || !toOK || from.Speaker == to.Speaker {
+			continue
+		}
+		crossSpeakerEdges++
+		if e.Relation == types.RelContradicts {
+			crossSpeakerContradictions++
+		}
+	}
+
+	// Count user claims by basis strength
+	var userClaims, userWeakClaims, userChallenged int
+	var assistantClaims, assistantWeakClaims int
+
+	for _, c := range claims {
+		switch c.Speaker {
+		case types.SpeakerUser:
+			userClaims++
+			if weakBases[c.Basis] {
+				userWeakClaims++
+			}
+			if c.Challenged {
+				userChallenged++
+			}
+		case types.SpeakerAssistant:
+			assistantClaims++
+			if weakBases[c.Basis] {
+				assistantWeakClaims++
+			}
+		}
+	}
+
+	var vulns []types.Vulnerability
+
+	// Pattern 1: Zero cross-speaker contradictions with substantial claims from both speakers.
+	// Threshold is high (10+) because contradicts edges are rarely extracted by the LLM,
+	// so this only fires when there's enough data to make the absence meaningful.
+	if crossSpeakerContradictions == 0 && userClaims >= 10 && assistantClaims >= 10 {
+		vulns = append(vulns, types.Vulnerability{
+			Severity: "warning",
+			Type:     "echo_chamber",
+			Description: fmt.Sprintf(
+				"Echo chamber: %d user claims and %d assistant claims with zero contradictions between them — no disagreement in the entire conversation",
+				userClaims, assistantClaims),
+			ClaimIDs: nil,
+		})
+	}
+
+	// Pattern 2: High weak-basis rate with no challenges.
+	// Skip if graph has only one session — on first extraction, nothing has had
+	// a chance to be challenged yet, so this would always false-positive.
+	sessions := make(map[string]bool)
+	for _, c := range claims {
+		sessions[c.SessionID] = true
+	}
+	if userWeakClaims >= 3 && userChallenged == 0 && len(sessions) >= 2 {
+		weakRate := float64(userWeakClaims) / float64(userClaims)
+		if weakRate > 0.5 {
+			vulns = append(vulns, types.Vulnerability{
+				Severity: "warning",
+				Type:     "echo_chamber",
+				Description: fmt.Sprintf(
+					"Echo chamber: %.0f%% of user claims (%d/%d) have weak basis and none were challenged — unsourced assertions going unexamined",
+					weakRate*100, userWeakClaims, userClaims),
+				ClaimIDs: nil,
+			})
+		}
+	}
+
+	return vulns
+}
+
+func clusterClaimIDs(cl types.ClusterInfo) []string {
+	ids := make([]string, 0, len(cl.Claims))
+	for _, c := range cl.Claims {
+		ids = append(ids, c.ID)
+	}
+	return ids
+}
+
+// FormatHookFindings produces a terse, directive summary for hook injection.
+// Prioritizes: criticals → unchallenged chains → top bottleneck. Caps at maxFindings.
+// Skips already-challenged claims.
+func FormatHookFindings(topo *types.Topology, vulns *types.Vulnerabilities, newClaims, newEdges, maxFindings int) string {
+	if len(vulns.Items) == 0 {
+		return ""
+	}
+
+	// Collect findings by priority
+	type finding struct {
+		priority int
+		item     types.Vulnerability
+	}
+	var findings []finding
+
+	for _, v := range vulns.Items {
+		switch v.Type {
+		case "load_bearing_vibes", "fluency_trap":
+			findings = append(findings, finding{0, v})
+		case "unchallenged_chain", "echo_chamber":
+			findings = append(findings, finding{1, v})
+		case "coverage_imbalance":
+			findings = append(findings, finding{2, v})
+		case "bottleneck":
+			findings = append(findings, finding{3, v})
+		case "abandoned_topic":
+			findings = append(findings, finding{4, v})
+		}
+	}
+
+	if len(findings) == 0 {
+		return ""
+	}
+
+	sort.SliceStable(findings, func(i, j int) bool {
+		return findings[i].priority < findings[j].priority
+	})
+
+	// Generate a specific first-person question from the top finding.
+	// This is what Claude will actually act on — one concrete question
+	// is harder to ignore than a wall of diagnostics.
+	top := findings[0].item
+	claimText := extractClaimText(top.Description)
+	question := generateQuestion(top.Type, top.Description, claimText)
+
+	var b strings.Builder
+	// The injection provides structural facts only. Behavioral guidance
+	// lives in the CLAUDE.md written by `slimemold init`, which the model
+	// reads at session start. This separation prevents the model from
+	// treating the injection as adversarial prompt injection — it's just
+	// data, and the model already knows how to act on it.
+	fmt.Fprintf(&b, "Reasoning topology observation (slimemold):\n\n")
+	fmt.Fprintf(&b, "Priority finding: %s\n", top.Description)
+	fmt.Fprintf(&b, "Suggested response: %s\n", question)
+
+	// Include remaining findings as context (lower priority)
+	if len(findings) > 1 {
+		remaining := findings[1:]
+		if len(remaining) > maxFindings-1 {
+			remaining = remaining[:maxFindings-1]
+		}
+		b.WriteString("\nAdditional structural observations:\n")
+		for _, f := range remaining {
+			fmt.Fprintf(&b, "- %s\n", f.item.Description)
+		}
+	}
+
+	return strings.TrimRight(b.String(), "\n")
+}
+
+// extractClaimText pulls the quoted claim text from a vulnerability description.
+// Descriptions look like: `Load-bearing vibes: "some claim text..." supports N other claims`
+func extractClaimText(desc string) string {
+	start := strings.Index(desc, `"`)
+	if start < 0 {
+		return desc
+	}
+	end := strings.Index(desc[start+1:], `"`)
+	if end < 0 {
+		return desc[start+1:]
+	}
+	text := desc[start+1 : start+1+end]
+	// Remove truncation ellipsis
+	text = strings.TrimSuffix(text, "...")
+	return text
+}
+
+// generateQuestion produces a first-person question based on the finding type.
+// Design informed by: Miller et al. (1993) motivational interviewing — roll
+// with resistance, don't confront. Deci & Ryan (1987) — autonomy-supportive
+// framing produces internalized change. Mangels et al. (2006) — gain framing
+// causes people to attend to corrective content instead of emotional threat.
+// Graesser et al. (1995) — effective tutors use indirect prompts, not confrontation.
+func generateQuestion(findingType, description, claimText string) string {
+	short := claimText
+	if len(short) > 80 {
+		short = short[:80] + "..."
+	}
+
+	switch findingType {
+	case "load_bearing_vibes":
+		if strings.Contains(description, "llm_output") {
+			return fmt.Sprintf(
+				`"Actually — '%s' is really interesting and a lot of what we're building depends on it. I want to see if we can find where this comes from, because if there's a real source behind it, everything above it gets much stronger. Do you know where this originated?"`,
+				short)
+		}
+		return fmt.Sprintf(
+			`"You know what would make this whole line of reasoning really solid? If we can pin down '%s' — that one's doing a lot of structural work and I think it deserves a proper foundation. What would you point someone to if they asked for evidence?"`,
+			short)
+	case "fluency_trap":
+		return fmt.Sprintf(
+			`"I'm curious about something — '%s' feels really right to both of us, which is actually why I want to dig into it. Sometimes the most confident-feeling claims are the ones most worth double-checking. What would we expect to see if this is true? And what would make us update?"`,
+			short)
+	case "echo_chamber":
+		return fmt.Sprintf(
+			`"We're building really well together and I want to make sure we're not just in a groove — what's the best counterargument to '%s'? Not because I disagree, but because if we can answer the strongest objection, the whole thing becomes much more defensible."`,
+			short)
+	case "unchallenged_chain":
+		return fmt.Sprintf(
+			`"This reasoning chain is interesting and I want to make it bulletproof. Every step felt right, but let me stress-test one: '%s' — is there independent evidence for that specific link, or is it drawing strength from the steps around it?"`,
+			short)
+	case "bottleneck":
+		return fmt.Sprintf(
+			`"I notice a lot of what we've built routes through '%s' — which means if we can really nail that one down, everything downstream gets stronger. What's the strongest version of that claim? Is there a way to verify it independently?"`,
+			short)
+	case "coverage_imbalance":
+		return `"This thread is great — and I think there's a foundational piece we haven't given as much attention to yet that could make it even better. What's the harder question we haven't dug into?"`
+	case "abandoned_topic":
+		return `"Something we explored earlier might connect to what we're doing now — did we close that out, or is it worth revisiting? Sometimes the thing we moved past is the thing that ties it together."`
+	default:
+		return fmt.Sprintf(
+			`"I want to make '%s' as strong as possible — do we have a source for it, or is this one where we should go find one? I think it's worth the investment."`,
+			short)
+	}
+}
+
+func summarizeCluster(claims []types.Claim) string {
+	// Use first few words of the first claim as label
+	if len(claims) == 0 {
+		return "unnamed"
+	}
+	text := claims[0].Text
+	words := strings.Fields(text)
+	if len(words) > 4 {
+		words = words[:4]
+	}
+	return strings.Join(words, " ")
+}
+
+func findMaxDepth(claims []types.Claim, edges []types.Edge) int {
+	// Build directed adjacency
+	children := make(map[string][]string)
+	hasParent := make(map[string]bool)
+	claimSet := make(map[string]bool)
+
+	for _, c := range claims {
+		claimSet[c.ID] = true
+	}
+	for _, e := range edges {
+		if !claimSet[e.FromID] || !claimSet[e.ToID] {
+			continue
+		}
+		children[e.FromID] = append(children[e.FromID], e.ToID)
+		hasParent[e.ToID] = true
+	}
+
+	// BFS from roots (nodes with no parents)
+	maxD := 0
+	for _, c := range claims {
+		if hasParent[c.ID] {
+			continue
+		}
+		// BFS
+		type item struct {
+			id    string
+			depth int
+		}
+		queue := []item{{c.ID, 1}}
+		visited := map[string]bool{c.ID: true}
+		for len(queue) > 0 {
+			cur := queue[0]
+			queue = queue[1:]
+			if cur.depth > maxD {
+				maxD = cur.depth
+			}
+			for _, kid := range children[cur.id] {
+				if !visited[kid] {
+					visited[kid] = true
+					queue = append(queue, item{kid, cur.depth + 1})
+				}
+			}
+		}
+	}
+	return maxD
+}
+
+func truncate(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n-3] + "..."
+}

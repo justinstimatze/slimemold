@@ -1,0 +1,443 @@
+[
+  {
+    "sample_text": "We deployed disabling the cache layer in production last month and found that co",
+    "expected_basis": "empirical",
+    "extracted_basis": "empirical",
+    "extracted_text": "The team independently confirmed that disabling the cache layer made cold starts",
+    "confidence": 0.85,
+    "match_quality": 0.38,
+    "correct": true
+  },
+  {
+    "sample_text": "There are several important factors to consider when evaluating agent architectu",
+    "expected_basis": "llm_output",
+    "extracted_basis": "llm_output",
+    "extracted_text": "Scientific discovery has been shown to be highly effective in practice as an und",
+    "confidence": 0.3,
+    "match_quality": 0.38,
+    "correct": true
+  },
+  {
+    "sample_text": "From the matrix is symmetric and positive definite it follows directly that the ",
+    "expected_basis": "deduction",
+    "extracted_basis": "deduction",
+    "extracted_text": "From the fact that a matrix is symmetric and positive definite, it follows direc",
+    "confidence": 0.95,
+    "match_quality": 0.74,
+    "correct": true
+  },
+  {
+    "sample_text": "A survey of the forest performed in 2010 indicated that over 1,000,000 acres (40",
+    "expected_basis": "llm_output",
+    "extracted_basis": "research",
+    "extracted_text": "A survey of the forest performed in 2010 indicated that over 1,000,000 acres (40",
+    "confidence": 0.9,
+    "match_quality": 0.82,
+    "correct": false
+  },
+  {
+    "sample_text": "I tried using streaming instead of batch processing and noticed that cold starts",
+    "expected_basis": "empirical",
+    "extracted_basis": "empirical",
+    "extracted_text": "Switching to streaming instead of batch processing caused cold starts to become ",
+    "confidence": 0.9,
+    "match_quality": 0.41,
+    "correct": true
+  },
+  {
+    "sample_text": "Active recall is more effective than re-reading for long-term retention (Roedige",
+    "expected_basis": "research",
+    "extracted_basis": "research",
+    "extracted_text": "Active recall is more effective than re-reading for long-term retention",
+    "confidence": 0.95,
+    "match_quality": 0.71,
+    "correct": true
+  },
+  {
+    "sample_text": "Given Hindley's status as co-defendant in the first serial-murder trial held sin",
+    "expected_basis": "vibes",
+    "extracted_basis": "vibes",
+    "extracted_text": "Given Hindley's status as co-defendant in the first serial-murder trial held sin",
+    "confidence": 0.8,
+    "match_quality": 1.0,
+    "correct": true
+  },
+  {
+    "sample_text": "The Eureka heuristic shows that insight feelings function as metacognitive stop ",
+    "expected_basis": "research",
+    "extracted_basis": "research",
+    "extracted_text": "The Eureka heuristic shows that insight feelings function as metacognitive stop ",
+    "confidence": 0.9,
+    "match_quality": 0.75,
+    "correct": true
+  },
+  {
+    "sample_text": "the hash function distributes uniformly. Moreover, collisions occur with negligi",
+    "expected_basis": "deduction",
+    "extracted_basis": "deduction",
+    "extracted_text": "The expected lookup time is O(1), derived from uniform hash distribution and neg",
+    "confidence": 0.9,
+    "match_quality": 0.23,
+    "correct": true
+  },
+  {
+    "sample_text": "The Sun is contained within the Local Bubble, a space of rarefied hot gas, possi",
+    "expected_basis": "llm_output",
+    "extracted_basis": "llm_output",
+    "extracted_text": "The Local Bubble was possibly produced by the supernova remnant Geminga, or mult",
+    "confidence": 0.7,
+    "match_quality": 0.6,
+    "correct": true
+  },
+  {
+    "sample_text": "I ran the experiment with migrating to the new API version and measured latency ",
+    "expected_basis": "empirical",
+    "extracted_basis": "empirical",
+    "extracted_text": "Migrating to the new API version caused latency to drop by 40%, with surprisingl",
+    "confidence": 0.9,
+    "match_quality": 0.46,
+    "correct": true
+  },
+  {
+    "sample_text": "The consensus in the field is that reinforcement learning from feedback will eve",
+    "expected_basis": "llm_output",
+    "extracted_basis": "llm_output",
+    "extracted_text": "The transition period from traditional methods to reinforcement learning from fe",
+    "confidence": 0.5,
+    "match_quality": 0.63,
+    "correct": true
+  },
+  {
+    "sample_text": "Information foraging theory predicts over-exploitation of easy information patch",
+    "expected_basis": "research",
+    "extracted_basis": "research",
+    "extracted_text": "Information foraging theory predicts over-exploitation of easy information patch",
+    "confidence": 0.9,
+    "match_quality": 0.67,
+    "correct": true
+  },
+  {
+    "sample_text": "It's worth noting that synthetic data generation represents a significant advanc",
+    "expected_basis": "llm_output",
+    "extracted_basis": "llm_output",
+    "extracted_text": "The primary benefit of synthetic data generation is improved efficiency, though ",
+    "confidence": 0.6,
+    "match_quality": 0.52,
+    "correct": true
+  },
+  {
+    "sample_text": "Desirable difficulties improve retention by disrupting fluency (Bjork 1994; Bjor",
+    "expected_basis": "research",
+    "extracted_basis": "research",
+    "extracted_text": "Desirable difficulties improve retention by disrupting fluency",
+    "confidence": 0.95,
+    "match_quality": 0.58,
+    "correct": true
+  },
+  {
+    "sample_text": "We describe a new algorithm, the $(k,\\ell)$-pebble game with colors, and use\nit ",
+    "expected_basis": "llm_output",
+    "extracted_basis": "llm_output",
+    "extracted_text": "Special instances of sparse graphs appear in rigidity theory and have received i",
+    "confidence": 0.8,
+    "match_quality": 0.37,
+    "correct": true
+  },
+  {
+    "sample_text": "The compact object is now estimated to have a mass about 14.8 times the mass of ",
+    "expected_basis": "llm_output",
+    "extracted_basis": "llm_output",
+    "extracted_text": "The compact object has a mass about 14.8 times the mass of the Sun and is too sm",
+    "confidence": 0.85,
+    "match_quality": 0.79,
+    "correct": true
+  },
+  {
+    "sample_text": "Many weekend visitors\u2014particularly from Bosnia-Herzegovina, Croatia and Slovenia",
+    "expected_basis": "vibes",
+    "extracted_basis": "vibes",
+    "extracted_text": "The preference for Belgrade nightlife is due to a perceived friendly atmosphere,",
+    "confidence": 0.7,
+    "match_quality": 0.62,
+    "correct": true
+  },
+  {
+    "sample_text": "We show that a determinant of Stirling cycle numbers counts unlabeled acyclic\nsi",
+    "expected_basis": "llm_output",
+    "extracted_basis": "llm_output",
+    "extracted_text": "The proof that a determinant of Stirling cycle numbers counts unlabeled acyclic ",
+    "confidence": 0.9,
+    "match_quality": 0.87,
+    "correct": true
+  },
+  {
+    "sample_text": "Parker considers that Kerim is \"an antidote\" to Bond's lethargy, while the essay",
+    "expected_basis": "vibes",
+    "extracted_basis": "research",
+    "extracted_text": "Umberto Eco sees Kerim as having some of the moral qualities of the villains in ",
+    "confidence": 0.85,
+    "match_quality": 0.62,
+    "correct": false
+  },
+  {
+    "sample_text": "A rather non-standard quantum representation of the canonical commutation\nrelati",
+    "expected_basis": "llm_output",
+    "extracted_basis": "llm_output",
+    "extracted_text": "A non-standard polymer representation of the canonical commutation relations of ",
+    "confidence": 0.8,
+    "match_quality": 0.52,
+    "correct": true
+  },
+  {
+    "sample_text": "The relationship between model distillation and decision support systems is more",
+    "expected_basis": "llm_output",
+    "extracted_basis": "llm_output",
+    "extracted_text": "The relationship between model distillation and decision support systems is more",
+    "confidence": 0.5,
+    "match_quality": 0.57,
+    "correct": true
+  },
+  {
+    "sample_text": "Given that the sequence is monotonically increasing and bounded above, and assum",
+    "expected_basis": "deduction",
+    "extracted_basis": "deduction",
+    "extracted_text": "A monotonically increasing sequence bounded above must converge by the monotone ",
+    "confidence": 0.95,
+    "match_quality": 0.55,
+    "correct": true
+  },
+  {
+    "sample_text": "By definition, all edges have positive weight. Combined with the fact that the s",
+    "expected_basis": "deduction",
+    "extracted_basis": "deduction",
+    "extracted_text": "Because all edges have positive weight and the shortest path algorithm terminate",
+    "confidence": 0.85,
+    "match_quality": 0.46,
+    "correct": true
+  },
+  {
+    "sample_text": "Based on the available evidence, chain-of-thought reasoning appears to be the mo",
+    "expected_basis": "llm_output",
+    "extracted_basis": "llm_output",
+    "extracted_text": "Chain-of-thought reasoning appears to be the most promising approach for decisio",
+    "confidence": 0.6,
+    "match_quality": 0.43,
+    "correct": true
+  },
+  {
+    "sample_text": "In this paper we show how to compute the $\\Lambda_{\\alpha}$ norm, $\\alpha\\ge\n0$,",
+    "expected_basis": "llm_output",
+    "extracted_basis": "llm_output",
+    "extracted_text": "The \u039b_\u03b1 norm (\u03b1 \u2265 0) can be computed using the dyadic grid, as a consequence of ",
+    "confidence": 0.9,
+    "match_quality": 0.32,
+    "correct": true
+  },
+  {
+    "sample_text": "After switching to migrating to the new API version, I observed the error rate w",
+    "expected_basis": "empirical",
+    "extracted_basis": "empirical",
+    "extracted_text": "After switching to the new API version, the error rate went from 2% to nearly ze",
+    "confidence": 0.95,
+    "match_quality": 0.56,
+    "correct": true
+  },
+  {
+    "sample_text": "The site is linked to the Underground Railroad, an informal network of secret ro",
+    "expected_basis": "vibes",
+    "extracted_basis": "vibes",
+    "extracted_text": "The site is linked to the Underground Railroad, an informal network of secret ro",
+    "confidence": 0.85,
+    "match_quality": 0.57,
+    "correct": true
+  },
+  {
+    "sample_text": "The evolution of Earth-Moon system is described by the dark matter field\nfluid m",
+    "expected_basis": "llm_output",
+    "extracted_basis": "research",
+    "extracted_text": "The evolution of the Earth-Moon system is described by the dark matter field flu",
+    "confidence": 0.6,
+    "match_quality": 0.59,
+    "correct": false
+  },
+  {
+    "sample_text": "A fully differential calculation in perturbative quantum chromodynamics is\nprese",
+    "expected_basis": "llm_output",
+    "extracted_basis": "llm_output",
+    "extracted_text": "A fully differential calculation in perturbative QCD for massive photon pair pro",
+    "confidence": 0.9,
+    "match_quality": 0.52,
+    "correct": true
+  },
+  {
+    "sample_text": "The American psychedelic rock band Coven, who opened for early heavy metal influ",
+    "expected_basis": "vibes",
+    "extracted_basis": "vibes",
+    "extracted_text": "Coven portrayed themselves as practitioners of witchcraft or black magic, using ",
+    "confidence": 0.85,
+    "match_quality": 0.53,
+    "correct": true
+  },
+  {
+    "sample_text": "Iizuka wanted to ensure that the next Nights game would stay faithful to the ori",
+    "expected_basis": "vibes",
+    "extracted_basis": "vibes",
+    "extracted_text": "Iizuka wanted to ensure that the next Nights game would stay faithful to the ori",
+    "confidence": 0.85,
+    "match_quality": 0.72,
+    "correct": true
+  },
+  {
+    "sample_text": "If every continuous function on a closed interval is bounded, and the domain is ",
+    "expected_basis": "deduction",
+    "extracted_basis": "deduction",
+    "extracted_text": "Every continuous function on a closed interval is bounded, and on a compact doma",
+    "confidence": 0.95,
+    "match_quality": 0.6,
+    "correct": true
+  },
+  {
+    "sample_text": "Suppose the input satisfies the precondition. Then the loop invariant is preserv",
+    "expected_basis": "deduction",
+    "extracted_basis": "deduction",
+    "extracted_text": "If the input satisfies the precondition and the loop invariant is preserved at e",
+    "confidence": 0.9,
+    "match_quality": 0.57,
+    "correct": true
+  },
+  {
+    "sample_text": "In my experience working with real-time data pipelines, consistency improved acr",
+    "expected_basis": "empirical",
+    "extracted_basis": "empirical",
+    "extracted_text": "Consistency improved across runs when working with real-time data pipelines, a p",
+    "confidence": 0.75,
+    "match_quality": 0.5,
+    "correct": true
+  },
+  {
+    "sample_text": "Processing fluency influences truth judgments independently of actual evidence (",
+    "expected_basis": "research",
+    "extracted_basis": "research",
+    "extracted_text": "Processing fluency influences truth judgments independently of actual evidence",
+    "confidence": 0.9,
+    "match_quality": 0.69,
+    "correct": true
+  },
+  {
+    "sample_text": "Sediments worn off the Death Valley region were shed both east and west and carr",
+    "expected_basis": "llm_output",
+    "extracted_basis": "llm_output",
+    "extracted_text": "Sediments worn off the Death Valley region were shed both east and west and carr",
+    "confidence": 0.8,
+    "match_quality": 1.0,
+    "correct": true
+  },
+  {
+    "sample_text": "When we look at the broader landscape, function calling stands out as particular",
+    "expected_basis": "llm_output",
+    "extracted_basis": "llm_output",
+    "extracted_text": "The underlying principles of function calling as applied to content moderation a",
+    "confidence": 0.5,
+    "match_quality": 0.48,
+    "correct": true
+  },
+  {
+    "sample_text": "The medications are respectively systemic vasoconstrictors and inhibitors of spl",
+    "expected_basis": "llm_output",
+    "extracted_basis": "llm_output",
+    "extracted_text": "Systemic vasoconstrictors and inhibitors of splanchnic vasodilation were not fou",
+    "confidence": 0.8,
+    "match_quality": 0.76,
+    "correct": true
+  },
+  {
+    "sample_text": "When I switching from WAL to DELETE journal mode, the result was the output qual",
+    "expected_basis": "empirical",
+    "extracted_basis": "empirical",
+    "extracted_text": "Switching from WAL to DELETE journal mode caused output quality to be noticeably",
+    "confidence": 0.8,
+    "match_quality": 0.39,
+    "correct": true
+  },
+  {
+    "sample_text": "I tested this by migrating to the new API version and the outcome was the output",
+    "expected_basis": "empirical",
+    "extracted_basis": "empirical",
+    "extracted_text": "Migrating to the new API version caused output quality to be noticeably better, ",
+    "confidence": 0.95,
+    "match_quality": 0.52,
+    "correct": true
+  },
+  {
+    "sample_text": "In the late 1960s, experimentalists had found that hadrons fall into families ca",
+    "expected_basis": "llm_output",
+    "extracted_basis": "llm_output",
+    "extracted_text": "In the late 1960s, experimentalists found that hadrons fall into families called",
+    "confidence": 0.9,
+    "match_quality": 0.54,
+    "correct": true
+  },
+  {
+    "sample_text": "These pains were, according to Fliess's theories, caused by habitual masturbatio",
+    "expected_basis": "vibes",
+    "extracted_basis": "research",
+    "extracted_text": "According to Fliess's theories, nasal pains were caused by habitual masturbation",
+    "confidence": 0.8,
+    "match_quality": 0.76,
+    "correct": false
+  },
+  {
+    "sample_text": "Since the graph is connected and has no cycles, we can conclude that there exist",
+    "expected_basis": "deduction",
+    "extracted_basis": "deduction",
+    "extracted_text": "Since a connected graph with no cycles has exactly one path between any two vert",
+    "confidence": 0.95,
+    "match_quality": 0.47,
+    "correct": true
+  },
+  {
+    "sample_text": "Cognitive foraging follows the same explore-exploit tradeoffs as animal foraging",
+    "expected_basis": "research",
+    "extracted_basis": "research",
+    "extracted_text": "Cognitive foraging follows the same explore-exploit tradeoffs as animal foraging",
+    "confidence": 0.85,
+    "match_quality": 0.64,
+    "correct": true
+  },
+  {
+    "sample_text": "We study the two-particle wave function of paired atoms in a Fermi gas with\ntuna",
+    "expected_basis": "llm_output",
+    "extracted_basis": "llm_output",
+    "extracted_text": "The Cooper pair wave function in a Fermi gas with tunable interaction strengths ",
+    "confidence": 0.85,
+    "match_quality": 0.6,
+    "correct": true
+  },
+  {
+    "sample_text": "Side effects of surgery to remove endometrial cancer can specifically include se",
+    "expected_basis": "llm_output",
+    "extracted_basis": "llm_output",
+    "extracted_text": "Side effects of surgery to remove endometrial cancer can specifically include se",
+    "confidence": 0.85,
+    "match_quality": 0.72,
+    "correct": true
+  },
+  {
+    "sample_text": "The spacing effect is one of the most robust findings in memory research (Ebbing",
+    "expected_basis": "research",
+    "extracted_basis": "research",
+    "extracted_text": "The spacing effect is one of the most robust findings in memory research",
+    "confidence": 0.95,
+    "match_quality": 0.67,
+    "correct": true
+  },
+  {
+    "sample_text": "The key insight here is that model distillation fundamentally changes how we thi",
+    "expected_basis": "llm_output",
+    "extracted_basis": "llm_output",
+    "extracted_text": "Model distillation fundamentally changes how we think about scientific discovery",
+    "confidence": 0.4,
+    "match_quality": 0.36,
+    "correct": true
+  }
+]
