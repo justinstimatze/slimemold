@@ -8,6 +8,7 @@ import (
 	sdkmcp "github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 
+	"github.com/justinstimatze/slimemold/internal/adapt"
 	"github.com/justinstimatze/slimemold/internal/analysis"
 	"github.com/justinstimatze/slimemold/internal/extract"
 	"github.com/justinstimatze/slimemold/internal/store"
@@ -23,12 +24,13 @@ type mcpServer struct {
 
 // topologyParams handles read/analyze operations.
 type topologyParams struct {
-	Action  string `json:"action"`
-	Project string `json:"project"`
-	ClaimID string `json:"claim_id,omitempty"`
-	Query   string `json:"query,omitempty"`
-	Basis   string `json:"basis,omitempty"`
-	Format  string `json:"format,omitempty"`
+	Action   string           `json:"action"`
+	Project  string           `json:"project"`
+	ClaimID  string           `json:"claim_id,omitempty"`
+	Query    string           `json:"query,omitempty"`
+	Basis    string           `json:"basis,omitempty"`
+	Format   string           `json:"format,omitempty"`
+	KBClaims []types.KBClaim  `json:"kb_claims,omitempty"`
 }
 
 // claimsParams handles write operations.
@@ -54,12 +56,13 @@ type claimsParams struct {
 var topologySchema = json.RawMessage(`{
 	"type": "object",
 	"properties": {
-		"action": {"type": "string", "description": "Action: get_topology | get_vulnerabilities | get_claim | search | viz | export", "enum": ["get_topology", "get_vulnerabilities", "get_claim", "search", "viz", "export"]},
+		"action": {"type": "string", "description": "Action: get_topology | get_vulnerabilities | get_claim | search | viz | export | analyze_kb", "enum": ["get_topology", "get_vulnerabilities", "get_claim", "search", "viz", "export", "analyze_kb"]},
 		"project": {"type": "string", "description": "Project name"},
 		"claim_id": {"type": "string", "description": "Claim ID (for get_claim)"},
 		"query": {"type": "string", "description": "Search query (for search)"},
 		"basis": {"type": "string", "description": "Filter by basis type"},
-		"format": {"type": "string", "description": "Output format: ascii | dot | json"}
+		"format": {"type": "string", "description": "Output format: ascii | dot | json"},
+		"kb_claims": {"type": "array", "description": "Array of typed KB claims for stateless analysis (analyze_kb)", "items": {"type": "object", "properties": {"id": {"type": "string"}, "predicate_type": {"type": "string"}, "subject": {"type": "string"}, "object": {"type": "string"}, "basis": {"type": "string"}, "has_quote": {"type": "boolean"}, "provenance_url": {"type": "string"}}, "required": ["id", "predicate_type", "subject", "object"]}}
 	},
 	"required": ["action", "project"]
 }`)
@@ -97,7 +100,7 @@ func RunMCP(db *store.DB, extractor *extract.Extractor, project string) error {
 
 	srv := server.NewMCPServer(
 		"slimemold",
-		"0.1.0",
+		"0.1.1",
 		server.WithToolCapabilities(true),
 	)
 
@@ -186,6 +189,21 @@ func (s *mcpServer) handleTopology(ctx context.Context, req sdkmcp.CallToolReque
 		default:
 			return sdkmcp.NewToolResultError(fmt.Sprintf("unknown format: %s", format)), nil
 		}
+
+	case "analyze_kb":
+		if len(args.KBClaims) == 0 {
+			return sdkmcp.NewToolResultError("kb_claims required"), nil
+		}
+		claims, edges := adapt.AdaptKBClaims(args.KBClaims)
+		for i := range claims {
+			claims[i].Project = project
+		}
+		topo, vulns := analysis.Analyze(claims, edges, project)
+		result := map[string]interface{}{
+			"topology":        topo,
+			"vulnerabilities": vulns,
+		}
+		return jsonResult(result)
 
 	default:
 		return sdkmcp.NewToolResultError(fmt.Sprintf("unknown action: %s", args.Action)), nil

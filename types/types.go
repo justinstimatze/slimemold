@@ -149,3 +149,15 @@ type ExtractedClaim struct {
 type ExtractionResult struct {
 	Claims []ExtractedClaim `json:"claims"`
 }
+
+// KBClaim is a typed knowledge base claim from an external system (e.g. winze).
+// Speaker is left empty — KB claims have no user/assistant attribution.
+type KBClaim struct {
+	ID            string `json:"id"`
+	PredicateType string `json:"predicate_type"`
+	Subject       string `json:"subject"`
+	Object        string `json:"object"`
+	Basis         Basis  `json:"basis"`
+	HasQuote      bool   `json:"has_quote"`
+	ProvenanceURL string `json:"provenance_url"`
+}
