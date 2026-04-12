@@ -24,13 +24,13 @@ type mcpServer struct {
 
 // topologyParams handles read/analyze operations.
 type topologyParams struct {
-	Action   string           `json:"action"`
-	Project  string           `json:"project"`
-	ClaimID  string           `json:"claim_id,omitempty"`
-	Query    string           `json:"query,omitempty"`
-	Basis    string           `json:"basis,omitempty"`
-	Format   string           `json:"format,omitempty"`
-	KBClaims []types.KBClaim  `json:"kb_claims,omitempty"`
+	Action   string          `json:"action"`
+	Project  string          `json:"project"`
+	ClaimID  string          `json:"claim_id,omitempty"`
+	Query    string          `json:"query,omitempty"`
+	Basis    string          `json:"basis,omitempty"`
+	Format   string          `json:"format,omitempty"`
+	KBClaims []types.KBClaim `json:"kb_claims,omitempty"`
 }
 
 // claimsParams handles write operations.

@@ -170,7 +170,7 @@ func TestAdaptKBClaimsDuplicateID(t *testing.T) {
 func TestAdaptKBClaimsEndToEnd(t *testing.T) {
 	// Feed adapted KB claims through the full analysis pipeline.
 	kbClaims := []types.KBClaim{
-		makeKB("1", "Proposes", "Alice", "Theory", false),  // assumption, supports 2 others
+		makeKB("1", "Proposes", "Alice", "Theory", false),   // assumption, supports 2 others
 		makeKB("2", "Extends", "Bob", "Theory", true),       // research
 		makeKB("3", "Extends", "Carol", "Theory", true),     // research
 		makeKB("4", "Proposes", "Dave", "Unrelated", false), // orphan
