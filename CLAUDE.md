@@ -13,6 +13,14 @@ structural vulnerability analysis, and surfaces findings mechanically via Stop h
 - **Claude Sonnet 4.6** — extracts claims from transcript chunks via structured output
 - **Stop hook** — fires every 5th turn, calls parse_transcript, injects audit findings
 
+## Two Analysis Patterns
+
+- **Hooks** (live conversation): System observes the agent via `UserPromptSubmit`.
+  Agent can't control timing or opt out. This is load-bearing for the threat model.
+- **`analyze_kb` MCP action** (batch/offline): External callers analyze a knowledge
+  graph. For CI pipelines, cross-project comparison, winze KB exports — not for the
+  agent to self-analyze during the conversation hooks are already observing.
+
 ## Design Principle
 
 Slimemold findings are injected into the conversation as system messages that the
