@@ -13,7 +13,8 @@ CREATE TABLE IF NOT EXISTS claims (
     speaker     TEXT DEFAULT 'user' CHECK(speaker IN ('user','assistant')),
     created_at  TEXT NOT NULL,
     challenged  INTEGER DEFAULT 0,
-    verified    INTEGER DEFAULT 0
+    verified    INTEGER DEFAULT 0,
+    terminates_inquiry INTEGER DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS edges (

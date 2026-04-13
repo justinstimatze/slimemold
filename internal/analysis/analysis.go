@@ -68,6 +68,9 @@ func findVulnerabilities(claims []types.Claim, edges []types.Edge, topo *types.T
 	// Echo chamber: assistant validates without challenging
 	items = append(items, findEchoChamber(claims, edges)...)
 
+	// Premature closure: thought-terminating cliches capping open inquiry
+	items = append(items, findPrematureClosure(claims, edges)...)
+
 	// Orphan warnings
 	for _, o := range topo.Orphans {
 		items = append(items, types.Vulnerability{
@@ -783,6 +786,135 @@ func findEchoChamber(claims []types.Claim, edges []types.Edge) []types.Vulnerabi
 	return vulns
 }
 
+// findPrematureClosure detects claims that function as rhetorical stop signals —
+// phrases that feel like conclusions but don't actually resolve open questions.
+// "Turtles all the way down" is the canonical example: it frames an infinite
+// regress as wisdom and everyone stops thinking.
+//
+// Detection uses two signals:
+// 1. The extraction model flagged terminates_inquiry=true (rhetorical judgment)
+// 2. The claim sits at a leaf position in the graph with unresolved upstream claims
+//    (structural context — the closure is capping something that was still open)
+//
+// Either signal alone produces an info-level finding. Both together produce a warning.
+// The upstream context matters: a thought-terminating cliche in isolation is just
+// a cliche. A thought-terminating cliche that caps a chain of weak-basis claims
+// is actively preventing the investigation that would strengthen the argument.
+func findPrematureClosure(claims []types.Claim, edges []types.Edge) []types.Vulnerability {
+	if len(claims) < 3 {
+		return nil
+	}
+
+	weakBases := map[types.Basis]bool{
+		types.BasisVibes:      true,
+		types.BasisLLMOutput:  true,
+		types.BasisAssumption: true,
+	}
+
+	// Build maps: who depends on whom, who has dependents
+	claimMap := make(map[string]*types.Claim)
+	for i := range claims {
+		claimMap[claims[i].ID] = &claims[i]
+	}
+
+	hasDependents := make(map[string]bool) // claims that other claims depend on
+	upstream := make(map[string][]string) // claim ID → IDs of claims that feed into it
+
+	for _, e := range edges {
+		switch e.Relation {
+		case types.RelSupports:
+			hasDependents[e.FromID] = true
+			upstream[e.ToID] = append(upstream[e.ToID], e.FromID)
+		case types.RelDependsOn:
+			hasDependents[e.ToID] = true
+			upstream[e.FromID] = append(upstream[e.FromID], e.ToID)
+		}
+	}
+
+	// Find leaf claims (nothing depends on them — they're terminal)
+	var leaves []string
+	for _, c := range claims {
+		if !hasDependents[c.ID] {
+			leaves = append(leaves, c.ID)
+		}
+	}
+
+	// For each leaf, check if it's a premature closure
+	var vulns []types.Vulnerability
+	for _, leafID := range leaves {
+		c := claimMap[leafID]
+		if c == nil {
+			continue
+		}
+
+		flaggedByLLM := c.TerminatesInquiry
+
+		// Skip upstream walk for strong-basis leaves without an LLM flag —
+		// a deduction leaf capping weak upstream is normal reasoning, not
+		// premature closure. Only weak-basis leaves (or LLM-flagged ones)
+		// warrant the structural check.
+		if !weakBases[c.Basis] && !flaggedByLLM {
+			continue
+		}
+
+		// Check upstream context: does this leaf cap weak-basis claims?
+		capsWeakUpstream := false
+		upstreamIDs := upstream[leafID]
+		for _, uid := range upstreamIDs {
+			if uc, ok := claimMap[uid]; ok && weakBases[uc.Basis] && !uc.Challenged {
+				capsWeakUpstream = true
+				break
+			}
+		}
+
+		// Also walk one more level — the immediate parent might be strong
+		// but ITS parents might be weak
+		if !capsWeakUpstream {
+			for _, uid := range upstreamIDs {
+				for _, grandUID := range upstream[uid] {
+					if uc, ok := claimMap[grandUID]; ok && weakBases[uc.Basis] && !uc.Challenged {
+						capsWeakUpstream = true
+						break
+					}
+				}
+				if capsWeakUpstream {
+					break
+				}
+			}
+		}
+
+		if !flaggedByLLM && !capsWeakUpstream {
+			continue
+		}
+
+		severity := "info"
+		if flaggedByLLM && capsWeakUpstream {
+			severity = "warning"
+		}
+
+		desc := fmt.Sprintf("Premature closure: %q terminates a line of reasoning", truncate(c.Text, 60))
+		if capsWeakUpstream {
+			desc += " that still has unverified claims upstream"
+		}
+		if flaggedByLLM {
+			desc += " — flagged as thought-terminating cliche"
+		}
+
+		vulns = append(vulns, types.Vulnerability{
+			Severity:    severity,
+			Type:        "premature_closure",
+			Description: desc,
+			ClaimIDs:    []string{c.ID},
+		})
+
+		if len(vulns) >= 3 {
+			break // cap to avoid flooding the audit with info-level leaf findings
+		}
+	}
+
+	return vulns
+}
+
 func clusterClaimIDs(cl types.ClusterInfo) []string {
 	ids := make([]string, 0, len(cl.Claims))
 	for _, c := range cl.Claims {
@@ -810,7 +942,7 @@ func FormatHookFindings(topo *types.Topology, vulns *types.Vulnerabilities, newC
 		switch v.Type {
 		case "load_bearing_vibes", "fluency_trap":
 			findings = append(findings, finding{0, v})
-		case "unchallenged_chain", "echo_chamber":
+		case "unchallenged_chain", "echo_chamber", "premature_closure":
 			findings = append(findings, finding{1, v})
 		case "coverage_imbalance":
 			findings = append(findings, finding{2, v})
@@ -918,6 +1050,10 @@ func generateQuestion(findingType, description, claimText string) string {
 			short)
 	case "coverage_imbalance":
 		return `"This thread is great — and I think there's a foundational piece we haven't given as much attention to yet that could make it even better. What's the harder question we haven't dug into?"`
+	case "premature_closure":
+		return fmt.Sprintf(
+			`"Wait — '%s' felt like a conclusion but I'm not sure we actually resolved the question. What specifically did we settle? If we peel that back, is there a more precise claim underneath that we could actually test?"`,
+			short)
 	case "abandoned_topic":
 		return `"Something we explored earlier might connect to what we're doing now — did we close that out, or is it worth revisiting? Sometimes the thing we moved past is the thing that ties it together."`
 	default:

@@ -58,6 +58,11 @@ runs automatically. When audit findings appear as system messages, address them:
   Pick the weakest link and probe it.
 - **WATCH (bottleneck)**: Many reasoning paths flow through one unchallenged claim.
   Consider whether downstream conclusions survive if this claim is wrong.
+- **HALT (premature closure)**: A claim that feels like a conclusion but doesn't
+  actually resolve the open question — a thought-terminating cliche capping a line
+  of reasoning that still has unverified claims upstream. "Turtles all the way down"
+  is the canonical example. Peel it back: what specifically was settled? What's the
+  more precise claim underneath?
 - **WARNING (orphan)**: A claim was registered but never connected. Either connect it
   to the graph or acknowledge it's tangential.
 

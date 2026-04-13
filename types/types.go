@@ -35,18 +35,19 @@ const (
 
 // Claim is a substantive assertion made during reasoning.
 type Claim struct {
-	ID         string    `json:"id"`
-	Text       string    `json:"text"`
-	Basis      Basis     `json:"basis"`
-	Confidence float64   `json:"confidence"`
-	Source     string    `json:"source"`
-	SessionID  string    `json:"session_id"`
-	Project    string    `json:"project"`
-	TurnNumber int       `json:"turn_number"`
-	Speaker    Speaker   `json:"speaker"`
-	CreatedAt  time.Time `json:"created_at"`
-	Challenged bool      `json:"challenged"`
-	Verified   bool      `json:"verified"`
+	ID                 string    `json:"id"`
+	Text               string    `json:"text"`
+	Basis              Basis     `json:"basis"`
+	Confidence         float64   `json:"confidence"`
+	Source             string    `json:"source"`
+	SessionID          string    `json:"session_id"`
+	Project            string    `json:"project"`
+	TurnNumber         int       `json:"turn_number"`
+	Speaker            Speaker   `json:"speaker"`
+	CreatedAt          time.Time `json:"created_at"`
+	Challenged         bool      `json:"challenged"`
+	Verified           bool      `json:"verified"`
+	TerminatesInquiry  bool      `json:"terminates_inquiry"`
 }
 
 // Edge is a directed epistemic relationship between two claims.
@@ -143,6 +144,8 @@ type ExtractedClaim struct {
 	DependsOnExisting   []string `json:"depends_on_existing"`
 	SupportsExisting    []string `json:"supports_existing"`
 	ContradictsExisting []string `json:"contradicts_existing"`
+	// Premature closure detection
+	TerminatesInquiry bool `json:"terminates_inquiry"`
 }
 
 // ExtractionResult is the structured output from the LLM extraction.

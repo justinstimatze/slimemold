@@ -61,9 +61,11 @@ This is probably worse in conversations with AI. Language models are
 trained to minimize prediction loss on human text — their output is
 optimized, by construction, for the qualities that drive processing
 fluency. And the same RLHF training that makes them useful makes them
-agreeable. The human brings a partial model. The AI wraps it in fluent,
-confident language. Nobody is lying. The process just has no built-in
-signal for "this sounds right but is not."
+agreeable: models trained with human feedback systematically produce
+outputs that match user beliefs rather than correct them (Perez et al.
+2022, Sharma et al. 2023). The human brings a partial model. The AI
+wraps it in fluent, confident language. Nobody is lying. The process
+just has no built-in signal for "this sounds right but is not."
 
 The obvious response — "just tell the model to push back harder" —
 almost works. You can write instructions to challenge unsourced claims,
@@ -173,7 +175,7 @@ oracle. It makes the topology visible — but the topology it shows is
 only as good as the extraction. This is a real limitation and not one we
 can engineer away.
 
-### Seven Vulnerability Types
+### Eight Vulnerability Types
 
 **CHALLENGE: Load-Bearing Vibes.** A claim with basis "vibes" or
 "assumption" that supports two or more other claims. The reasoning
@@ -213,6 +215,15 @@ reasoning paths flow through it. If this single claim is wrong, a large
 fraction of the argument collapses. This is the load-bearing wall that
 everyone assumed was a partition.
 
+**HALT: Premature Closure.** A claim that feels like a conclusion but
+does not actually resolve the open question. "It's turtles all the way
+down." "It is what it is." "Correlation isn't causation" — when used to
+dismiss a correlation rather than investigate it. These are
+thought-terminating cliches (Lifton 1961) — phrases that disguise a lack
+of resolution as wisdom. The question was still open. The ambiguity was
+still actionable. But the cliche felt like an answer, so everyone
+stopped.
+
 ## What It Found
 
 In 2022, Google engineer Blake Lemoine
@@ -251,9 +262,11 @@ When run on its own development conversations, slimemold flagged an AI
 assertion about SQLite WAL files as load-bearing llm_output. The human
 acted on it. Lost data. The tool had flagged it before the data loss.
 
-Visibility does not guarantee correction. It creates the opportunity.
-The diagnostic probably works. The patient does not always follow the
-prescription. This is a limitation of patients, not diagnostics.
+Visibility does not guarantee correction. The diagnostic showed the
+problem; the human chose not to act on it. Whether this is a limitation
+of the tool (the finding was not salient enough to change behavior) or
+a limitation of the user (the finding was clear and they ignored it) is
+an open question — and one the tool cannot answer about itself.
 
 ### But Does It Change Anything?
 
@@ -339,13 +352,40 @@ forage unevenly without knowing it.
 
 ## Limitations and Open Questions
 
-**Most unchallenged chains are fine.** If you are explaining how a car
+**The tool does not tell you where the ground floor is.** It tells you
+where the ambiguity is still high and you stopped anyway. Any
+sufficiently interesting line of reasoning is an infinite regress if
+you push it far enough. The skill is not finding bedrock. The skill is
+knowing how many levels to investigate before the returns diminish —
+and that judgment is specific to the problem. A claim about
+consciousness might need three levels before you hit something that
+changes what you do. "It's turtles all the way down" needs zero. That
+is a stop signal, not a destination.
+
+Most unchallenged chains are fine. If you are explaining how a car
 engine works, every step from "fuel enters the cylinder" to "piston
 compresses the mixture" is unchallenged — and should be. The tool
 surfaces candidates for scrutiny. The human decides whether scrutiny is
-warranted. If you find yourself scrutinizing your car engine
-explanation, you have miscalibrated in the other direction, and I want
-to tell you about a secret underground racing lab in Seattle.
+warranted. Slimemold flags where you stopped and the ambiguity was
+still actionable — where investigating one more level would have
+changed what you believe or what you do. If you find yourself
+scrutinizing your car engine explanation, you have miscalibrated in
+the other direction, and I want to tell you about a secret underground
+racing lab in Seattle.
+
+**The tool does not distinguish pure beliefs from impure ones.** Katz
+(1960) identified four functions that attitudes serve: utilitarian,
+knowledge, ego-defensive, and value-expressive. If most beliefs serve
+at least one of these — and the alternative is that some beliefs
+persist with no functional payoff at all, which is hard to square with
+everything we know about reinforcement — then the question "is this
+belief emotionally motivated?" is not diagnostic. The question the tool
+can answer is: how much of the structure collapses if this claim is
+removed? Some structures survive stress-testing. Some do not.
+Structural fragility is a thing slimemold can measure. Whether a
+belief is held for the right reasons is not — and whether that
+distinction is coherent is a question we are not going to settle in a
+README.
 
 **Structural visibility may not change behavior.** The calibration
 literature (Fischhoff 1982, Lichtenstein et al. 1982) shows that outcome
@@ -364,12 +404,24 @@ to accomplish nothing. We have not run this experiment at scale.
 **The tool itself is a fluency trap.** You just read several paragraphs
 of cognitive science citations, a biological metaphor, benchmark numbers,
 and concrete examples. It probably felt well-supported. We ran slimemold
-on this essay. It flagged "language models are fluency amplifiers" as
-load-bearing llm_output — no citation, supports the entire AI-specific
-section. We kept the claim and grounded it in mechanism (prediction loss
-on human text produces fluent output by construction), but we cannot cite
-a study measuring it. The tool caught it. We made a judgment call.
-That is the feedback loop: not automatic, but visible.
+on this essay. It found a six-claim unchallenged chain running from the
+*Physarum* metaphor through the fluency gradient analogy to the thesis
+about AI — every link felt reasonable, nobody paused. It flagged
+"language models are trained to minimize prediction loss on human text"
+as load-bearing llm_output supporting five downstream claims. We kept
+the claim and grounded it in mechanism (prediction loss on human text
+produces fluent output by construction), but we cannot cite a study
+measuring the effect on conversations. The tool caught it. We made a
+judgment call.
+
+It also flagged three of the essay's own hedges as premature closures.
+"Whether fluency compounds across multi-step reasoning has not been
+directly measured. It is a prediction from the mechanism, not an
+established result." That sounds like epistemic humility. Structurally,
+it is a stop signal — it caps an unverified chain by acknowledging the
+gap and then moving on, and the acknowledgment feels honest enough that
+nobody goes back to check. The hedge is doing the same work as "it's
+turtles all the way down," just dressed in better clothes.
 
 ## Installation
 
@@ -468,14 +520,20 @@ credentials are stored in the database.
 
 **Intervention design:**
 - Brehm, J. W. (1966). *A Theory of Psychological Reactance.* Academic Press.
+- Lifton, R. J. (1961). *Thought Reform and the Psychology of Totalism.* W. W. Norton.
 - Deci, E. L., & Ryan, R. M. (1987). The support of autonomy and the control of behavior. *Journal of Personality and Social Psychology, 53*(6).
 - Graesser, A. C., Person, N. K., & Magliano, J. P. (1995). Collaborative dialogue patterns in naturalistic one-to-one tutoring. *Applied Cognitive Psychology, 9*(6).
 - Mangels, J. A., Butterfield, B., Lamb, J., Good, C., & Dweck, C. S. (2006). Why do beliefs about intelligence influence learning success? *Social Cognitive and Affective Neuroscience, 1*(2).
 - Miller, W. R., Benefield, R. G., & Tonigan, J. S. (1993). Enhancing motivation for change in problem drinking. *Journal of Consulting and Clinical Psychology, 61*(3).
 
+**Sycophancy in language models:**
+- Perez, E., et al. (2022). Discovering language model behaviors with model-written evaluations. *arXiv:2212.09251*.
+- Sharma, M., Tong, M., Korbak, T., et al. (2023). Towards understanding sycophancy in language models. *ICLR 2024*.
+
 **Calibration and feedback:**
 - Fischhoff, B. (1982). Debiasing. In *Judgment Under Uncertainty: Heuristics and Biases*.
 - Ioannidis, J. P. A. (2005). Why most published research findings are false. *PLoS Medicine*.
+- Katz, D. (1960). The functional approach to the study of attitudes. *Public Opinion Quarterly, 24*(2).
 - Lichtenstein, S., Fischhoff, B., & Phillips, L. D. (1982). Calibration of probabilities. In *Judgment Under Uncertainty*.
 
 ---
@@ -483,35 +541,43 @@ credentials are stored in the database.
 <details>
 <summary><b>Appendix: Slimemold's audit of this README</b></summary>
 
-We fed this README to slimemold as a transcript. 69 claims, 57 edges.
+We fed this README to slimemold as a transcript. 72 claims, 61 edges.
 
 ```
-SLIMEMOLD [readme-selfcheck] — 69 claims, 57 edges
-  Basis: research=10, empirical=15, deduction=10, definition=14,
-         analogy=3, vibes=14, llm_output=1, assumption=2
+SLIMEMOLD [readme-selfcheck] — 72 claims, 61 edges
+  Basis: analogy=3, deduction=4, definition=10, empirical=23,
+         llm_output=15, research=16, vibes=1
 
-CRITICAL Load-bearing vibes: "Language models are trained to minimize
-  prediction loss on human text — their output is optimized for the
-  qualities that drive processing fluency" supports 4 other claims
+CRITICAL Load-bearing llm_output: "Physarum polycephalum forages by
+  following local chemical gradients" supports 2 other claims
   (never challenged)
 
-CRITICAL Load-bearing vibes: "RLHF training that makes models useful
-  also makes them agreeable" supports 4 other claims (never challenged)
+CRITICAL Load-bearing llm_output: "Sycophancy is probably worse in
+  conversations with AI" supports 2 other claims (never challenged)
 
-CRITICAL Fluency trap: "Slimemold's bet is that people who can see
-  their reasoning topology will fix the obvious structural failures"
-  stated at confidence 0.8, basis is analogy
-
-WARNING Bottleneck (centrality 903): "Processing fluency masquerades
+WARNING Bottleneck (centrality 522): "Processing fluency masquerades
   as truth" — many reasoning paths flow through this claim
 
-WARNING Unchallenged chain (4 claims): language models are fluency
-  amplifiers → slimemold flagged this → extraction model is itself
-  producing llm_output → circularity acknowledged
+WARNING Unchallenged chain (6 claims): NYT documentation →
+  AI-assisted reasoning → RLHF agreeableness → sycophancy is worse
+  → processing fluency as truth → partial understanding feels like
+  understanding
+
+WARNING Premature closure: "Whether processing fluency compounds
+  across multi-step reasoning has not been directly measured"
+  terminates a line of reasoning that still has unverified claims
+  upstream — flagged as thought-terminating cliche
 ```
 
-Two load-bearing vibes. Three fluency traps. One bottleneck that is
-also the thesis. We ran the tool on this essay. It flagged the thesis.
-We kept the thesis (Ioannidis 2005).
+Three load-bearing claims. Ten fluency traps. One six-claim
+unchallenged chain from the empirical examples through to the thesis.
+One premature closure at warning level — the essay's own hedge about
+compounding fluency, which sounds like epistemic humility but
+structurally caps an unverified chain. An earlier draft had a
+nine-claim chain and fourteen fluency traps; adding sycophancy
+citations (Perez et al. 2022, Sharma et al. 2023) broke the chain
+and replacing a thought-terminating cliche with an actual engagement
+of the limitation removed the worst premature closure. The audit loop
+works. It does not converge to zero.
 
 </details>

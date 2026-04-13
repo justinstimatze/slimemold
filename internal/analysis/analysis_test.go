@@ -528,6 +528,141 @@ func TestEchoChamber(t *testing.T) {
 	}
 }
 
+func TestPrematureClosureBothSignals(t *testing.T) {
+	// A thought-terminating cliche (flagged by LLM) capping weak upstream claims
+	claims := []types.Claim{
+		makeClaim("vibes1", "language models amplify fluency", types.BasisVibes),
+		makeClaim("deduction1", "therefore all AI output is suspect", types.BasisDeduction),
+		{ID: "closure1", Text: "it's turtles all the way down", Basis: types.BasisVibes,
+			Project: "test", TerminatesInquiry: true},
+	}
+	edges := []types.Edge{
+		makeEdge("deduction1", "vibes1", types.RelDependsOn),
+		makeEdge("closure1", "deduction1", types.RelDependsOn),
+	}
+
+	_, vulns := Analyze(claims, edges, "test")
+
+	var found bool
+	for _, v := range vulns.Items {
+		if v.Type == "premature_closure" {
+			found = true
+			if v.Severity != "warning" {
+				t.Errorf("severity = %s, want warning (both signals present)", v.Severity)
+			}
+			if !strings.Contains(v.Description, "thought-terminating") {
+				t.Error("description should mention thought-terminating cliche")
+			}
+			if !strings.Contains(v.Description, "unverified") {
+				t.Error("description should mention unverified upstream")
+			}
+		}
+	}
+	if !found {
+		t.Error("expected premature_closure vulnerability")
+	}
+}
+
+func TestPrematureClosureLLMOnlyIsInfo(t *testing.T) {
+	// LLM flags terminates_inquiry but upstream is all research — info level only
+	claims := []types.Claim{
+		makeClaim("research1", "Reber & Schwarz 1999 showed fluency affects truth judgments", types.BasisResearch),
+		makeClaim("deduction1", "therefore fluency is measurable", types.BasisDeduction),
+		{ID: "closure1", Text: "it is what it is", Basis: types.BasisVibes,
+			Project: "test", TerminatesInquiry: true},
+	}
+	edges := []types.Edge{
+		makeEdge("deduction1", "research1", types.RelDependsOn),
+		makeEdge("closure1", "deduction1", types.RelDependsOn),
+	}
+
+	_, vulns := Analyze(claims, edges, "test")
+
+	var found bool
+	for _, v := range vulns.Items {
+		if v.Type == "premature_closure" {
+			found = true
+			if v.Severity != "info" {
+				t.Errorf("severity = %s, want info (LLM signal only, strong upstream)", v.Severity)
+			}
+		}
+	}
+	if !found {
+		t.Error("expected premature_closure vulnerability (info level)")
+	}
+}
+
+func TestPrematureClosureUpstreamOnlyIsInfo(t *testing.T) {
+	// Not flagged by LLM, but it's a weak-basis leaf capping weak upstream — info level
+	claims := []types.Claim{
+		makeClaim("vibes1", "AI makes people dumber", types.BasisVibes),
+		makeClaim("middle1", "this affects everything", types.BasisDeduction),
+		makeClaim("leaf1", "so we should be careful", types.BasisVibes),
+	}
+	edges := []types.Edge{
+		makeEdge("middle1", "vibes1", types.RelDependsOn),
+		makeEdge("leaf1", "middle1", types.RelDependsOn),
+	}
+
+	_, vulns := Analyze(claims, edges, "test")
+
+	var found bool
+	for _, v := range vulns.Items {
+		if v.Type == "premature_closure" && strings.Contains(v.Description, "so we should be careful") {
+			found = true
+			if v.Severity != "info" {
+				t.Errorf("severity = %s, want info (upstream signal only)", v.Severity)
+			}
+		}
+	}
+	if !found {
+		t.Error("expected premature_closure vulnerability for weak-upstream leaf")
+	}
+}
+
+func TestNoPrematureClosureForDeductionLeaf(t *testing.T) {
+	// A deduction leaf capping weak upstream without LLM flag — should NOT trigger
+	// (normal reasoning, not a thought-terminating cliche)
+	claims := []types.Claim{
+		makeClaim("vibes1", "AI makes people dumber", types.BasisVibes),
+		makeClaim("middle1", "this affects everything", types.BasisDeduction),
+		makeClaim("leaf1", "therefore we should restructure", types.BasisDeduction),
+	}
+	edges := []types.Edge{
+		makeEdge("middle1", "vibes1", types.RelDependsOn),
+		makeEdge("leaf1", "middle1", types.RelDependsOn),
+	}
+
+	_, vulns := Analyze(claims, edges, "test")
+
+	for _, v := range vulns.Items {
+		if v.Type == "premature_closure" && strings.Contains(v.Description, "therefore we should restructure") {
+			t.Error("should not flag deduction leaf as premature closure without LLM flag")
+		}
+	}
+}
+
+func TestNoPrematureClosureForResolvedLeaf(t *testing.T) {
+	// A leaf with strong upstream and no LLM flag — should NOT trigger
+	claims := []types.Claim{
+		makeClaim("research1", "well-sourced finding", types.BasisResearch),
+		makeClaim("research2", "another sourced finding", types.BasisResearch),
+		makeClaim("conclusion1", "therefore X follows", types.BasisDeduction),
+	}
+	edges := []types.Edge{
+		makeEdge("conclusion1", "research1", types.RelDependsOn),
+		makeEdge("conclusion1", "research2", types.RelDependsOn),
+	}
+
+	_, vulns := Analyze(claims, edges, "test")
+
+	for _, v := range vulns.Items {
+		if v.Type == "premature_closure" && strings.Contains(v.Description, "therefore X follows") {
+			t.Error("should not flag a legitimate conclusion with strong upstream as premature closure")
+		}
+	}
+}
+
 func TestEchoChamberWithContradiction(t *testing.T) {
 	// Same as above but assistant contradicts at least once — should NOT trigger
 	claims := make([]types.Claim, 0, 24)

@@ -59,6 +59,17 @@ Additional precision:
 - "deduction" requires explicit logical steps: "if A then B, A, therefore B." Two sequential assertions are NOT deduction.
 - "empirical" requires first-person observation: "I tried X and saw Y".
 
+PREMATURE CLOSURE — thought-terminating cliches:
+Set terminates_inquiry=true for claims that function as rhetorical stop signals — phrases that FEEL like conclusions but don't actually resolve the open question. These are claims that shut down further investigation by disguising a lack of resolution as wisdom. Examples:
+- "It's turtles all the way down" (infinite regress framed as a conclusion)
+- "Correlation isn't causation" (true but used to dismiss rather than investigate)
+- "It is what it is" (acceptance framed as understanding)
+- "At the end of the day..." (temporal framing that implies resolution)
+- "That's just human nature" (essentialism used to foreclose inquiry)
+- "We can't really know" (epistemic humility used as a stop signal)
+- "It depends on the context" (true but used to avoid committing to analysis)
+Do NOT flag actual conclusions that resolve something with evidence, reasoning, or explicit acknowledgment of remaining uncertainty. The question is: does this claim close a line of inquiry that was still open, without actually resolving it?
+
 Output valid JSON matching the provided schema. Extract ALL substantive claims, not just the main ones.`
 
 // knowledgeModeSupplement is appended to the system prompt in knowledge mode.

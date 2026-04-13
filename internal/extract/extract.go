@@ -139,6 +139,8 @@ func buildExtractionSchema() anthropic.ToolInputSchemaParam {
 						"depends_on_existing":  map[string]interface{}{"type": "array", "items": map[string]string{"type": "string"}, "description": "IDs of existing claims this depends on"},
 						"supports_existing":    map[string]interface{}{"type": "array", "items": map[string]string{"type": "string"}, "description": "IDs of existing claims this supports"},
 						"contradicts_existing": map[string]interface{}{"type": "array", "items": map[string]string{"type": "string"}, "description": "IDs of existing claims this contradicts"},
+						// Premature closure detection
+						"terminates_inquiry": map[string]interface{}{"type": "boolean", "description": "True if this claim functions as a rhetorical stop signal — a phrase that feels like a conclusion but doesn't actually resolve the open question (e.g. 'it's turtles all the way down', 'correlation isn't causation', 'it is what it is', 'at the end of the day'). NOT true for actual conclusions that resolve something with evidence or reasoning."},
 					},
 					"required": []string{"index", "text", "basis", "confidence", "speaker"},
 				},

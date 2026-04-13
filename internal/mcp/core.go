@@ -84,15 +84,16 @@ func CoreParseTranscript(ctx context.Context, db *store.DB, extractor *extract.E
 		}
 
 		claim := &types.Claim{
-			ID:         uuid.New().String(),
-			Text:       ec.Text,
-			Basis:      types.Basis(ec.Basis),
-			Confidence: ec.Confidence,
-			Source:     ec.Source,
-			SessionID:  sessionID,
-			Project:    project,
-			Speaker:    types.Speaker(ec.Speaker),
-			CreatedAt:  time.Now(),
+			ID:                uuid.New().String(),
+			Text:              ec.Text,
+			Basis:             types.Basis(ec.Basis),
+			Confidence:        ec.Confidence,
+			Source:             ec.Source,
+			SessionID:         sessionID,
+			Project:           project,
+			Speaker:           types.Speaker(ec.Speaker),
+			CreatedAt:         time.Now(),
+			TerminatesInquiry: ec.TerminatesInquiry,
 		}
 
 		if err := txDB.CreateClaim(claim); err != nil {
