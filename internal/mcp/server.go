@@ -100,8 +100,9 @@ func RunMCP(db *store.DB, extractor *extract.Extractor, project string) error {
 
 	srv := server.NewMCPServer(
 		"slimemold",
-		"0.1.1",
+		"0.3.0",
 		server.WithToolCapabilities(true),
+		server.WithInstructions(serverInstructions),
 	)
 
 	srv.AddTool(

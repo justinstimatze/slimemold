@@ -33,44 +33,17 @@ it structural reasons to redirect rather than agree. "That's an interesting clai
 do you have a source for it?" is better than "WARNING: load-bearing vibes detected."
 The model receives the structural diagnosis; the user receives better conversation.
 
-## Slimemold Behavioral Instructions
+## Behavioral contract
 
-During essay and research conversations in this project, the slimemold audit hook
-runs automatically. When audit findings appear as system messages, address them:
+The per-finding-type response guidance and tool usage reference live in the MCP
+server's instructions (`internal/mcp/instructions.go`), which Claude Code loads
+at session start from the MCP server registration. `slimemold init` registers
+that globally in `~/.claude/settings.json` so it applies in every project on the
+machine. That is the single source of truth for how the model should respond to
+hook findings — this file no longer duplicates it.
 
-- **CHALLENGE (load-bearing vibes)**: A claim with basis=vibes/assumption supports 2+
-  other claims. Upgrade it with a source, mark it as explicitly speculative, or
-  challenge it with reasoning.
-- **CHALLENGE (fluency trap)**: A claim stated with high confidence but weak basis —
-  processing fluency may be masquerading as truth. Ask: would you still believe this
-  if it didn't feel so obvious? Find evidence or lower the confidence.
-- **REBALANCE (coverage imbalance)**: Reasoning effort is unevenly distributed across
-  clusters. "Rabbit hole" means lots of activity but nothing depends on it. "Neglected
-  foundation" means other claims depend on it but it's under-explored. Redirect attention.
-- **REVISIT (abandoned topic)**: A topic was explored in earlier sessions but dropped.
-  Was it resolved, or did something more interesting come along? Either reconnect it
-  or explicitly close it out.
-- **PUSHBACK (echo chamber)**: The assistant is validating user claims without
-  challenging them. Zero contradictions with substantial agreement, or user vibes
-  claims accumulating assistant support. Disagree with something concrete, ask for
-  counter-evidence, or flag an assumption you've been building on uncritically.
-- **INVESTIGATE (unchallenged chain)**: Long chain of claims where nothing was questioned.
-  Pick the weakest link and probe it.
-- **WATCH (bottleneck)**: Many reasoning paths flow through one unchallenged claim.
-  Consider whether downstream conclusions survive if this claim is wrong.
-- **HALT (premature closure)**: A claim that feels like a conclusion but doesn't
-  actually resolve the open question — a thought-terminating cliche capping a line
-  of reasoning that still has unverified claims upstream. "Turtles all the way down"
-  is the canonical example. Peel it back: what specifically was settled? What's the
-  more precise claim underneath?
-- **WARNING (orphan)**: A claim was registered but never connected. Either connect it
-  to the graph or acknowledge it's tangential.
-
-You can also call slimemold tools directly:
-- `topology action:viz project:slimemold-essay` — render the ASCII map
-- `topology action:get_vulnerabilities project:slimemold-essay` — structural weaknesses
-- `claims action:register project:slimemold-essay text:"..." basis:research source:"..."` — manually register
-- `claims action:challenge project:slimemold-essay claim_id:... result:upheld` — mark as interrogated
+If you need to read the contract directly (e.g. when editing the Go prose),
+look at the `serverInstructions` constant.
 
 ## Development
 

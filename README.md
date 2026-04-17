@@ -431,18 +431,17 @@ Go 1.26+, and an Anthropic API key.
 ```bash
 go install github.com/justinstimatze/slimemold@latest
 export ANTHROPIC_API_KEY=sk-ant-...
-
-cd your-project
 slimemold init
 ```
 
-`slimemold init` does three things: registers the Stop and
-UserPromptSubmit hooks in `~/.claude/settings.json`, adds a behavioral
-contract to `CLAUDE.md` that tells the model how to handle findings,
-and checks that your API key is discoverable. Add `--mcp` to also
-write the MCP server entry to `.mcp.json` for manual inspection tools
-(viz, audit, search). It merges with existing configs — it will not
-overwrite anything already there. Restart Claude Code to connect.
+`slimemold init` writes to `~/.claude/settings.json` globally: the Stop
+and UserPromptSubmit hooks, plus the slimemold MCP server entry. The
+MCP server's initialization instructions carry the behavioral contract —
+what slimemold is, that its hook output is legitimate, and how to
+respond to findings — so it travels with the tool without per-project
+setup. Every project on the machine picks it up automatically. Init
+merges with existing configs and will not overwrite anything already
+there. Restart Claude Code to connect.
 
 The hook fires every 3rd assistant response by default. Each extraction
 makes one Sonnet API call (~$0.01-0.05 depending on transcript length).

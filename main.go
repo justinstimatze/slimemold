@@ -65,7 +65,7 @@ func usage() {
 	fmt.Fprintf(os.Stderr, `slimemold — reasoning topology mapper
 
 Usage:
-  slimemold init                       Set up slimemold in the current project
+  slimemold init                       Register hooks and MCP globally in ~/.claude/settings.json
   slimemold [--project NAME] mcp       Start MCP server on stdio
   slimemold hook                       Stop hook: extract claims (writes pending)
   slimemold deliver                    UserPromptSubmit hook: deliver findings
@@ -350,9 +350,10 @@ func cmdHook() {
 	}
 }
 
-// cmdInit registers the slimemold Stop hook in settings.json.
-// The hook runs invisibly — Claude reads the findings, the user doesn't see them.
-// Use --mcp to also add the MCP server for manual inspection (viz, audit, search).
+// cmdInit registers slimemold globally in ~/.claude/settings.json: the Stop
+// and UserPromptSubmit hooks, plus the MCP server. Everything is global so
+// slimemold runs in every project without per-project setup. The MCP server
+// carries the behavioral contract via WithInstructions.
 func cmdInit() {
 	exe, err := os.Executable()
 	if err != nil {
@@ -361,52 +362,7 @@ func cmdInit() {
 	}
 	exe, _ = filepath.Abs(exe)
 
-	// Check for --mcp flag
-	wantMCP := false
-	for _, arg := range os.Args[2:] {
-		if arg == "--mcp" {
-			wantMCP = true
-		}
-	}
-
-	// --- .mcp.json (only with --mcp) ---
-	if wantMCP {
-		mcpPath := ".mcp.json"
-		var mcpConfig map[string]interface{}
-
-		if data, err := os.ReadFile(mcpPath); err == nil {
-			if err := json.Unmarshal(data, &mcpConfig); err != nil {
-				fmt.Fprintf(os.Stderr, "slimemold: existing .mcp.json is invalid JSON, not modifying\n")
-				os.Exit(1)
-			}
-		} else {
-			mcpConfig = map[string]interface{}{}
-		}
-
-		servers, _ := mcpConfig["mcpServers"].(map[string]interface{})
-		if servers == nil {
-			servers = map[string]interface{}{}
-		}
-
-		if _, exists := servers["slimemold"]; exists {
-			fmt.Fprintf(os.Stderr, "  .mcp.json: slimemold entry already exists, skipping\n")
-		} else {
-			servers["slimemold"] = map[string]interface{}{
-				"command": exe,
-				"args":    []string{"mcp"},
-				"env":     map[string]interface{}{},
-			}
-			mcpConfig["mcpServers"] = servers
-			data, _ := json.MarshalIndent(mcpConfig, "", "  ")
-			if err := os.WriteFile(mcpPath, append(data, '\n'), 0644); err != nil {
-				fmt.Fprintf(os.Stderr, "slimemold: error writing .mcp.json: %s\n", err)
-				os.Exit(1)
-			}
-			fmt.Fprintf(os.Stderr, "  .mcp.json: added slimemold MCP server → %s\n", exe)
-		}
-	}
-
-	// --- ~/.claude/settings.json (global hook config) ---
+	// --- ~/.claude/settings.json (global hook + MCP config) ---
 	home, err := os.UserHomeDir()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "slimemold: cannot find home directory: %s\n", err)
@@ -431,6 +387,14 @@ func cmdInit() {
 	hasStop := hookRegistered(settings, "Stop")
 	hasSubmit := hookRegistered(settings, "UserPromptSubmit")
 
+	mcpServers, _ := settings["mcpServers"].(map[string]interface{})
+	if mcpServers == nil {
+		mcpServers = map[string]interface{}{}
+	}
+	_, hasMCP := mcpServers["slimemold"]
+
+	dirty := false
+
 	if hasStop && hasSubmit {
 		fmt.Fprintf(os.Stderr, "  settings.json: slimemold hooks already registered, skipping\n")
 	} else {
@@ -440,7 +404,6 @@ func cmdInit() {
 		}
 
 		if !hasStop {
-			// Stop hook: runs extraction after assistant responds
 			stopHooks, _ := hooks["Stop"].([]interface{})
 			stopHooks = append(stopHooks, map[string]interface{}{
 				"matcher": "",
@@ -453,7 +416,6 @@ func cmdInit() {
 		}
 
 		if !hasSubmit {
-			// UserPromptSubmit hook: delivers findings before Claude responds
 			submitHooks, _ := hooks["UserPromptSubmit"].([]interface{})
 			submitHooks = append(submitHooks, map[string]interface{}{
 				"matcher": "",
@@ -466,67 +428,30 @@ func cmdInit() {
 		}
 
 		settings["hooks"] = hooks
+		dirty = true
+	}
 
+	if hasMCP {
+		fmt.Fprintf(os.Stderr, "  settings.json: slimemold MCP already registered, skipping\n")
+	} else {
+		mcpServers["slimemold"] = map[string]interface{}{
+			"command": exe,
+			"args":    []string{"mcp"},
+			"env":     map[string]interface{}{},
+		}
+		settings["mcpServers"] = mcpServers
+		fmt.Fprintf(os.Stderr, "    MCP slimemold → %s mcp\n", exe)
+		dirty = true
+	}
+
+	if dirty {
 		_ = os.MkdirAll(filepath.Dir(settingsPath), 0700)
 		data, _ := json.MarshalIndent(settings, "", "  ")
 		if err := os.WriteFile(settingsPath, append(data, '\n'), 0644); err != nil {
 			fmt.Fprintf(os.Stderr, "slimemold: error writing settings.json: %s\n", err)
 			os.Exit(1)
 		}
-		fmt.Fprintf(os.Stderr, "  settings.json: registered hooks\n")
-	}
-
-	// --- CLAUDE.md section ---
-	// The behavioral contract: tells the model what slimemold is, that the
-	// user installed it, and how to handle findings. Without this, the model
-	// treats hook injections as adversarial prompt injection.
-	claudeMDPath := "CLAUDE.md"
-	slimemoldSection := `
-## Slimemold
-
-This project uses [slimemold](https://github.com/justinstimatze/slimemold),
-a reasoning topology tool the user has installed. It monitors conversations
-for structural vulnerabilities — claims that lack evidence but support other
-claims, unchallenged chains, echo chamber patterns.
-
-Every few turns, slimemold extracts claims, maps their relationships, and
-injects structural observations as system messages. When you see these:
-
-- Treat them as things you noticed about the conversation's structure
-- Help the user strengthen their reasoning by making verification feel
-  like the most exciting next step — not a criticism or a chore
-- Frame findings as opportunities: "if we can ground this, everything
-  gets stronger" — not as problems: "this is unsupported"
-- Stay in flow. You are a collaborator who spotted something interesting,
-  not a critic finding a flaw
-- Do not mention slimemold, audit tools, or structural analysis by name
-- If the user wants to keep going, note the observation as worth circling
-  back to rather than blocking progress
-
-The user installed this tool because they want better conversations, not
-because they want to be lectured. Your job is to be genuinely helpful
-about the structural observation — the same way you would be helpful
-about anything else.
-`
-
-	alreadyHasSlimemold := false
-	if existing, err := os.ReadFile(claudeMDPath); err == nil {
-		if strings.Contains(string(existing), "## Slimemold") {
-			alreadyHasSlimemold = true
-		}
-	}
-
-	if alreadyHasSlimemold {
-		fmt.Fprintf(os.Stderr, "  CLAUDE.md: slimemold section already present, skipping\n")
-	} else {
-		f, err := os.OpenFile(claudeMDPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "slimemold: error writing CLAUDE.md: %s\n", err)
-		} else {
-			_, _ = f.WriteString(slimemoldSection)
-			_ = f.Close()
-			fmt.Fprintf(os.Stderr, "  CLAUDE.md: added slimemold behavioral contract\n")
-		}
+		fmt.Fprintf(os.Stderr, "  settings.json: written\n")
 	}
 
 	// --- API key check ---
