@@ -35,19 +35,19 @@ const (
 
 // Claim is a substantive assertion made during reasoning.
 type Claim struct {
-	ID                 string    `json:"id"`
-	Text               string    `json:"text"`
-	Basis              Basis     `json:"basis"`
-	Confidence         float64   `json:"confidence"`
-	Source             string    `json:"source"`
-	SessionID          string    `json:"session_id"`
-	Project            string    `json:"project"`
-	TurnNumber         int       `json:"turn_number"`
-	Speaker            Speaker   `json:"speaker"`
-	CreatedAt          time.Time `json:"created_at"`
-	Challenged         bool      `json:"challenged"`
-	Verified           bool      `json:"verified"`
-	TerminatesInquiry  bool      `json:"terminates_inquiry"`
+	ID                string    `json:"id"`
+	Text              string    `json:"text"`
+	Basis             Basis     `json:"basis"`
+	Confidence        float64   `json:"confidence"`
+	Source            string    `json:"source"`
+	SessionID         string    `json:"session_id"`
+	Project           string    `json:"project"`
+	TurnNumber        int       `json:"turn_number"`
+	Speaker           Speaker   `json:"speaker"`
+	CreatedAt         time.Time `json:"created_at"`
+	Challenged        bool      `json:"challenged"`
+	Verified          bool      `json:"verified"`
+	TerminatesInquiry bool      `json:"terminates_inquiry"`
 }
 
 // Edge is a directed epistemic relationship between two claims.

@@ -88,7 +88,7 @@ func CoreParseTranscript(ctx context.Context, db *store.DB, extractor *extract.E
 			Text:              ec.Text,
 			Basis:             types.Basis(ec.Basis),
 			Confidence:        ec.Confidence,
-			Source:             ec.Source,
+			Source:            ec.Source,
 			SessionID:         sessionID,
 			Project:           project,
 			Speaker:           types.Speaker(ec.Speaker),

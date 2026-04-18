@@ -792,9 +792,9 @@ func findEchoChamber(claims []types.Claim, edges []types.Edge) []types.Vulnerabi
 // regress as wisdom and everyone stops thinking.
 //
 // Detection uses two signals:
-// 1. The extraction model flagged terminates_inquiry=true (rhetorical judgment)
-// 2. The claim sits at a leaf position in the graph with unresolved upstream claims
-//    (structural context — the closure is capping something that was still open)
+//  1. The extraction model flagged terminates_inquiry=true (rhetorical judgment)
+//  2. The claim sits at a leaf position in the graph with unresolved upstream claims
+//     (structural context — the closure is capping something that was still open)
 //
 // Either signal alone produces an info-level finding. Both together produce a warning.
 // The upstream context matters: a thought-terminating cliche in isolation is just
@@ -818,7 +818,7 @@ func findPrematureClosure(claims []types.Claim, edges []types.Edge) []types.Vuln
 	}
 
 	hasDependents := make(map[string]bool) // claims that other claims depend on
-	upstream := make(map[string][]string) // claim ID → IDs of claims that feed into it
+	upstream := make(map[string][]string)  // claim ID → IDs of claims that feed into it
 
 	for _, e := range edges {
 		switch e.Relation {
