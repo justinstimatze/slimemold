@@ -420,6 +420,31 @@ func scanEdges(rows *sql.Rows) ([]types.Edge, error) {
 	return edges, rows.Err()
 }
 
+// GetExtractionCache returns a cached extraction result if one exists for this
+// (content_hash, model, prompt_version) tuple. Returns ("", false) on miss.
+func (d *DB) GetExtractionCache(contentHash, model string, promptVersion int) (string, bool) {
+	var result string
+	err := d.q.QueryRow(
+		`SELECT result_json FROM extract_cache WHERE content_hash = ? AND model = ? AND prompt_version = ?`,
+		contentHash, model, promptVersion,
+	).Scan(&result)
+	if err != nil {
+		return "", false
+	}
+	return result, true
+}
+
+// SetExtractionCache stores an extraction result. Overwrites on conflict.
+func (d *DB) SetExtractionCache(contentHash, model string, promptVersion int, resultJSON string) error {
+	_, err := d.q.Exec(
+		`INSERT INTO extract_cache (content_hash, model, prompt_version, result_json, created_at)
+		 VALUES (?, ?, ?, ?, ?)
+		 ON CONFLICT(content_hash, model, prompt_version) DO UPDATE SET result_json = excluded.result_json, created_at = excluded.created_at`,
+		contentHash, model, promptVersion, resultJSON, time.Now().Format(time.RFC3339),
+	)
+	return err
+}
+
 // migrate applies incremental schema changes to existing databases.
 // Each migration is idempotent — ALTER TABLE ADD COLUMN is ignored if the column exists.
 func migrate(db *sql.DB) {
@@ -428,6 +453,56 @@ func migrate(db *sql.DB) {
 	}
 	for _, m := range migrations {
 		_, _ = db.Exec(m) // ignore "duplicate column name" errors
+	}
+	migrateSpeakerCheck(db)
+}
+
+// migrateSpeakerCheck widens the claims.speaker CHECK constraint to include
+// 'document'. SQLite can't ALTER a CHECK constraint in place, so we inspect
+// sqlite_master and rebuild the table only if the constraint is outdated.
+func migrateSpeakerCheck(db *sql.DB) {
+	var tableSQL string
+	if err := db.QueryRow(`SELECT sql FROM sqlite_master WHERE type='table' AND name='claims'`).Scan(&tableSQL); err != nil {
+		return
+	}
+	if strings.Contains(tableSQL, "'document'") {
+		return
+	}
+
+	stmts := []string{
+		`PRAGMA foreign_keys = OFF`,
+		`CREATE TABLE claims_new (
+			id          TEXT PRIMARY KEY,
+			text        TEXT NOT NULL,
+			basis       TEXT NOT NULL CHECK(basis IN (
+				'research','empirical','analogy','vibes','llm_output',
+				'deduction','assumption','definition'
+			)),
+			confidence  REAL DEFAULT 0.5 CHECK(confidence BETWEEN 0 AND 1),
+			source      TEXT DEFAULT '',
+			session_id  TEXT NOT NULL,
+			project     TEXT NOT NULL,
+			turn_number INTEGER DEFAULT 0,
+			speaker     TEXT DEFAULT 'user' CHECK(speaker IN ('user','assistant','document')),
+			created_at  TEXT NOT NULL,
+			challenged  INTEGER DEFAULT 0,
+			verified    INTEGER DEFAULT 0,
+			terminates_inquiry INTEGER DEFAULT 0
+		)`,
+		`INSERT INTO claims_new SELECT id, text, basis, confidence, source, session_id, project, turn_number, speaker, created_at, challenged, verified, terminates_inquiry FROM claims`,
+		`DROP TABLE claims`,
+		`ALTER TABLE claims_new RENAME TO claims`,
+		`CREATE INDEX IF NOT EXISTS idx_claims_project ON claims(project)`,
+		`CREATE INDEX IF NOT EXISTS idx_claims_basis ON claims(basis)`,
+		`CREATE INDEX IF NOT EXISTS idx_claims_text ON claims(text)`,
+		`PRAGMA foreign_keys = ON`,
+	}
+	for _, stmt := range stmts {
+		if _, err := db.Exec(stmt); err != nil {
+			// Abort and leave the DB in whatever state it's in. The next run
+			// will retry. Logging at this level would require a logger handle.
+			return
+		}
 	}
 }
 

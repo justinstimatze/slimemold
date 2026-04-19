@@ -52,6 +52,8 @@ func main() {
 		cmdStatus(project)
 	case "reset":
 		cmdReset(project)
+	case "ingest":
+		cmdIngest(project, args[1:])
 	case "help", "--help", "-h":
 		usage()
 	default:
@@ -73,6 +75,7 @@ Usage:
   slimemold [--project NAME] audit     Run topology analysis and print findings
   slimemold [--project NAME] status     Check if the hook is working
   slimemold [--project NAME] reset     Clear all data for project
+  slimemold [--project NAME] ingest PATH   Ingest a document (text or markdown) into the graph
   slimemold help                       Show this help
 
 Project resolution: --project flag > .slimemold-project file > directory name
@@ -599,6 +602,46 @@ func cmdReset(projectOverride string) {
 		os.Exit(1)
 	}
 	fmt.Fprintf(os.Stderr, "slimemold: reset project %q\n", queryProject)
+}
+
+func cmdIngest(projectOverride string, args []string) {
+	if len(args) == 0 {
+		fmt.Fprintln(os.Stderr, "slimemold ingest: missing PATH")
+		fmt.Fprintln(os.Stderr, "Usage: slimemold [--project NAME] ingest PATH")
+		os.Exit(1)
+	}
+	path := args[0]
+
+	cfg, err := config.Load()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "slimemold: config error: %s\n", err)
+		os.Exit(1)
+	}
+	if cfg.AnthropicAPIKey == "" {
+		fmt.Fprintln(os.Stderr, "slimemold: ANTHROPIC_API_KEY required for ingestion")
+		os.Exit(1)
+	}
+
+	dbProject, queryProject := resolveDBProject(projectOverride)
+	db, err := store.Open(cfg.DataDir, dbProject)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "slimemold: database error: %s\n", err)
+		os.Exit(1)
+	}
+	defer db.Close()
+
+	extractor := extract.New(cfg.AnthropicAPIKey, cfg.Model)
+	fmt.Fprintf(os.Stderr, "slimemold: ingesting %s into project %q\n", path, queryProject)
+
+	result, err := mcp.CoreIngestDocument(context.Background(), db, extractor, queryProject, path, 0)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "slimemold: ingest error: %s\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Fprintf(os.Stderr, "\nslimemold: %d new claims, %d new edges (total: %d claims, %d edges)\n",
+		result.NewClaims, result.NewEdges, result.TotalClaims, result.TotalEdges)
+	fmt.Println(result.Summary)
 }
 
 // hookRegistered checks if a slimemold hook is registered for the given event type.

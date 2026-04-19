@@ -109,11 +109,14 @@ months. The correction itself was the problem.
 
 Slimemold addresses all three with two pieces that work together:
 
-A **behavioral contract** (`CLAUDE.md`, written by `slimemold init`)
-tells the model that slimemold exists, that the user installed it on
-purpose, and that findings should be treated as opportunities for
-collaboration rather than occasions for criticism. This is read once.
-It sets the tone.
+A **behavioral contract** — the MCP server's initialization instructions,
+loaded into the model's system prompt at session start — tells the model
+that slimemold exists, that the user installed it on purpose, and that
+findings should be treated as opportunities for collaboration rather
+than occasions for criticism. `slimemold init` registers the MCP server
+globally in `~/.claude/settings.json`, so the contract travels with the
+tool and every project picks it up without per-project setup. This is
+read once. It sets the tone.
 
 **Structural observations** (injected every turn by the hook) provide
 specific facts: "this claim has basis=vibes and four things depend on
@@ -289,7 +292,7 @@ independently fact-checked Heraclitus. By turn 7 it said "Stop" and
 called the reasoning "galaxy-brained thinking." Effective. Also the
 kind of conversation you do not continue.
 
-**Slimemold** (CLAUDE.md contract + hook): The model challenged from
+**Slimemold** (contract + hook): The model challenged from
 turn 2, escalated through turns 4-6, and by turn 7 had autonomously
 run a Lotka-Volterra simulation to test the user's framework — showed
 it works for one case, validated the core insight, and demonstrated
@@ -475,10 +478,39 @@ slimemold audit                    # text findings summary
 ./slimemold audit                  # text findings summary
 ./slimemold -p myproject audit     # audit a specific project
 ./slimemold reset                  # clear graph for current project
+./slimemold ingest PATH            # analyze an authored document (see below)
 ```
 
 Project resolution: `--project` flag > `.slimemold-project` file > directory
 name.
+
+### Ingesting documents
+
+`slimemold ingest` runs the same extraction and analysis pipeline over authored
+prose — essays, papers, manifestos, book chapters — instead of a conversation
+transcript. The input is chunked along markdown heading boundaries (or
+paragraph-greedy for plain text), each chunk is fed to the extractor in
+document mode, and all claims land in the same project graph that `viz` and
+`audit` read from.
+
+```bash
+./slimemold -p reading-notes ingest essay.md
+./slimemold -p reading-notes audit
+```
+
+Two demo documents live in `examples/documents/` for testing the pipeline
+end-to-end: Marinetti's 1909 Futurist Manifesto, and Alan Sokal's 1996
+*Social Text* hoax paper. Both are deliberately performative — a manifesto of
+unsourced "we believes" and a paper engineered to look rigorous while being
+structurally vacuous — which is where slimemold has the cleanest signal to
+offer.
+
+Running against genuinely argumentative prose (Mill, Darwin, well-cited
+essays) is also possible but currently exercises a tool limitation: the
+extractor's decision tree tags any claim stated as a fact without
+in-text citation as `vibes`, so a densely-argued essay that reasons through
+its assertions without citing external sources on every line produces a
+vibes-heavy audit. This is a known issue we plan to address.
 
 ## Security Considerations
 

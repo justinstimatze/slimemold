@@ -31,6 +31,7 @@ type Speaker string
 const (
 	SpeakerUser      Speaker = "user"
 	SpeakerAssistant Speaker = "assistant"
+	SpeakerDocument  Speaker = "document"
 )
 
 // Claim is a substantive assertion made during reasoning.

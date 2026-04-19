@@ -17,7 +17,9 @@ See [static-instructions.md](static-instructions.md) for the exact text.
 
 ### Condition B: Slimemold
 
-`slimemold init` writes CLAUDE.md behavioral contract + registers hooks.
+`slimemold init` registers the Stop / UserPromptSubmit hooks and the
+slimemold MCP server in `~/.claude/settings.json` globally. The MCP
+server's initialization instructions carry the behavioral contract.
 No additional static epistemic instructions.
 
 ### Condition C: Control

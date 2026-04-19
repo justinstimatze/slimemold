@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS claims (
     session_id  TEXT NOT NULL,
     project     TEXT NOT NULL,
     turn_number INTEGER DEFAULT 0,
-    speaker     TEXT DEFAULT 'user' CHECK(speaker IN ('user','assistant')),
+    speaker     TEXT DEFAULT 'user' CHECK(speaker IN ('user','assistant','document')),
     created_at  TEXT NOT NULL,
     challenged  INTEGER DEFAULT 0,
     verified    INTEGER DEFAULT 0,
@@ -37,6 +37,15 @@ CREATE TABLE IF NOT EXISTS audits (
     claim_count INTEGER,
     edge_count  INTEGER,
     critical_count INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS extract_cache (
+    content_hash    TEXT NOT NULL,
+    model           TEXT NOT NULL,
+    prompt_version  INTEGER NOT NULL,
+    result_json     TEXT NOT NULL,
+    created_at      TEXT NOT NULL,
+    PRIMARY KEY (content_hash, model, prompt_version)
 );
 
 CREATE INDEX IF NOT EXISTS idx_claims_project ON claims(project);

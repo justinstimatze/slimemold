@@ -72,6 +72,23 @@ Do NOT flag actual conclusions that resolve something with evidence, reasoning, 
 
 Output valid JSON matching the provided schema. Extract ALL substantive claims, not just the main ones.`
 
+// documentModeSupplement is appended to the system prompt in document mode.
+// Input is a section of an authored document, not a conversation. All claims
+// come from the author; basis is judged from how the argument is grounded on
+// the page, not from speaker identity.
+const documentModeSupplement = `
+
+DOCUMENT MODE — override the speaker and basis rules above:
+The input is a section of an authored document (essay, paper, manifesto, book chapter), not a conversation transcript. Apply these overrides:
+
+- All claims come from the document's author. Set speaker="document" for every claim. Do NOT use "user" or "assistant".
+- The speaker-based basis rules (rules 6 and 7 in the decision tree: "stated by the assistant" → llm_output, "stated by the user without evidence" → vibes) do NOT apply. The author is not an AI, so "llm_output" is never the right basis for a document claim.
+- For document claims, the unsourced-assertion fallback is "vibes". An author asserting something as fact without citation, evidence, or reasoning is vibes regardless of their credentials or confidence.
+- "research" still requires a specific citation, author, study, or named finding IN THE TEXT of the chunk. A reference list at the end of the document does not automatically qualify every claim as research — only claims that point to a specific source in-text.
+- The chunk you are seeing may be accompanied by a heading path (e.g. "Section > Subsection"). Use it as context for what the author is arguing in this section, but extract only claims actually made in the chunk text.
+- Be alert to manifesto-style rhetorical moves: "We declare…", "We believe…", "It is self-evident that…" — these are assertions, usually basis=vibes unless the author provides a reason. Do not upgrade rhetorical certainty into research or deduction.
+- Cross-chunk edges: other chunks from this same document may have been processed already; their claims appear in the "existing claims" context. Draw edges to them when the current chunk builds on, supports, or contradicts an earlier claim from the same author.`
+
 // knowledgeModeSupplement is appended to the system prompt in knowledge mode.
 // It shifts extraction focus toward understanding gaps rather than argument structure.
 const knowledgeModeSupplement = `

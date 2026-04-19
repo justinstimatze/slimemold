@@ -20,6 +20,7 @@ type Extractor struct {
 	client        *anthropic.Client
 	model         string
 	KnowledgeMode bool // when true, shifts extraction toward knowledge gaps
+	DocumentMode  bool // when true, treats input as authored prose, not conversation
 }
 
 // New creates a new Extractor.
@@ -29,6 +30,11 @@ func New(apiKey, model string) *Extractor {
 		client: &client,
 		model:  model,
 	}
+}
+
+// Model returns the extraction model name (used as part of cache keys).
+func (e *Extractor) Model() string {
+	return e.model
 }
 
 // ExtractFromTranscript reads a transcript file and extracts claims.
@@ -55,6 +61,9 @@ func (e *Extractor) Extract(ctx context.Context, text string, existingClaims []E
 	sysPrompt := systemPrompt
 	if e.KnowledgeMode {
 		sysPrompt += knowledgeModeSupplement
+	}
+	if e.DocumentMode {
+		sysPrompt += documentModeSupplement
 	}
 
 	// Add a timeout to prevent indefinite hangs on API issues
@@ -130,7 +139,7 @@ func buildExtractionSchema() anthropic.ToolInputSchemaParam {
 						"basis":      map[string]interface{}{"type": "string", "enum": []string{"research", "empirical", "analogy", "vibes", "llm_output", "deduction", "assumption", "definition"}},
 						"source":     map[string]string{"type": "string", "description": "Citation if available"},
 						"confidence": map[string]interface{}{"type": "number", "minimum": 0, "maximum": 1},
-						"speaker":    map[string]interface{}{"type": "string", "enum": []string{"user", "assistant"}},
+						"speaker":    map[string]interface{}{"type": "string", "enum": []string{"user", "assistant", "document"}},
 						// Intra-batch edges (numeric indices within this extraction)
 						"depends_on_indices":  map[string]interface{}{"type": "array", "items": map[string]string{"type": "integer"}, "description": "Indices of claims in THIS batch that this claim depends on"},
 						"supports_indices":    map[string]interface{}{"type": "array", "items": map[string]string{"type": "integer"}, "description": "Indices of claims in THIS batch that this claim supports"},
