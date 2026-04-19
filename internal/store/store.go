@@ -460,6 +460,12 @@ func migrate(db *sql.DB) {
 // migrateSpeakerCheck widens the claims.speaker CHECK constraint to include
 // 'document'. SQLite can't ALTER a CHECK constraint in place, so we inspect
 // sqlite_master and rebuild the table only if the constraint is outdated.
+//
+// The rebuild runs inside a transaction so a partial failure (disk full,
+// process kill between DROP and RENAME) rolls back cleanly — without the
+// transaction, an interrupted rebuild could leave the DB without a `claims`
+// table at all. PRAGMA foreign_keys must be toggled outside the transaction
+// (modernc/sqlite doesn't allow the pragma inside an open tx).
 func migrateSpeakerCheck(db *sql.DB) {
 	var tableSQL string
 	if err := db.QueryRow(`SELECT sql FROM sqlite_master WHERE type='table' AND name='claims'`).Scan(&tableSQL); err != nil {
@@ -469,8 +475,23 @@ func migrateSpeakerCheck(db *sql.DB) {
 		return
 	}
 
-	stmts := []string{
-		`PRAGMA foreign_keys = OFF`,
+	if _, err := db.Exec(`PRAGMA foreign_keys = OFF`); err != nil {
+		return
+	}
+	defer func() { _, _ = db.Exec(`PRAGMA foreign_keys = ON`) }()
+
+	tx, err := db.Begin()
+	if err != nil {
+		return
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+
+	ddl := []string{
 		`CREATE TABLE claims_new (
 			id          TEXT PRIMARY KEY,
 			text        TEXT NOT NULL,
@@ -495,15 +516,16 @@ func migrateSpeakerCheck(db *sql.DB) {
 		`CREATE INDEX IF NOT EXISTS idx_claims_project ON claims(project)`,
 		`CREATE INDEX IF NOT EXISTS idx_claims_basis ON claims(basis)`,
 		`CREATE INDEX IF NOT EXISTS idx_claims_text ON claims(text)`,
-		`PRAGMA foreign_keys = ON`,
 	}
-	for _, stmt := range stmts {
-		if _, err := db.Exec(stmt); err != nil {
-			// Abort and leave the DB in whatever state it's in. The next run
-			// will retry. Logging at this level would require a logger handle.
+	for _, stmt := range ddl {
+		if _, err := tx.Exec(stmt); err != nil {
 			return
 		}
 	}
+	if err := tx.Commit(); err != nil {
+		return
+	}
+	committed = true
 }
 
 var projectRe = regexp.MustCompile(`[^a-zA-Z0-9_\-]`)

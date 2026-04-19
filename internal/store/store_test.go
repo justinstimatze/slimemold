@@ -1,8 +1,11 @@
 package store
 
 import (
+	"database/sql"
 	"os"
+	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/justinstimatze/slimemold/types"
 )
@@ -340,5 +343,89 @@ func TestInTxNestedSafe(t *testing.T) {
 	}
 	if len(claims) > 0 && claims[0].ID != "keep" {
 		t.Errorf("surviving claim = %s, want keep", claims[0].ID)
+	}
+}
+
+// TestSpeakerCheckMigration verifies that an existing DB created with the old
+// claims.speaker CHECK constraint (pre-'document') is rebuilt on Open, data is
+// preserved, and the new constraint accepts 'document' speakers.
+func TestSpeakerCheckMigration(t *testing.T) {
+	dir := t.TempDir()
+	projectDir := filepath.Join(dir, "test-project")
+	if err := os.MkdirAll(projectDir, 0700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	dbPath := filepath.Join(projectDir, "graph.sqlite")
+	dsn := dbPath + "?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=foreign_keys(ON)"
+
+	// Create a DB with the OLD schema — speaker CHECK only allows user/assistant.
+	{
+		raw, err := sql.Open("sqlite", dsn)
+		if err != nil {
+			t.Fatalf("raw open: %v", err)
+		}
+		oldSchema := `CREATE TABLE claims (
+			id          TEXT PRIMARY KEY,
+			text        TEXT NOT NULL,
+			basis       TEXT NOT NULL CHECK(basis IN ('research','empirical','analogy','vibes','llm_output','deduction','assumption','definition')),
+			confidence  REAL DEFAULT 0.5,
+			source      TEXT DEFAULT '',
+			session_id  TEXT NOT NULL,
+			project     TEXT NOT NULL,
+			turn_number INTEGER DEFAULT 0,
+			speaker     TEXT DEFAULT 'user' CHECK(speaker IN ('user','assistant')),
+			created_at  TEXT NOT NULL,
+			challenged  INTEGER DEFAULT 0,
+			verified    INTEGER DEFAULT 0
+		)`
+		if _, err := raw.Exec(oldSchema); err != nil {
+			t.Fatalf("create old schema: %v", err)
+		}
+		// Seed a row so we can verify preservation.
+		_, err = raw.Exec(
+			`INSERT INTO claims (id, text, basis, session_id, project, speaker, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+			"pre-migration-claim", "seeded before migration", "vibes",
+			"s1", "test-project", "user", time.Now().Format(time.RFC3339),
+		)
+		if err != nil {
+			t.Fatalf("seed insert: %v", err)
+		}
+		// Confirm the OLD constraint rejects 'document' — sanity check.
+		_, err = raw.Exec(
+			`INSERT INTO claims (id, text, basis, session_id, project, speaker, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+			"reject-me", "should be blocked", "vibes", "s1", "test-project", "document", time.Now().Format(time.RFC3339),
+		)
+		if err == nil {
+			t.Fatal("expected old schema to reject speaker='document', but insert succeeded")
+		}
+		raw.Close()
+	}
+
+	// Open via the store — this runs migrate() → migrateSpeakerCheck().
+	db, err := Open(dir, "test-project")
+	if err != nil {
+		t.Fatalf("Open after migration: %v", err)
+	}
+	defer db.Close()
+
+	// Seeded row must still be there.
+	existing, err := db.GetClaim("pre-migration-claim")
+	if err != nil {
+		t.Fatalf("seeded claim lost during migration: %v", err)
+	}
+	if existing.Text != "seeded before migration" {
+		t.Errorf("seeded claim text corrupted: %q", existing.Text)
+	}
+
+	// 'document' speaker should now be accepted.
+	doc := &types.Claim{
+		Text:      "post-migration doc claim",
+		Basis:     types.BasisDefinition,
+		SessionID: "s2",
+		Project:   "test-project",
+		Speaker:   types.SpeakerDocument,
+	}
+	if err := db.CreateClaim(doc); err != nil {
+		t.Fatalf("CreateClaim with speaker=document after migration: %v", err)
 	}
 }

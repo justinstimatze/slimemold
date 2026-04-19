@@ -122,6 +122,109 @@ func TestChunkContentHashStable(t *testing.T) {
 	}
 }
 
+func TestChunkIgnoresHeadingsInCodeFences(t *testing.T) {
+	content := "# Real Heading\n\nSome body.\n\n" +
+		"```bash\n" +
+		"# Not a heading — this is a bash comment in a code fence\n" +
+		"echo hi\n" +
+		"```\n\n" +
+		"## Another Real Heading\n\nMore body.\n"
+	chunks := Chunk(content, 0)
+	for _, c := range chunks {
+		for _, h := range c.HeadingPath {
+			if strings.Contains(h, "Not a heading") {
+				t.Errorf("bash comment was treated as heading: %q", h)
+			}
+		}
+	}
+
+	// We expect exactly 2 chunks (under "Real Heading" and "Another Real Heading"),
+	// not 3 — the fake heading inside the fence must not create a boundary.
+	if len(chunks) != 2 {
+		t.Errorf("expected 2 chunks, got %d", len(chunks))
+	}
+}
+
+func TestChunkSkipsBibliographySections(t *testing.T) {
+	content := `# Paper
+
+## Introduction
+
+Body of intro.
+
+## Argument
+
+Body of argument.
+
+## Works Cited
+
+Aronowitz 1988. Science as Power. Minneapolis: U of Minnesota P.
+
+Bhabha 1994. The Location of Culture. London: Routledge.
+
+## Notes
+
+1. Some footnote text.
+
+2. More footnote text.
+`
+	chunks := Chunk(content, 0)
+
+	for _, c := range chunks {
+		for _, h := range c.HeadingPath {
+			lower := strings.ToLower(h)
+			if strings.Contains(lower, "works cited") || strings.Contains(lower, "notes") {
+				t.Errorf("bibliography section was not skipped: heading path %v", c.HeadingPath)
+			}
+		}
+		if strings.Contains(c.Text, "Aronowitz 1988") || strings.Contains(c.Text, "footnote text") {
+			t.Errorf("bibliography content leaked into chunk: %s", c.Text)
+		}
+	}
+
+	// Expect 2 chunks: Introduction and Argument. Works Cited + Notes should
+	// disappear entirely.
+	if len(chunks) != 2 {
+		t.Errorf("expected 2 chunks (intro + argument), got %d", len(chunks))
+	}
+}
+
+func TestChunkBibliographySkipResumesOnShallowerHeading(t *testing.T) {
+	// "## References" at h2 should only swallow subsequent h3+ content.
+	// A following "## Appendix" at h2 should not be skipped.
+	content := `# Paper
+
+## Body
+
+Body content.
+
+## References
+
+Smith 2020. Work.
+
+### Primary
+
+Jones 2019. Old work.
+
+## Appendix
+
+Appendix content that should survive.
+`
+	chunks := Chunk(content, 0)
+	found := false
+	for _, c := range chunks {
+		if strings.Contains(c.Text, "Appendix content that should survive") {
+			found = true
+		}
+		if strings.Contains(c.Text, "Smith 2020") || strings.Contains(c.Text, "Jones 2019") {
+			t.Errorf("bibliography content leaked: %s", c.Text)
+		}
+	}
+	if !found {
+		t.Errorf("Appendix section after References was incorrectly skipped")
+	}
+}
+
 func TestChunkOversizedParagraphHardSplit(t *testing.T) {
 	// Single paragraph larger than budget, multiple sentences.
 	long := strings.Repeat("This is a sentence. ", 500) // ~10K chars, one paragraph

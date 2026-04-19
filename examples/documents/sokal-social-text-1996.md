@@ -610,7 +610,9 @@ Young, T.R. 1992. Chaos theory and human agency: Humanist sociology in a postmod
 
 Zizek, Slavoj. 1991. Looking Awry: An Introduction to Jacques Lacan through Popular Culture. Cambridge, Mass.: MIT Press.
 
-## Notes 1...metaphysics Heisenberg (1958), Bohr (1963).
+## Notes
+
+1...metaphysics Heisenberg (1958), Bohr (1963).
 
 2...credibility Kuhn (1970), Feyerabend (1975), Latour (1987), Aronowitz (1988b), Bloor (1991).
 

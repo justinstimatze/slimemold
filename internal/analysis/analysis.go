@@ -509,11 +509,17 @@ func FormatAuditSummary(topo *types.Topology, vulns *types.Vulnerabilities) stri
 // This is the essay's core phenomenon: processing fluency masquerading as truth.
 func findFluencyTraps(claims []types.Claim, edges []types.Edge) []types.Vulnerability {
 	// Basis → maximum warranted confidence (no buffer — the ceiling IS the threshold)
+	// Definition claims are stipulative: an author-declared meaning ("`bd close` closes
+	// the issue") is 1.0 by construction. Instructional documents were producing dozens
+	// of false positives here before the ceiling was raised to 1.0. The tradeoff is we
+	// miss cases where "X is Y by definition" smuggles a knowledge claim in as a
+	// definition — but that pattern is hard to detect mechanically, and the false-
+	// positive volume on instructional prose made the real findings hard to see.
 	ceilings := map[types.Basis]float64{
 		types.BasisResearch:   0.95,
 		types.BasisEmpirical:  0.95,
 		types.BasisDeduction:  0.95,
-		types.BasisDefinition: 0.95,
+		types.BasisDefinition: 1.0,
 		types.BasisAnalogy:    0.7,
 		types.BasisVibes:      0.5,
 		types.BasisLLMOutput:  0.5,

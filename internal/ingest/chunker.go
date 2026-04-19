@@ -23,6 +23,10 @@ const DefaultMaxChars = 12000
 
 var atxHeading = regexp.MustCompile(`^(#{1,6})\s+(.+?)\s*$`)
 
+// codeFence matches the opening/closing line of a fenced code block.
+// CommonMark: three or more backticks or tildes at the start of a line.
+var codeFence = regexp.MustCompile("^(?:`{3,}|~{3,})")
+
 // Chunk splits a document into extractable chunks. If the content has markdown
 // ATX headings, it chunks along section boundaries and subdivides large sections
 // at paragraph boundaries. Otherwise it falls back to paragraph-boundary greedy
@@ -86,7 +90,15 @@ func looksLikeAttributionHeader(lines []string) bool {
 }
 
 func hasHeadings(content string) bool {
+	inCode := false
 	for _, line := range strings.Split(content, "\n") {
+		if codeFence.MatchString(line) {
+			inCode = !inCode
+			continue
+		}
+		if inCode {
+			continue
+		}
 		if atxHeading.MatchString(line) {
 			return true
 		}
@@ -98,6 +110,11 @@ func hasHeadings(content string) bool {
 // path. Each section becomes one chunk unless it exceeds maxChars, in which
 // case the section body is subdivided at paragraph boundaries (preserving the
 // heading path across the resulting chunks).
+//
+// Bibliography-style sections ("References", "Works Cited", "Bibliography",
+// "Notes", etc.) are skipped entirely. They contain no argumentative claims;
+// feeding a reference list to the extractor wastes API calls and can time out
+// on very long bibliographies.
 func chunkByHeadings(content string, maxChars int) []DocumentChunk {
 	var out []DocumentChunk
 	lines := strings.Split(content, "\n")
@@ -107,6 +124,11 @@ func chunkByHeadings(content string, maxChars int) []DocumentChunk {
 	var headingStack []string
 	var body []string
 	chunkIdx := 0
+	inCode := false
+	// skipDepth == 0 means not skipping. skipDepth == N means we entered a
+	// bibliography section at heading depth N and should swallow everything
+	// until we see a heading at depth <= N that is NOT itself bibliography.
+	skipDepth := 0
 
 	flush := func() {
 		if len(body) == 0 {
@@ -125,10 +147,33 @@ func chunkByHeadings(content string, maxChars int) []DocumentChunk {
 	}
 
 	for _, line := range lines {
+		if codeFence.MatchString(line) {
+			inCode = !inCode
+			if skipDepth == 0 {
+				body = append(body, line)
+			}
+			continue
+		}
+		if inCode {
+			if skipDepth == 0 {
+				body = append(body, line)
+			}
+			continue
+		}
 		if m := atxHeading.FindStringSubmatch(line); m != nil {
 			flush()
 			depth := len(m[1])
 			title := m[2]
+			if skipDepth > 0 && depth > skipDepth {
+				// Still inside the bibliography section; skip this subheading.
+				continue
+			}
+			// Reached a heading at or above the bibliography-entry depth.
+			skipDepth = 0
+			if isBibliographyHeading(title) {
+				skipDepth = depth
+				continue
+			}
 			if depth-1 < len(headingStack) {
 				headingStack = headingStack[:depth-1]
 			}
@@ -138,10 +183,27 @@ func chunkByHeadings(content string, maxChars int) []DocumentChunk {
 			headingStack = append(headingStack, title)
 			continue
 		}
-		body = append(body, line)
+		if skipDepth == 0 {
+			body = append(body, line)
+		}
 	}
 	flush()
 	return out
+}
+
+// isBibliographyHeading reports whether a heading title marks a section that
+// contains references/citations rather than argumentative prose. Match is
+// exact (case-insensitive, whitespace-trimmed) to avoid false positives on
+// titles like "Notes on methodology" or "References we consulted".
+func isBibliographyHeading(title string) bool {
+	t := strings.ToLower(strings.TrimSpace(title))
+	switch t {
+	case "references", "bibliography", "works cited", "citations",
+		"notes", "footnotes", "endnotes", "end notes",
+		"further reading", "sources":
+		return true
+	}
+	return false
 }
 
 // subdivideIfLarge returns either the section as a single chunk or, if the
