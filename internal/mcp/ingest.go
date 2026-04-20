@@ -177,52 +177,7 @@ func ingestOneChunk(ctx context.Context, db *store.DB, extractor *extract.Extrac
 
 	newEdges := 0
 	for _, ec := range result.Claims {
-		fromID, ok := indexToID[ec.Index]
-		if !ok {
-			continue
-		}
-		for _, targetIdx := range ec.DependsOnIndices {
-			if toID, ok := indexToID[targetIdx]; ok && toID != fromID {
-				if createEdgeIfNew(txDB, fromID, toID, types.RelDependsOn) {
-					newEdges++
-				}
-			}
-		}
-		for _, targetIdx := range ec.SupportsIndices {
-			if toID, ok := indexToID[targetIdx]; ok && toID != fromID {
-				if createEdgeIfNew(txDB, fromID, toID, types.RelSupports) {
-					newEdges++
-				}
-			}
-		}
-		for _, targetIdx := range ec.ContradictsIndices {
-			if toID, ok := indexToID[targetIdx]; ok && toID != fromID {
-				if createEdgeIfNew(txDB, fromID, toID, types.RelContradicts) {
-					newEdges++
-				}
-			}
-		}
-		for _, existingID := range ec.DependsOnExisting {
-			if existingID != fromID && claimExists(txDB, existingID) {
-				if createEdgeIfNew(txDB, fromID, existingID, types.RelDependsOn) {
-					newEdges++
-				}
-			}
-		}
-		for _, existingID := range ec.SupportsExisting {
-			if existingID != fromID && claimExists(txDB, existingID) {
-				if createEdgeIfNew(txDB, fromID, existingID, types.RelSupports) {
-					newEdges++
-				}
-			}
-		}
-		for _, existingID := range ec.ContradictsExisting {
-			if existingID != fromID && claimExists(txDB, existingID) {
-				if createEdgeIfNew(txDB, fromID, existingID, types.RelContradicts) {
-					newEdges++
-				}
-			}
-		}
+		newEdges += resolveEdgesForClaim(txDB, ec, indexToID)
 	}
 
 	pruneHighDegreeEdges(txDB, project)
@@ -231,6 +186,51 @@ func ingestOneChunk(ctx context.Context, db *store.DB, extractor *extract.Extrac
 		return 0, 0, fmt.Errorf("commit: %w", err)
 	}
 	return newClaims, newEdges, nil
+}
+
+// resolveEdgesForClaim inserts all edges (intra-batch by index, cross-batch by
+// existing claim ID) for a single extracted claim and returns the count of
+// edges actually created.
+func resolveEdgesForClaim(txDB *store.DB, ec types.ExtractedClaim, indexToID map[int]string) int {
+	fromID, ok := indexToID[ec.Index]
+	if !ok {
+		return 0
+	}
+	n := 0
+	n += resolveIntraBatchEdges(txDB, fromID, ec.DependsOnIndices, indexToID, types.RelDependsOn)
+	n += resolveIntraBatchEdges(txDB, fromID, ec.SupportsIndices, indexToID, types.RelSupports)
+	n += resolveIntraBatchEdges(txDB, fromID, ec.ContradictsIndices, indexToID, types.RelContradicts)
+	n += resolveCrossBatchEdges(txDB, fromID, ec.DependsOnExisting, types.RelDependsOn)
+	n += resolveCrossBatchEdges(txDB, fromID, ec.SupportsExisting, types.RelSupports)
+	n += resolveCrossBatchEdges(txDB, fromID, ec.ContradictsExisting, types.RelContradicts)
+	return n
+}
+
+func resolveIntraBatchEdges(txDB *store.DB, fromID string, targets []int, indexToID map[int]string, rel types.Relation) int {
+	n := 0
+	for _, targetIdx := range targets {
+		toID, ok := indexToID[targetIdx]
+		if !ok || toID == fromID {
+			continue
+		}
+		if createEdgeIfNew(txDB, fromID, toID, rel) {
+			n++
+		}
+	}
+	return n
+}
+
+func resolveCrossBatchEdges(txDB *store.DB, fromID string, existingIDs []string, rel types.Relation) int {
+	n := 0
+	for _, existingID := range existingIDs {
+		if existingID == fromID || !claimExists(txDB, existingID) {
+			continue
+		}
+		if createEdgeIfNew(txDB, fromID, existingID, rel) {
+			n++
+		}
+	}
+	return n
 }
 
 // maxDocumentBytes caps how much we're willing to load into memory at once.
