@@ -24,7 +24,7 @@ import (
 // documentPromptVersion bumps whenever systemPrompt + documentModeSupplement
 // changes in a way that invalidates prior cached extractions. The cache key
 // includes this so we don't serve stale results after a prompt edit.
-const documentPromptVersion = 2
+const documentPromptVersion = 3
 
 // CoreIngestDocument chunks an authored document and extracts claims from each
 // chunk. One session per ingest, named deterministically from the path so
