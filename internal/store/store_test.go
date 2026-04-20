@@ -428,6 +428,19 @@ func TestSpeakerCheckMigration(t *testing.T) {
 	if err := db.CreateClaim(doc); err != nil {
 		t.Fatalf("CreateClaim with speaker=document after migration: %v", err)
 	}
+
+	// 'convention' basis should also be accepted — migrateBasisCheck runs in
+	// the same migration chain and widens basis CHECK to include it.
+	conv := &types.Claim{
+		Text:      "this project uses beads for issue tracking",
+		Basis:     types.BasisConvention,
+		SessionID: "s2",
+		Project:   "test-project",
+		Speaker:   types.SpeakerDocument,
+	}
+	if err := db.CreateClaim(conv); err != nil {
+		t.Fatalf("CreateClaim with basis=convention after migration: %v", err)
+	}
 }
 
 func TestExtractionCacheRoundtrip(t *testing.T) {

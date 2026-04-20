@@ -3,7 +3,7 @@ CREATE TABLE IF NOT EXISTS claims (
     text        TEXT NOT NULL,
     basis       TEXT NOT NULL CHECK(basis IN (
         'research','empirical','analogy','vibes','llm_output',
-        'deduction','assumption','definition'
+        'deduction','assumption','definition','convention'
     )),
     confidence  REAL DEFAULT 0.5 CHECK(confidence BETWEEN 0 AND 1),
     source      TEXT DEFAULT '',

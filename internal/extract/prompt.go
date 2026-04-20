@@ -9,12 +9,13 @@ For each claim, determine:
   1. Does the claim cite a specific paper, author, study, or named finding? → "research"
   2. Does the claim describe first-person observation ("I saw", "we tested", "I noticed")? → "empirical"
   3. Does the claim explicitly define a term or concept? → "definition"
-  4. Does the claim follow explicit logical steps from stated premises? → "deduction"
-  5. Does the claim reason by comparison to another domain? → "analogy"
-  6. Was the claim stated by the assistant? → "llm_output"
-  7. Was the claim stated by the user without evidence? → "vibes"
-  8. Is the claim taken as given without justification? → "assumption"
-  If none of the above clearly apply, default to "vibes" — not "assumption". The key distinction: "assumption" is a premise explicitly or implicitly marked as given ("let's assume X", "given that X"). "vibes" is an assertion presented as fact without evidence. When in doubt between assumption and vibes, choose vibes.
+  4. Does the claim declare a project/organization policy or adopted practice ("this project uses X", "agents must Y", "we track work in Z")? → "convention"
+  5. Does the claim follow explicit logical steps from stated premises? → "deduction"
+  6. Does the claim reason by comparison to another domain? → "analogy"
+  7. Was the claim stated by the assistant? → "llm_output"
+  8. Was the claim stated by the user without evidence? → "vibes"
+  9. Is the claim taken as given without justification? → "assumption"
+  If none of the above clearly apply, default to "vibes" — not "assumption". The key distinction: "assumption" is a premise explicitly or implicitly marked as given ("let's assume X", "given that X"). "vibes" is an assertion presented as fact without evidence. "convention" is specifically for stipulative practice/policy choices by a named actor (a project, team, organization, author voice) — it is correct-by-fiat for the scope it declares. When in doubt between convention and vibes, ask: does the claim describe a *chosen practice* (convention) or an *asserted fact about the world* (vibes)? "This project uses beads" is convention; "beads is the best issue tracker" is vibes.
 - source: citation if available, empty string otherwise
 - confidence: 0.0-1.0, how confidently the claim was stated
 - speaker: "user" or "assistant"
@@ -58,6 +59,7 @@ Additional precision:
 - "llm_output" is any unsourced factual claim by the assistant. The assistant saying "X is true" without citing who established X is llm_output.
 - "deduction" requires explicit logical steps: "if A then B, A, therefore B." Two sequential assertions are NOT deduction.
 - "empirical" requires first-person observation: "I tried X and saw Y".
+- "convention" is for stipulative practice/policy by a named actor. Look for phrasing like "this project uses", "we track", "agents should", "the team's convention is", "our workflow is". It is NOT for general factual claims about the world; only for choices declared as adopted practice.
 
 PREMATURE CLOSURE — thought-terminating cliches:
 Set terminates_inquiry=true for claims that function as rhetorical stop signals — phrases that FEEL like conclusions but don't actually resolve the open question. These are claims that shut down further investigation by disguising a lack of resolution as wisdom. Examples:

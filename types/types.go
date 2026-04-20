@@ -14,6 +14,11 @@ const (
 	BasisDeduction  Basis = "deduction"
 	BasisAssumption Basis = "assumption"
 	BasisDefinition Basis = "definition"
+	// BasisConvention is a project/organization-declared practice or policy
+	// stated as an adopted choice: "this project uses Go 1.26", "agents must
+	// push after committing", "we track work in beads". Stipulative like
+	// definition but about practice/policy rather than semantics of terms.
+	BasisConvention Basis = "convention"
 )
 
 // Relation describes the epistemic relationship between two claims.

@@ -51,6 +51,8 @@ type claimsParams struct {
 	AbsorbID       string   `json:"absorb_id,omitempty"`
 	TranscriptPath string   `json:"transcript_path,omitempty"`
 	SinceTurn      int      `json:"since_turn,omitempty"`
+	DocumentPath   string   `json:"document_path,omitempty"`
+	MaxChars       int      `json:"max_chars,omitempty"`
 }
 
 var topologySchema = json.RawMessage(`{
@@ -70,7 +72,7 @@ var topologySchema = json.RawMessage(`{
 var claimsSchema = json.RawMessage(`{
 	"type": "object",
 	"properties": {
-		"action": {"type": "string", "description": "Action: register | challenge | merge | parse_transcript", "enum": ["register", "challenge", "merge", "parse_transcript"]},
+		"action": {"type": "string", "description": "Action: register | challenge | merge | parse_transcript | ingest_document", "enum": ["register", "challenge", "merge", "parse_transcript", "ingest_document"]},
 		"project": {"type": "string", "description": "Project name"},
 		"text": {"type": "string", "description": "Claim text (for register)"},
 		"basis": {"type": "string", "description": "Epistemic basis (for register)"},
@@ -85,7 +87,9 @@ var claimsSchema = json.RawMessage(`{
 		"keep_id": {"type": "string", "description": "Claim to keep (for merge)"},
 		"absorb_id": {"type": "string", "description": "Claim to absorb (for merge)"},
 		"transcript_path": {"type": "string", "description": "Path to transcript file (for parse_transcript)"},
-		"since_turn": {"type": "integer", "description": "Parse from this turn number onwards"}
+		"since_turn": {"type": "integer", "description": "Parse from this turn number onwards"},
+		"document_path": {"type": "string", "description": "Path to an authored document — essay, paper, markdown notes — to chunk and extract (for ingest_document)"},
+		"max_chars": {"type": "integer", "description": "Soft chunk-size limit in characters (default 12000)"}
 	},
 	"required": ["action", "project"]
 }`)
@@ -100,7 +104,7 @@ func RunMCP(db *store.DB, extractor *extract.Extractor, project string) error {
 
 	srv := server.NewMCPServer(
 		"slimemold",
-		"0.3.0",
+		"0.4.0",
 		server.WithToolCapabilities(true),
 		server.WithInstructions(serverInstructions),
 	)
@@ -111,7 +115,7 @@ func RunMCP(db *store.DB, extractor *extract.Extractor, project string) error {
 	)
 
 	srv.AddTool(
-		sdkmcp.NewToolWithRawSchema("claims", "Modify the reasoning topology graph. Actions: register, challenge, merge, parse_transcript", claimsSchema),
+		sdkmcp.NewToolWithRawSchema("claims", "Modify the reasoning topology graph. Actions: register, challenge, merge, parse_transcript, ingest_document", claimsSchema),
 		s.handleClaims,
 	)
 
@@ -272,6 +276,26 @@ func (s *mcpServer) handleClaims(ctx context.Context, req sdkmcp.CallToolRequest
 			return sdkmcp.NewToolResultError(err.Error()), nil
 		}
 		return sdkmcp.NewToolResultText(audit.HookSummary), nil
+
+	case "ingest_document":
+		if s.extractor == nil {
+			return sdkmcp.NewToolResultError("extraction unavailable: ANTHROPIC_API_KEY not set"), nil
+		}
+		if args.DocumentPath == "" {
+			return sdkmcp.NewToolResultError("document_path required"), nil
+		}
+		audit, err := CoreIngestDocument(ctx, s.db, s.extractor, project, args.DocumentPath, args.MaxChars)
+		if err != nil {
+			return sdkmcp.NewToolResultError(err.Error()), nil
+		}
+		return jsonResult(map[string]interface{}{
+			"new_claims":      audit.NewClaims,
+			"new_edges":       audit.NewEdges,
+			"total_claims":    audit.TotalClaims,
+			"total_edges":     audit.TotalEdges,
+			"summary":         audit.Summary,
+			"vulnerabilities": audit.Vulnerabilities,
+		})
 
 	default:
 		return sdkmcp.NewToolResultError(fmt.Sprintf("unknown action: %s", args.Action)), nil

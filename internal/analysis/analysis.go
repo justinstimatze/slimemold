@@ -520,6 +520,9 @@ func findFluencyTraps(claims []types.Claim, edges []types.Edge) []types.Vulnerab
 		types.BasisEmpirical:  0.95,
 		types.BasisDeduction:  0.95,
 		types.BasisDefinition: 1.0,
+		// Conventions are stipulative like definitions — a project declaring
+		// "we use X" is correct-by-fiat at confidence 1.0.
+		types.BasisConvention: 1.0,
 		types.BasisAnalogy:    0.7,
 		types.BasisVibes:      0.5,
 		types.BasisLLMOutput:  0.5,

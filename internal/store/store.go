@@ -466,6 +466,7 @@ func migrate(db *sql.DB) {
 		_, _ = db.Exec(m) // ignore "duplicate column name" errors
 	}
 	migrateSpeakerCheck(db)
+	migrateBasisCheck(db)
 }
 
 // migrateSpeakerCheck widens the claims.speaker CHECK constraint to include
@@ -478,11 +479,26 @@ func migrate(db *sql.DB) {
 // table at all. PRAGMA foreign_keys must be toggled outside the transaction
 // (modernc/sqlite doesn't allow the pragma inside an open tx).
 func migrateSpeakerCheck(db *sql.DB) {
+	rebuildClaimsIfMissing(db, "'document'", oldSpeakerRebuild)
+}
+
+// migrateBasisCheck widens the claims.basis CHECK constraint to include
+// 'convention'. Same pattern as migrateSpeakerCheck — inspect sqlite_master,
+// rebuild only if the marker is absent. DBs that went through speakerCheck
+// first will see their claims table rebuilt once more here; brand-new DBs
+// created from schema.sql already have the marker and this is a no-op.
+func migrateBasisCheck(db *sql.DB) {
+	rebuildClaimsIfMissing(db, "'convention'", oldBasisRebuild)
+}
+
+// rebuildClaimsIfMissing rebuilds the claims table using the provided DDL
+// slice if the current CREATE TABLE statement doesn't contain `marker`.
+func rebuildClaimsIfMissing(db *sql.DB, marker string, ddl []string) {
 	var tableSQL string
 	if err := db.QueryRow(`SELECT sql FROM sqlite_master WHERE type='table' AND name='claims'`).Scan(&tableSQL); err != nil {
 		return
 	}
-	if strings.Contains(tableSQL, "'document'") {
+	if strings.Contains(tableSQL, marker) {
 		return
 	}
 
@@ -502,32 +518,6 @@ func migrateSpeakerCheck(db *sql.DB) {
 		}
 	}()
 
-	ddl := []string{
-		`CREATE TABLE claims_new (
-			id          TEXT PRIMARY KEY,
-			text        TEXT NOT NULL,
-			basis       TEXT NOT NULL CHECK(basis IN (
-				'research','empirical','analogy','vibes','llm_output',
-				'deduction','assumption','definition'
-			)),
-			confidence  REAL DEFAULT 0.5 CHECK(confidence BETWEEN 0 AND 1),
-			source      TEXT DEFAULT '',
-			session_id  TEXT NOT NULL,
-			project     TEXT NOT NULL,
-			turn_number INTEGER DEFAULT 0,
-			speaker     TEXT DEFAULT 'user' CHECK(speaker IN ('user','assistant','document')),
-			created_at  TEXT NOT NULL,
-			challenged  INTEGER DEFAULT 0,
-			verified    INTEGER DEFAULT 0,
-			terminates_inquiry INTEGER DEFAULT 0
-		)`,
-		`INSERT INTO claims_new SELECT id, text, basis, confidence, source, session_id, project, turn_number, speaker, created_at, challenged, verified, terminates_inquiry FROM claims`,
-		`DROP TABLE claims`,
-		`ALTER TABLE claims_new RENAME TO claims`,
-		`CREATE INDEX IF NOT EXISTS idx_claims_project ON claims(project)`,
-		`CREATE INDEX IF NOT EXISTS idx_claims_basis ON claims(basis)`,
-		`CREATE INDEX IF NOT EXISTS idx_claims_text ON claims(text)`,
-	}
 	for _, stmt := range ddl {
 		if _, err := tx.Exec(stmt); err != nil {
 			return
@@ -537,6 +527,69 @@ func migrateSpeakerCheck(db *sql.DB) {
 		return
 	}
 	committed = true
+}
+
+// oldSpeakerRebuild is the DDL used when migrating from the pre-document
+// schema (speaker CHECK only allows user/assistant). This rebuild includes
+// 'document' as an accepted speaker but uses the OLD basis list (without
+// 'convention') because it may run against DBs written before the basis
+// CHECK widened — migrateBasisCheck runs afterward if needed.
+var oldSpeakerRebuild = []string{
+	`CREATE TABLE claims_new (
+		id          TEXT PRIMARY KEY,
+		text        TEXT NOT NULL,
+		basis       TEXT NOT NULL CHECK(basis IN (
+			'research','empirical','analogy','vibes','llm_output',
+			'deduction','assumption','definition'
+		)),
+		confidence  REAL DEFAULT 0.5 CHECK(confidence BETWEEN 0 AND 1),
+		source      TEXT DEFAULT '',
+		session_id  TEXT NOT NULL,
+		project     TEXT NOT NULL,
+		turn_number INTEGER DEFAULT 0,
+		speaker     TEXT DEFAULT 'user' CHECK(speaker IN ('user','assistant','document')),
+		created_at  TEXT NOT NULL,
+		challenged  INTEGER DEFAULT 0,
+		verified    INTEGER DEFAULT 0,
+		terminates_inquiry INTEGER DEFAULT 0
+	)`,
+	`INSERT INTO claims_new SELECT id, text, basis, confidence, source, session_id, project, turn_number, speaker, created_at, challenged, verified, terminates_inquiry FROM claims`,
+	`DROP TABLE claims`,
+	`ALTER TABLE claims_new RENAME TO claims`,
+	`CREATE INDEX IF NOT EXISTS idx_claims_project ON claims(project)`,
+	`CREATE INDEX IF NOT EXISTS idx_claims_basis ON claims(basis)`,
+	`CREATE INDEX IF NOT EXISTS idx_claims_text ON claims(text)`,
+}
+
+// oldBasisRebuild widens the basis CHECK to include 'convention'. Runs on
+// DBs that already have 'document' in the speaker CHECK (i.e., previously
+// went through migrateSpeakerCheck) but were created before 'convention'
+// was added.
+var oldBasisRebuild = []string{
+	`CREATE TABLE claims_new (
+		id          TEXT PRIMARY KEY,
+		text        TEXT NOT NULL,
+		basis       TEXT NOT NULL CHECK(basis IN (
+			'research','empirical','analogy','vibes','llm_output',
+			'deduction','assumption','definition','convention'
+		)),
+		confidence  REAL DEFAULT 0.5 CHECK(confidence BETWEEN 0 AND 1),
+		source      TEXT DEFAULT '',
+		session_id  TEXT NOT NULL,
+		project     TEXT NOT NULL,
+		turn_number INTEGER DEFAULT 0,
+		speaker     TEXT DEFAULT 'user' CHECK(speaker IN ('user','assistant','document')),
+		created_at  TEXT NOT NULL,
+		challenged  INTEGER DEFAULT 0,
+		verified    INTEGER DEFAULT 0,
+		terminates_inquiry INTEGER DEFAULT 0
+	)`,
+	`INSERT INTO claims_new SELECT id, text, basis, confidence, source, session_id, project, turn_number, speaker, created_at, challenged, verified, terminates_inquiry FROM claims`,
+	`DROP TABLE claims`,
+	`ALTER TABLE claims_new RENAME TO claims`,
+	`CREATE INDEX IF NOT EXISTS idx_claims_project ON claims(project)`,
+	`CREATE INDEX IF NOT EXISTS idx_claims_basis ON claims(basis)`,
+	`CREATE INDEX IF NOT EXISTS idx_claims_text ON claims(text)`,
 }
 
 var projectRe = regexp.MustCompile(`[^a-zA-Z0-9_\-]`)

@@ -649,6 +649,7 @@ func charNgrams(text string, n int) map[string]bool {
 }
 
 // basisRank returns a rank for basis strength (lower = stronger).
+// When deduplicating a batch, we keep the claim with the stronger basis.
 func basisRank(basis string) int {
 	switch basis {
 	case "research":
@@ -657,18 +658,20 @@ func basisRank(basis string) int {
 		return 1
 	case "definition":
 		return 2
-	case "deduction":
+	case "convention":
 		return 3
-	case "analogy":
+	case "deduction":
 		return 4
-	case "llm_output":
+	case "analogy":
 		return 5
-	case "vibes":
+	case "llm_output":
 		return 6
-	case "assumption":
+	case "vibes":
 		return 7
-	default:
+	case "assumption":
 		return 8
+	default:
+		return 9
 	}
 }
 

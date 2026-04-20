@@ -136,7 +136,7 @@ func buildExtractionSchema() anthropic.ToolInputSchemaParam {
 					"properties": map[string]interface{}{
 						"index":      map[string]interface{}{"type": "integer", "description": "Sequential index starting from 0, unique within this batch"},
 						"text":       map[string]string{"type": "string", "description": "The claim, stated concisely"},
-						"basis":      map[string]interface{}{"type": "string", "enum": []string{"research", "empirical", "analogy", "vibes", "llm_output", "deduction", "assumption", "definition"}},
+						"basis":      map[string]interface{}{"type": "string", "enum": []string{"research", "empirical", "analogy", "vibes", "llm_output", "deduction", "assumption", "definition", "convention"}},
 						"source":     map[string]string{"type": "string", "description": "Citation if available"},
 						"confidence": map[string]interface{}{"type": "number", "minimum": 0, "maximum": 1},
 						"speaker":    map[string]interface{}{"type": "string", "enum": []string{"user", "assistant", "document"}},
