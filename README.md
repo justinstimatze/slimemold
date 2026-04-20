@@ -629,10 +629,10 @@ We fed [`examples/documents/sokal-social-text-1996.md`](examples/documents/sokal
 
 ```
 SLIMEMOLD [demo-sokal] — 240 claims, 335 edges
-  Basis: vibes=112, research=66, deduction=26, llm_output=24,
-         analogy=5, definition=4, assumption=3
+  Basis: vibes=136, research=66, deduction=26, analogy=5,
+         definition=4, assumption=3
 
-CRITICAL Load-bearing llm_output: "Lacan argued that topological
+CRITICAL Load-bearing vibes: "Lacan argued that topological
   surfaces — the torus, Klein bottle, cross-cap, Möbius strip — are
   the mathematics of the subject" supports 7 downstream claims
 

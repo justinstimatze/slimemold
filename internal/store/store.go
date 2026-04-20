@@ -445,6 +445,17 @@ func (d *DB) SetExtractionCache(contentHash, model string, promptVersion int, re
 	return err
 }
 
+// DeleteExtractionCache removes a single cache row. Used to prune entries
+// whose stored JSON fails to unmarshal (corruption from truncated writes or
+// prior schema mismatches) so the next call re-extracts cleanly.
+func (d *DB) DeleteExtractionCache(contentHash, model string, promptVersion int) error {
+	_, err := d.q.Exec(
+		`DELETE FROM extract_cache WHERE content_hash = ? AND model = ? AND prompt_version = ?`,
+		contentHash, model, promptVersion,
+	)
+	return err
+}
+
 // migrate applies incremental schema changes to existing databases.
 // Each migration is idempotent — ALTER TABLE ADD COLUMN is ignored if the column exists.
 func migrate(db *sql.DB) {

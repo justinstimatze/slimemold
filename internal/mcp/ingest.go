@@ -127,6 +127,14 @@ func ingestOneChunk(ctx context.Context, db *store.DB, extractor *extract.Extrac
 		if result.Claims[i].Speaker != string(types.SpeakerDocument) {
 			result.Claims[i].Speaker = string(types.SpeakerDocument)
 		}
+		// Authored prose never has basis=llm_output — the author is not an AI.
+		// The prompt asks the extractor to avoid llm_output in document mode, but
+		// it leaks through occasionally on confidently-asserted technical content
+		// (~10% of Sokal claims). Normalize here so the invariant doesn't depend
+		// on prompt adherence.
+		if result.Claims[i].Basis == "llm_output" {
+			result.Claims[i].Basis = string(types.BasisVibes)
+		}
 		if result.Claims[i].Source == "" {
 			result.Claims[i].Source = source
 		}
@@ -225,11 +233,21 @@ func ingestOneChunk(ctx context.Context, db *store.DB, extractor *extract.Extrac
 	return newClaims, newEdges, nil
 }
 
+// maxDocumentBytes caps how much we're willing to load into memory at once.
+// 10 MiB is generously above any realistic essay, paper, or book chapter
+// (typical plain-text novels are ~500 KB; full academic papers ~1 MB).
+// Streaming ingestion is Phase 2; this guard is here so a mis-typed path or
+// pathological input can't OOM the process.
+const maxDocumentBytes = 10 * 1024 * 1024
+
 func readDocument(path string) (string, string, error) {
 	if path == "-" {
-		data, err := io.ReadAll(os.Stdin)
+		data, err := io.ReadAll(io.LimitReader(os.Stdin, maxDocumentBytes+1))
 		if err != nil {
 			return "", "", fmt.Errorf("reading stdin: %w", err)
+		}
+		if int64(len(data)) > maxDocumentBytes {
+			return "", "", fmt.Errorf("stdin input exceeds %d-byte limit — split the document or ingest sections separately", maxDocumentBytes)
 		}
 		return string(data), "<stdin>", nil
 	}
@@ -243,6 +261,10 @@ func readDocument(path string) (string, string, error) {
 	}
 	if info.IsDir() {
 		return "", "", fmt.Errorf("%s is a directory", path)
+	}
+	if info.Size() > maxDocumentBytes {
+		return "", "", fmt.Errorf("%s is %d bytes, exceeds %d-byte limit — split the document or ingest sections separately",
+			path, info.Size(), maxDocumentBytes)
 	}
 	data, err := os.ReadFile(abs)
 	if err != nil {
@@ -276,7 +298,10 @@ func extractWithCache(ctx context.Context, db *store.DB, extractor *extract.Extr
 		if err := json.Unmarshal([]byte(cached), &result); err == nil {
 			return &result, true, nil
 		}
-		// Unmarshal failed — fall through to re-extract.
+		// Unmarshal failed — the cached row is corrupt (truncated write, schema
+		// mismatch, etc.). Delete it so we don't keep re-parsing the same bad
+		// blob on every run, then fall through to re-extract.
+		_ = db.DeleteExtractionCache(contentHash, extractor.Model(), documentPromptVersion)
 	}
 
 	result, err := extractor.Extract(ctx, chunkText, existingRefs)

@@ -429,3 +429,47 @@ func TestSpeakerCheckMigration(t *testing.T) {
 		t.Fatalf("CreateClaim with speaker=document after migration: %v", err)
 	}
 }
+
+func TestExtractionCacheRoundtrip(t *testing.T) {
+	db := testDB(t)
+
+	if _, ok := db.GetExtractionCache("hash1", "modelA", 1); ok {
+		t.Error("empty cache should miss")
+	}
+
+	if err := db.SetExtractionCache("hash1", "modelA", 1, `{"claims":[]}`); err != nil {
+		t.Fatalf("SetExtractionCache: %v", err)
+	}
+	got, ok := db.GetExtractionCache("hash1", "modelA", 1)
+	if !ok {
+		t.Fatal("expected cache hit after set")
+	}
+	if got != `{"claims":[]}` {
+		t.Errorf("cached JSON = %q", got)
+	}
+
+	// Different model / prompt version should miss.
+	if _, ok := db.GetExtractionCache("hash1", "modelB", 1); ok {
+		t.Error("cache should miss on different model")
+	}
+	if _, ok := db.GetExtractionCache("hash1", "modelA", 2); ok {
+		t.Error("cache should miss on different prompt version")
+	}
+
+	// Overwrite works (ON CONFLICT UPDATE).
+	if err := db.SetExtractionCache("hash1", "modelA", 1, `{"claims":[{"text":"updated"}]}`); err != nil {
+		t.Fatalf("SetExtractionCache overwrite: %v", err)
+	}
+	got, _ = db.GetExtractionCache("hash1", "modelA", 1)
+	if got != `{"claims":[{"text":"updated"}]}` {
+		t.Errorf("cache did not overwrite: %q", got)
+	}
+
+	// Delete removes the row; subsequent get misses.
+	if err := db.DeleteExtractionCache("hash1", "modelA", 1); err != nil {
+		t.Fatalf("DeleteExtractionCache: %v", err)
+	}
+	if _, ok := db.GetExtractionCache("hash1", "modelA", 1); ok {
+		t.Error("cache should miss after delete")
+	}
+}
