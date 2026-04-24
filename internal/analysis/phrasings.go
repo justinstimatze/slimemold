@@ -1,0 +1,132 @@
+package analysis
+
+import (
+	"crypto/sha256"
+	"encoding/binary"
+	"fmt"
+)
+
+// Multiple phrasings per finding type. FormatHookFindings picks one
+// deterministically via hash(claim_text) so the same claim always gets the
+// same phrasing (stable across re-runs) but different claims get different
+// phrasings (no template stutter when the same finding fires on different
+// claims, and no literal-quote leak when the same finding fires back-to-back
+// on the same claim).
+//
+// All phrasings are gain-framed, first-person, and never name the mechanism
+// ("the graph", "the detector", etc.). Port of the taxonomy from the
+// buddy max-mode reasoning layer, tuned for live-conversation hook output
+// where the user sees the model's reaction, not these strings directly.
+
+var phrasingsByType = map[string][]string{
+	"load_bearing_vibes_llm": {
+		`"Actually — '%s' is really interesting and a lot of what we're building depends on it. I want to see if we can find where this comes from, because if there's a real source behind it, everything above it gets much stronger. Do you know where this originated?"`,
+		`"One thing I want to flag — '%s' is holding up a few downstream things, and I don't think either of us has anchored it. Worth pinning down before we keep building on top."`,
+		`"Hmm, '%s' — where did we get that from originally? A lot rests on it, and if it has a real source, the whole line firms up."`,
+		`"Noticing that '%s' is doing a lot of structural work here. Is there an actual reference for it, or is this us reasoning our way into it? Either is fine, I just want to know which."`,
+	},
+	"load_bearing_vibes_user": {
+		`"You know what would make this whole line of reasoning really solid? If we can pin down '%s' — that one's doing a lot of structural work and I think it deserves a proper foundation. What would you point someone to if they asked for evidence?"`,
+		`"I want to stress-test one thing: '%s' is the load-bearing premise here, and I want to make sure we have it right. What's the strongest version — is there a source, or have we reasoned it out?"`,
+		`"Real quick — '%s' is carrying a lot of the argument. If I tried to convince someone who was skeptical, what would I show them? Let's make sure we have that answer before we move on."`,
+		`"I keep coming back to '%s' because so much downstream depends on it. Can we nail down what specifically we're claiming there, and how we'd defend it?"`,
+	},
+	"fluency_trap": {
+		`"I'm curious about something — '%s' feels really right to both of us, which is actually why I want to dig into it. Sometimes the most confident-feeling claims are the ones most worth double-checking. What would we expect to see if this is true? And what would make us update?"`,
+		`"This might be a case where confidence is outpacing evidence — '%s' is stated pretty firmly, but I don't think we've tested it. If we tried to break it, what would the test look like?"`,
+		`"Before we build on '%s' — let's do the boring check. If this were wrong, how would we know? What observation would change our minds?"`,
+	},
+	"echo_chamber": {
+		`"We're building really well together and I want to make sure we're not just in a groove — what's the best counterargument to '%s'? Not because I disagree, but because if we can answer the strongest objection, the whole thing becomes much more defensible."`,
+		`"I realize we've been agreeing a lot on '%s'. Let me try to be the skeptic for a moment: what's the case against? If we can handle the toughest version of that, the position gets stronger."`,
+		`"Quick friction check — '%s' hasn't really been contested between us. What would a sharp critic say? I'd rather surface it now than discover it later."`,
+	},
+	"unchallenged_chain": {
+		`"This reasoning chain is interesting and I want to make it bulletproof. Every step felt right, but let me stress-test one: '%s' — is there independent evidence for that specific link, or is it drawing strength from the steps around it?"`,
+		`"Zooming into '%s' — it's one of several assumptions the chain passes through. Which one is the weakest link? If any of them fails, which part of the conclusion goes with it?"`,
+		`"The whole chain reads cleanly, which is actually what I want to interrogate — '%s' in particular. Would the argument survive if that one step were wrong, or does it carry the rest?"`,
+	},
+	"bottleneck": {
+		`"I notice a lot of what we've built routes through '%s' — which means if we can really nail that one down, everything downstream gets stronger. What's the strongest version of that claim? Is there a way to verify it independently?"`,
+		`"'%s' is the hinge — most of the reasoning passes through it. If we're going to invest in one verification, that's where the leverage is. What would make us confident in it?"`,
+		`"Structurally, '%s' is carrying more weight than it looks. Before we keep building, what's the best grounding for it we can get?"`,
+	},
+	"coverage_imbalance": {
+		`"This thread is great — and I think there's a foundational piece we haven't given as much attention to yet that could make it even better. What's the harder question we haven't dug into?"`,
+		`"Something's lopsided — we've spent a lot of time on some pieces and very little on the foundations some pieces rest on. Where should we redirect?"`,
+	},
+	"premature_closure": {
+		`"Wait — '%s' felt like a conclusion but I'm not sure we actually resolved the question. What specifically did we settle? If we peel that back, is there a more precise claim underneath that we could actually test?"`,
+		`"'%s' has the shape of an ending, but I don't think the question underneath it is closed. What was the actual answer — and if we don't have one, is that worth naming?"`,
+		`"That reads like a wrap — but let me check: '%s' resolved which specific question? Because I can still think of the next one, which suggests we're not done."`,
+	},
+	"abandoned_topic": {
+		`"Something we explored earlier might connect to what we're doing now — did we close that out, or is it worth revisiting? Sometimes the thing we moved past is the thing that ties it together."`,
+		`"There's a loose thread from earlier we haven't returned to. Worth picking back up, or is it genuinely dropped?"`,
+	},
+	"default": {
+		`"I want to make '%s' as strong as possible — do we have a source for it, or is this one where we should go find one? I think it's worth the investment."`,
+	},
+}
+
+// pickPhrasing returns a deterministic template for a given finding type,
+// keyed on the claim text. Same claim always gets the same phrasing; the
+// first 8 bytes of sha256 give a 64-bit discriminator across claims.
+func pickPhrasing(findingType string, claimText string) string {
+	templates, ok := phrasingsByType[findingType]
+	if !ok || len(templates) == 0 {
+		templates = phrasingsByType["default"]
+	}
+	sum := sha256.Sum256([]byte(claimText))
+	idx := binary.BigEndian.Uint64(sum[:8]) % uint64(len(templates))
+	return templates[idx]
+}
+
+// phrasingKey maps a finding type + description hints to a phrasing table
+// key. The one special case is load_bearing_vibes which has distinct user
+// vs. llm_output phrasings — "the user is bringing vibes" reads differently
+// from "the AI is asserting confidently without a source."
+func phrasingKey(findingType, description string) string {
+	if findingType == "load_bearing_vibes" {
+		if hasSubstring(description, "llm_output") {
+			return "load_bearing_vibes_llm"
+		}
+		return "load_bearing_vibes_user"
+	}
+	return findingType
+}
+
+func hasSubstring(s, sub string) bool {
+	// tiny inline to avoid pulling in strings here when only this is needed
+	n, m := len(s), len(sub)
+	if m == 0 {
+		return true
+	}
+	if n < m {
+		return false
+	}
+	for i := 0; i+m <= n; i++ {
+		if s[i:i+m] == sub {
+			return true
+		}
+	}
+	return false
+}
+
+// renderPhrasing picks and formats a phrasing for the given finding.
+// The template may contain one %s — if so, it's filled with the (truncated)
+// claim text; if the template has no %s it's returned as-is (used by
+// coverage_imbalance / abandoned_topic which don't reference a specific
+// claim).
+func renderPhrasing(findingType, description, claimText string) string {
+	key := phrasingKey(findingType, description)
+	tmpl := pickPhrasing(key, claimText)
+	short := claimText
+	if len(short) > 80 {
+		short = short[:80] + "..."
+	}
+	if hasSubstring(tmpl, "%s") {
+		return fmt.Sprintf(tmpl, short)
+	}
+	return tmpl
+}

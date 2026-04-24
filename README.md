@@ -143,6 +143,24 @@ a real source, everything gets much stronger." The user does not feel
 attacked. They feel like the model is excited to help them verify their
 idea. They stay in the flow, but on firmer ground.
 
+A compact way to say what slimemold is doing in the hook path:
+**sycophancy as a tool.** Sycophancy works on users because warmth feels
+validating. It's a failure mode because the warmth isn't tied to truth
+— "great question!" validates no matter what the question was. The hook
+takes the same linguistic warmth and points it at a concrete structural
+fact: *"that premise is holding up three downstream claims — worth
+pinning down."* The user engages with rigor because it arrives in the
+register that validation arrives in. Break that and the hook becomes
+either a scold (warmth → critique, bad) or the original sycophancy
+(warmth → nothing, bad).
+
+Note the scope: this framing describes the live-conversation **hook**
+specifically. The other paths slimemold exposes — `slimemold audit`,
+`slimemold ingest`, the `topology` MCP tool — are neutral diagnostic
+surfaces. They return findings the way a static analyzer returns
+findings: flat, technical, and without tone. The warmth-as-tool
+principle only kicks in when there's a conversational partner to warm.
+
 ## What This Tool Does
 
 Slimemold watches conversations as they happen, extracts the claims

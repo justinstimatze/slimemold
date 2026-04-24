@@ -6,6 +6,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/justinstimatze/slimemold/types"
 )
@@ -70,6 +71,13 @@ func findVulnerabilities(claims []types.Claim, edges []types.Edge, topo *types.T
 
 	// Premature closure: thought-terminating cliches capping open inquiry
 	items = append(items, findPrematureClosure(claims, edges)...)
+
+	// Bright patterns — structural strengths (see brights.go). Emitted at
+	// severity=info so the hook formatter skips them; the audit formatter
+	// surfaces them in a separate "Strengths" section.
+	items = append(items, findWellSourcedLoadBearer(claims, edges)...)
+	items = append(items, findProductiveStressTest(claims, edges)...)
+	items = append(items, findGroundedPremiseAdopted(claims, edges)...)
 
 	// Orphan warnings
 	for _, o := range topo.Orphans {
@@ -482,9 +490,24 @@ func FormatAuditSummary(topo *types.Topology, vulns *types.Vulnerabilities) stri
 			}
 		}
 		for _, v := range vulns.Items {
-			if v.Severity == "info" {
+			if v.Severity == "info" && !strings.HasPrefix(v.Type, "strength_") {
 				fmt.Fprintf(&b, "  INFO: %s\n", v.Description)
 			}
+		}
+	}
+
+	// Strengths — bright/symmetric findings. Surfaced in audit output only
+	// (FormatHookFindings filters these out; see that function's comment).
+	var strengths []types.Vulnerability
+	for _, v := range vulns.Items {
+		if strings.HasPrefix(v.Type, "strength_") {
+			strengths = append(strengths, v)
+		}
+	}
+	if len(strengths) > 0 {
+		fmt.Fprintf(&b, "  Strengths:\n")
+		for _, s := range strengths {
+			fmt.Fprintf(&b, "    + %s\n", s.Description)
 		}
 	}
 
@@ -932,13 +955,35 @@ func clusterClaimIDs(cl types.ClusterInfo) []string {
 	return ids
 }
 
+// Hook filter constants. Tunable but deliberately conservative:
+// HookCooldownWindow suppresses the same (claim, finding_type) from firing
+// twice within a day; HookMaxClaimAge drops any claim older than a week
+// from priority selection — stale findings from prior sessions otherwise
+// dominate the priority slot because they accumulate in the graph forever.
+const (
+	HookCooldownWindow = 24 * time.Hour
+	HookMaxClaimAge    = 7 * 24 * time.Hour
+)
+
 // FormatHookFindings produces a terse, directive summary for hook injection.
 // Prioritizes: criticals → unchallenged chains → top bottleneck. Caps at maxFindings.
-// Skips already-challenged claims.
-func FormatHookFindings(topo *types.Topology, vulns *types.Vulnerabilities, newClaims, newEdges, maxFindings int) string {
+// Skips already-challenged claims, claims older than HookMaxClaimAge, and any
+// (claim_id, finding_type) present in recentFires (cooldown set).
+//
+// Returns (summary, pickedClaimID, pickedFindingType). Callers should call
+// db.LogHookFire(project, pickedClaimID, pickedFindingType) to record the
+// fire, so subsequent invocations within the cooldown window skip it.
+func FormatHookFindings(topo *types.Topology, vulns *types.Vulnerabilities, claims []types.Claim, recentFires map[string]bool, newClaims, newEdges, maxFindings int) (string, string, string) {
 	if len(vulns.Items) == 0 {
-		return ""
+		return "", "", ""
 	}
+
+	// Index claims by ID for age lookups.
+	claimByID := make(map[string]*types.Claim, len(claims))
+	for i := range claims {
+		claimByID[claims[i].ID] = &claims[i]
+	}
+	now := time.Now()
 
 	// Collect findings by priority
 	type finding struct {
@@ -948,6 +993,20 @@ func FormatHookFindings(topo *types.Topology, vulns *types.Vulnerabilities, newC
 	var findings []finding
 
 	for _, v := range vulns.Items {
+		// Bright/strength findings are deliberately excluded from the hook.
+		// The hook path is deficit-only by design — bright findings here
+		// would pile extra validation onto a channel meant for redirection.
+		// They surface via FormatAuditSummary instead.
+		if strings.HasPrefix(v.Type, "strength_") {
+			continue
+		}
+		// Cooldown + age filters: skip candidates whose anchor claim has
+		// already fired this finding type recently, or whose anchor claim
+		// is too old to be worth nagging about. Findings with no anchor
+		// claim (e.g. coverage_imbalance) are always eligible.
+		if skipAnchor(v, claimByID, recentFires, now) {
+			continue
+		}
 		switch v.Type {
 		case "load_bearing_vibes", "fluency_trap":
 			findings = append(findings, finding{0, v})
@@ -963,29 +1022,35 @@ func FormatHookFindings(topo *types.Topology, vulns *types.Vulnerabilities, newC
 	}
 
 	if len(findings) == 0 {
-		return ""
+		return "", "", ""
 	}
 
 	sort.SliceStable(findings, func(i, j int) bool {
 		return findings[i].priority < findings[j].priority
 	})
 
-	// Generate a specific first-person question from the top finding.
-	// This is what Claude will actually act on — one concrete question
-	// is harder to ignore than a wall of diagnostics.
+	// Pick a phrasing for the top finding. Phrasings are rotated per-claim
+	// (hash-of-claim-text → template index) so the same claim stays stable
+	// across re-runs but different claims get different wording. Avoids the
+	// literal-quote leakage the single-template path used to cause.
 	top := findings[0].item
 	claimText := extractClaimText(top.Description)
-	question := generateQuestion(top.Type, top.Description, claimText)
+	phrasing := renderPhrasing(top.Type, top.Description, claimText)
 
 	var b strings.Builder
-	// The injection provides structural facts only. Behavioral guidance
-	// lives in the CLAUDE.md written by `slimemold init`, which the model
-	// reads at session start. This separation prevents the model from
-	// treating the injection as adversarial prompt injection — it's just
-	// data, and the model already knows how to act on it.
+	// The injection provides structural facts + a suggested phrasing for the
+	// response. Landing the point is what matters; the exact phrasing is a
+	// guide, not a script — the model is expected to phrase the redirect in
+	// its own voice.
 	fmt.Fprintf(&b, "Reasoning topology observation (slimemold):\n\n")
 	fmt.Fprintf(&b, "Priority finding: %s\n", top.Description)
-	fmt.Fprintf(&b, "Suggested response: %s\n", question)
+	fmt.Fprintf(&b, "Land this point in your own voice (phrasing is yours, landing it is required): %s\n", phrasing)
+
+	pickedClaimID := ""
+	if len(top.ClaimIDs) > 0 {
+		pickedClaimID = top.ClaimIDs[0]
+	}
+	pickedFindingType := top.Type
 
 	// Include remaining findings as context (lower priority)
 	if len(findings) > 1 {
@@ -999,7 +1064,27 @@ func FormatHookFindings(topo *types.Topology, vulns *types.Vulnerabilities, newC
 		}
 	}
 
-	return strings.TrimRight(b.String(), "\n")
+	return strings.TrimRight(b.String(), "\n"), pickedClaimID, pickedFindingType
+}
+
+// skipAnchor reports whether a vulnerability should be filtered from the
+// priority pool because its anchor claim has fired this finding type
+// recently (cooldown) or is too old to be worth surfacing (age decay).
+// Findings with no ClaimIDs (e.g. coverage_imbalance) never skip.
+func skipAnchor(v types.Vulnerability, claimByID map[string]*types.Claim, recentFires map[string]bool, now time.Time) bool {
+	if len(v.ClaimIDs) == 0 {
+		return false
+	}
+	anchor := v.ClaimIDs[0]
+	if recentFires[anchor+"|"+v.Type] {
+		return true
+	}
+	if c, ok := claimByID[anchor]; ok {
+		if !c.CreatedAt.IsZero() && now.Sub(c.CreatedAt) > HookMaxClaimAge {
+			return true
+		}
+	}
+	return false
 }
 
 // extractClaimText pulls the quoted claim text from a vulnerability description.
@@ -1019,58 +1104,13 @@ func extractClaimText(desc string) string {
 	return text
 }
 
-// generateQuestion produces a first-person question based on the finding type.
+// generateQuestion is superseded by renderPhrasing in phrasings.go, which
+// rotates among multiple templates per finding type keyed on claim text.
 // Design informed by: Miller et al. (1993) motivational interviewing — roll
 // with resistance, don't confront. Deci & Ryan (1987) — autonomy-supportive
 // framing produces internalized change. Mangels et al. (2006) — gain framing
 // causes people to attend to corrective content instead of emotional threat.
 // Graesser et al. (1995) — effective tutors use indirect prompts, not confrontation.
-func generateQuestion(findingType, description, claimText string) string {
-	short := claimText
-	if len(short) > 80 {
-		short = short[:80] + "..."
-	}
-
-	switch findingType {
-	case "load_bearing_vibes":
-		if strings.Contains(description, "llm_output") {
-			return fmt.Sprintf(
-				`"Actually — '%s' is really interesting and a lot of what we're building depends on it. I want to see if we can find where this comes from, because if there's a real source behind it, everything above it gets much stronger. Do you know where this originated?"`,
-				short)
-		}
-		return fmt.Sprintf(
-			`"You know what would make this whole line of reasoning really solid? If we can pin down '%s' — that one's doing a lot of structural work and I think it deserves a proper foundation. What would you point someone to if they asked for evidence?"`,
-			short)
-	case "fluency_trap":
-		return fmt.Sprintf(
-			`"I'm curious about something — '%s' feels really right to both of us, which is actually why I want to dig into it. Sometimes the most confident-feeling claims are the ones most worth double-checking. What would we expect to see if this is true? And what would make us update?"`,
-			short)
-	case "echo_chamber":
-		return fmt.Sprintf(
-			`"We're building really well together and I want to make sure we're not just in a groove — what's the best counterargument to '%s'? Not because I disagree, but because if we can answer the strongest objection, the whole thing becomes much more defensible."`,
-			short)
-	case "unchallenged_chain":
-		return fmt.Sprintf(
-			`"This reasoning chain is interesting and I want to make it bulletproof. Every step felt right, but let me stress-test one: '%s' — is there independent evidence for that specific link, or is it drawing strength from the steps around it?"`,
-			short)
-	case "bottleneck":
-		return fmt.Sprintf(
-			`"I notice a lot of what we've built routes through '%s' — which means if we can really nail that one down, everything downstream gets stronger. What's the strongest version of that claim? Is there a way to verify it independently?"`,
-			short)
-	case "coverage_imbalance":
-		return `"This thread is great — and I think there's a foundational piece we haven't given as much attention to yet that could make it even better. What's the harder question we haven't dug into?"`
-	case "premature_closure":
-		return fmt.Sprintf(
-			`"Wait — '%s' felt like a conclusion but I'm not sure we actually resolved the question. What specifically did we settle? If we peel that back, is there a more precise claim underneath that we could actually test?"`,
-			short)
-	case "abandoned_topic":
-		return `"Something we explored earlier might connect to what we're doing now — did we close that out, or is it worth revisiting? Sometimes the thing we moved past is the thing that ties it together."`
-	default:
-		return fmt.Sprintf(
-			`"I want to make '%s' as strong as possible — do we have a source for it, or is this one where we should go find one? I think it's worth the investment."`,
-			short)
-	}
-}
 
 func summarizeCluster(claims []types.Claim) string {
 	// Use first few words of the first claim as label

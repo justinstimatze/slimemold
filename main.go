@@ -193,7 +193,28 @@ func cmdDeliver() {
 
 // cmdHook runs as a Stop hook. Fires after assistant responds, runs extraction,
 // writes findings to a pending file for cmdDeliver to pick up.
+//
+// Discipline: **strictly additive.** The hook is allowed to produce findings
+// (additive) or produce nothing (silent) — it is NEVER allowed to interfere
+// with the conversation. All error paths fall through to silent-exit; a
+// top-level recover guarantees a rogue panic can't propagate. The Stop hook
+// returning non-zero to Claude Code is visible to the user; we'd rather
+// silently skip an extraction than leak a stack trace.
 func cmdHook() {
+	defer func() {
+		if r := recover(); r != nil {
+			// Best effort: log the panic if we can, then swallow.
+			cfg, err := config.Load()
+			if err == nil {
+				logDir := filepath.Join(cfg.DataDir, "tmp")
+				_ = os.MkdirAll(logDir, 0700)
+				if f, err := os.OpenFile(filepath.Join(logDir, "hook.log"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600); err == nil {
+					fmt.Fprintf(f, "%s PANIC in hook: %v\n", time.Now().Format("2006-01-02 15:04:05"), r)
+					_ = f.Close()
+				}
+			}
+		}
+	}()
 	var input struct {
 		CWD            string `json:"cwd"`
 		TranscriptPath string `json:"transcript_path"`

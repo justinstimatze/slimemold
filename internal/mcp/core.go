@@ -179,7 +179,15 @@ func CoreParseTranscript(ctx context.Context, db *store.DB, extractor *extract.E
 	totalEdges, _ := db.CountEdges(project)
 
 	summary := analysis.FormatAuditSummary(topo, vulns)
-	hookSummary := analysis.FormatHookFindings(topo, vulns, newClaims, newEdges, 5)
+
+	// Cooldown filter: skip findings whose (claim, type) fired inside the
+	// HookCooldownWindow. Logs the pick after formatting so subsequent
+	// invocations within the window suppress it.
+	recentFires, _ := db.RecentHookFires(project, time.Now().Add(-analysis.HookCooldownWindow))
+	hookSummary, pickedClaimID, pickedFindingType := analysis.FormatHookFindings(topo, vulns, claims, recentFires, newClaims, newEdges, 5)
+	if pickedClaimID != "" && pickedFindingType != "" {
+		_ = db.LogHookFire(project, pickedClaimID, pickedFindingType)
+	}
 
 	// Append integrity warnings to summary
 	if len(integrityWarnings) > 0 {

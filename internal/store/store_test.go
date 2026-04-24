@@ -486,3 +486,39 @@ func TestExtractionCacheRoundtrip(t *testing.T) {
 		t.Error("cache should miss after delete")
 	}
 }
+
+func TestHookFireLogRoundtrip(t *testing.T) {
+	db := testDB(t)
+
+	if err := db.LogHookFire("test-project", "claim-a", "load_bearing_vibes"); err != nil {
+		t.Fatalf("LogHookFire: %v", err)
+	}
+	if err := db.LogHookFire("test-project", "claim-b", "unchallenged_chain"); err != nil {
+		t.Fatalf("LogHookFire b: %v", err)
+	}
+	if err := db.LogHookFire("other-project", "claim-a", "load_bearing_vibes"); err != nil {
+		t.Fatalf("LogHookFire other: %v", err)
+	}
+
+	// All three logged — ask for recent within the last hour, project filter
+	// excludes the "other-project" entry.
+	fires, err := db.RecentHookFires("test-project", time.Now().Add(-time.Hour))
+	if err != nil {
+		t.Fatalf("RecentHookFires: %v", err)
+	}
+	if !fires["claim-a|load_bearing_vibes"] {
+		t.Error("missing claim-a|load_bearing_vibes")
+	}
+	if !fires["claim-b|unchallenged_chain"] {
+		t.Error("missing claim-b|unchallenged_chain")
+	}
+	if fires["claim-a|load_bearing_vibes"] && len(fires) > 2 {
+		t.Errorf("cross-project leak: expected 2 entries, got %d", len(fires))
+	}
+
+	// Old-cutoff query returns nothing.
+	fires, _ = db.RecentHookFires("test-project", time.Now().Add(time.Hour))
+	if len(fires) != 0 {
+		t.Errorf("future-cutoff should return 0 fires, got %d", len(fires))
+	}
+}

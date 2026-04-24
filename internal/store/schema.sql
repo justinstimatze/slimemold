@@ -48,6 +48,15 @@ CREATE TABLE IF NOT EXISTS extract_cache (
     PRIMARY KEY (content_hash, model, prompt_version)
 );
 
+CREATE TABLE IF NOT EXISTS hook_fire_log (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    project         TEXT NOT NULL,
+    claim_id        TEXT NOT NULL,
+    finding_type    TEXT NOT NULL,
+    fired_at        TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_hook_fire_log_project_time ON hook_fire_log(project, fired_at);
+
 CREATE INDEX IF NOT EXISTS idx_claims_project ON claims(project);
 CREATE INDEX IF NOT EXISTS idx_claims_basis ON claims(basis);
 CREATE INDEX IF NOT EXISTS idx_claims_text ON claims(text);

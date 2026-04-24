@@ -456,6 +456,39 @@ func (d *DB) DeleteExtractionCache(contentHash, model string, promptVersion int)
 	return err
 }
 
+// LogHookFire records that the hook surfaced `findingType` for `claimID` in
+// `project`. Used by RecentHookFires to suppress repeat firings inside a
+// cooldown window.
+func (d *DB) LogHookFire(project, claimID, findingType string) error {
+	_, err := d.q.Exec(
+		`INSERT INTO hook_fire_log (project, claim_id, finding_type, fired_at) VALUES (?, ?, ?, ?)`,
+		project, claimID, findingType, time.Now().Format(time.RFC3339),
+	)
+	return err
+}
+
+// RecentHookFires returns the set of (claim_id, finding_type) tuples that
+// have fired in `project` since `since`. Keys are encoded "claim_id|type".
+func (d *DB) RecentHookFires(project string, since time.Time) (map[string]bool, error) {
+	rows, err := d.q.Query(
+		`SELECT claim_id, finding_type FROM hook_fire_log WHERE project = ? AND fired_at >= ?`,
+		project, since.Format(time.RFC3339),
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	out := make(map[string]bool)
+	for rows.Next() {
+		var claimID, findingType string
+		if err := rows.Scan(&claimID, &findingType); err != nil {
+			return nil, err
+		}
+		out[claimID+"|"+findingType] = true
+	}
+	return out, rows.Err()
+}
+
 // migrate applies incremental schema changes to existing databases.
 // Each migration is idempotent — ALTER TABLE ADD COLUMN is ignored if the column exists.
 func migrate(db *sql.DB) {
