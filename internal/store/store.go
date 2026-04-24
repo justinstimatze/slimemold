@@ -58,6 +58,11 @@ func Open(dataDir, project string) (*DB, error) {
 
 	migrate(db)
 
+	// Best-effort hygiene on hook_fire_log — delete rows older than 30 days
+	// so the table doesn't grow unbounded across months of use. Cooldowns
+	// that matter are measured in hours; anything older is dead weight.
+	_, _ = db.Exec(`DELETE FROM hook_fire_log WHERE fired_at < ?`, time.Now().Add(-30*24*time.Hour).Format(time.RFC3339))
+
 	return &DB{db: db, q: db, project: project}, nil
 }
 

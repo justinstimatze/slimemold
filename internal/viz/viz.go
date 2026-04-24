@@ -87,8 +87,8 @@ func RenderASCII(topo *types.Topology, vulns *types.Vulnerabilities) string {
 	}
 
 	// Vulnerabilities summary
-	if vulns.CriticalCount > 0 || vulns.WarningCount > 0 {
-		fmt.Fprintf(&b, "  Findings: %d critical, %d warning, %d info\n", vulns.CriticalCount, vulns.WarningCount, vulns.InfoCount)
+	if vulns.CriticalCount > 0 || vulns.WarningCount > 0 || vulns.StrengthCount > 0 {
+		fmt.Fprintf(&b, "  Findings: %d critical, %d warning, %d info, %d strength\n", vulns.CriticalCount, vulns.WarningCount, vulns.InfoCount, vulns.StrengthCount)
 		for _, v := range vulns.Items {
 			if v.Severity == "critical" {
 				fmt.Fprintf(&b, "    ✗ CRITICAL: %s\n", v.Description)

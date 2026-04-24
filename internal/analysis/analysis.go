@@ -89,8 +89,12 @@ func findVulnerabilities(claims []types.Claim, edges []types.Edge, topo *types.T
 		})
 	}
 
-	var crit, warn, info int
+	var crit, warn, info, strength int
 	for _, v := range items {
+		if strings.HasPrefix(v.Type, "strength_") {
+			strength++
+			continue
+		}
 		switch v.Severity {
 		case "critical":
 			crit++
@@ -107,6 +111,7 @@ func findVulnerabilities(claims []types.Claim, edges []types.Edge, topo *types.T
 		CriticalCount: crit,
 		WarningCount:  warn,
 		InfoCount:     info,
+		StrengthCount: strength,
 	}
 }
 

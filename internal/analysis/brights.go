@@ -69,6 +69,13 @@ func findWellSourcedLoadBearer(claims []types.Claim, edges []types.Edge) []types
 // survived a stress test. We approximate "chain of N+ with a mid-chain
 // challenge" by: claim C was challenged AND C has both incoming and outgoing
 // support/depends_on edges (i.e., C is not a leaf of the chain).
+//
+// "Challenged" here means either the explicit Challenged flag (set by
+// db.ChallengeClaim via the MCP claims.challenge action) OR the presence
+// of an incoming contradicts edge — a structural proxy for "someone
+// pushed back on this claim." Without the contradicts-edge proxy the
+// detector would be effectively dormant since explicit challenges are
+// rarely marked in typical slimemold workflows.
 func findProductiveStressTest(claims []types.Claim, edges []types.Edge) []types.Vulnerability {
 	claimByID := make(map[string]*types.Claim, len(claims))
 	for i := range claims {
@@ -77,21 +84,28 @@ func findProductiveStressTest(claims []types.Claim, edges []types.Edge) []types.
 
 	hasIncoming := make(map[string]bool)
 	hasOutgoing := make(map[string]bool)
+	hasContradictsIn := make(map[string]bool)
 	for _, e := range edges {
-		if e.Relation != types.RelSupports && e.Relation != types.RelDependsOn {
-			continue
+		switch e.Relation {
+		case types.RelSupports, types.RelDependsOn:
+			hasOutgoing[e.FromID] = true
+			hasIncoming[e.ToID] = true
+		case types.RelContradicts:
+			// Contradicts is bidirectional in slimemold's semantics, but we
+			// only care about "something pushed back on this claim" — which
+			// is exactly what an incoming contradicts edge encodes.
+			hasContradictsIn[e.ToID] = true
 		}
-		// Treat both relations as "this claim participates in a chain as a
-		// destination" (hasIncoming) or "as a source" (hasOutgoing); the
-		// relation's direction is the chain's direction.
-		hasOutgoing[e.FromID] = true
-		hasIncoming[e.ToID] = true
 	}
 
 	seen := make(map[string]bool)
 	var out []types.Vulnerability
 	for _, c := range claims {
-		if seen[c.ID] || !c.Challenged {
+		if seen[c.ID] {
+			continue
+		}
+		challenged := c.Challenged || hasContradictsIn[c.ID]
+		if !challenged {
 			continue
 		}
 		if !hasIncoming[c.ID] || !hasOutgoing[c.ID] {

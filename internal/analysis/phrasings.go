@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"fmt"
+	"strings"
 )
 
 // Multiple phrasings per finding type. FormatHookFindings picks one
@@ -88,29 +89,12 @@ func pickPhrasing(findingType string, claimText string) string {
 // from "the AI is asserting confidently without a source."
 func phrasingKey(findingType, description string) string {
 	if findingType == "load_bearing_vibes" {
-		if hasSubstring(description, "llm_output") {
+		if strings.Contains(description, "llm_output") {
 			return "load_bearing_vibes_llm"
 		}
 		return "load_bearing_vibes_user"
 	}
 	return findingType
-}
-
-func hasSubstring(s, sub string) bool {
-	// tiny inline to avoid pulling in strings here when only this is needed
-	n, m := len(s), len(sub)
-	if m == 0 {
-		return true
-	}
-	if n < m {
-		return false
-	}
-	for i := 0; i+m <= n; i++ {
-		if s[i:i+m] == sub {
-			return true
-		}
-	}
-	return false
 }
 
 // renderPhrasing picks and formats a phrasing for the given finding.
@@ -125,7 +109,7 @@ func renderPhrasing(findingType, description, claimText string) string {
 	if len(short) > 80 {
 		short = short[:80] + "..."
 	}
-	if hasSubstring(tmpl, "%s") {
+	if strings.Contains(tmpl, "%s") {
 		return fmt.Sprintf(tmpl, short)
 	}
 	return tmpl

@@ -113,6 +113,12 @@ type Vulnerabilities struct {
 	CriticalCount int             `json:"critical_count"`
 	WarningCount  int             `json:"warning_count"`
 	InfoCount     int             `json:"info_count"`
+	// StrengthCount counts bright/structural-strength findings (Type prefix
+	// "strength_"). Kept separate from InfoCount so summaries don't fold
+	// strengths into deficits. Bright findings are severity=info but
+	// semantically distinct — they're not vulnerabilities, they're the
+	// opposite.
+	StrengthCount int `json:"strength_count"`
 }
 
 // AuditResult is the combined output of parse_transcript: extraction + analysis.

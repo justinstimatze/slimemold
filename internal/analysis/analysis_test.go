@@ -691,3 +691,145 @@ func TestEchoChamberWithContradiction(t *testing.T) {
 		}
 	}
 }
+
+// TestFormatHookFindings_Cooldown verifies that FormatHookFindings skips a
+// priority-eligible finding when its (claim_id, finding_type) appears in the
+// recentFires set — end-to-end integration of the cooldown filter.
+func TestFormatHookFindings_Cooldown(t *testing.T) {
+	// Build a minimal graph with one load-bearing vibes claim.
+	anchorID := "claim-anchor"
+	downstreamID := "claim-downstream"
+	claims := []types.Claim{
+		{ID: anchorID, Text: "load-bearing vibes anchor", Basis: types.BasisVibes, Speaker: types.SpeakerUser, CreatedAt: time.Now()},
+		{ID: downstreamID, Text: "downstream A", Basis: types.BasisDeduction, Speaker: types.SpeakerUser, CreatedAt: time.Now()},
+		{ID: "claim-c", Text: "downstream B", Basis: types.BasisDeduction, Speaker: types.SpeakerUser, CreatedAt: time.Now()},
+	}
+	edges := []types.Edge{
+		{FromID: downstreamID, ToID: anchorID, Relation: types.RelDependsOn},
+		{FromID: "claim-c", ToID: anchorID, Relation: types.RelDependsOn},
+	}
+
+	topo, vulns := Analyze(claims, edges, "test")
+	// Sanity: we should have produced a load-bearing vibes finding on anchorID.
+	foundAnchor := false
+	for _, v := range vulns.Items {
+		if v.Type == "load_bearing_vibes" && len(v.ClaimIDs) > 0 && v.ClaimIDs[0] == anchorID {
+			foundAnchor = true
+		}
+	}
+	if !foundAnchor {
+		t.Fatal("setup: expected load_bearing_vibes on anchorID")
+	}
+
+	// Without cooldown, FormatHookFindings picks anchorID.
+	summary, pickedID, pickedType := FormatHookFindings(topo, vulns, claims, nil, 0, 0, 5)
+	if summary == "" {
+		t.Fatal("expected non-empty summary without cooldown")
+	}
+	if pickedID != anchorID || pickedType != "load_bearing_vibes" {
+		t.Errorf("without cooldown: picked (%q, %q), want (%q, load_bearing_vibes)", pickedID, pickedType, anchorID)
+	}
+
+	// With cooldown set on that exact (claim, type), we should either pick
+	// something else or emit nothing — but definitely not pick anchorID again.
+	recent := map[string]bool{anchorID + "|load_bearing_vibes": true}
+	_, pickedID2, pickedType2 := FormatHookFindings(topo, vulns, claims, recent, 0, 0, 5)
+	if pickedID2 == anchorID && pickedType2 == "load_bearing_vibes" {
+		t.Error("cooldown failed: picked the suppressed finding")
+	}
+}
+
+// TestFormatHookFindings_AgeDecay verifies that a priority candidate whose
+// anchor claim is older than HookMaxClaimAge gets filtered out.
+func TestFormatHookFindings_AgeDecay(t *testing.T) {
+	anchorID := "old-claim"
+	claims := []types.Claim{
+		{ID: anchorID, Text: "ancient load-bearing vibes", Basis: types.BasisVibes, Speaker: types.SpeakerUser, CreatedAt: time.Now().Add(-2 * HookMaxClaimAge)},
+		{ID: "d1", Text: "d1", Basis: types.BasisDeduction, Speaker: types.SpeakerUser, CreatedAt: time.Now()},
+		{ID: "d2", Text: "d2", Basis: types.BasisDeduction, Speaker: types.SpeakerUser, CreatedAt: time.Now()},
+	}
+	edges := []types.Edge{
+		{FromID: "d1", ToID: anchorID, Relation: types.RelDependsOn},
+		{FromID: "d2", ToID: anchorID, Relation: types.RelDependsOn},
+	}
+	topo, vulns := Analyze(claims, edges, "test")
+	_, pickedID, _ := FormatHookFindings(topo, vulns, claims, nil, 0, 0, 5)
+	if pickedID == anchorID {
+		t.Error("age decay failed: picked an anchor older than HookMaxClaimAge")
+	}
+}
+
+// TestStrengthCount_SeparateFromInfo verifies that bright/strength findings
+// are counted in StrengthCount and not double-counted in InfoCount.
+func TestStrengthCount_SeparateFromInfo(t *testing.T) {
+	// Graph with a well-sourced load-bearer (strong basis, 2+ dependents) —
+	// should produce a strength_well_sourced_load_bearer finding.
+	claims := []types.Claim{
+		{ID: "anchor", Text: "research-backed anchor", Basis: types.BasisResearch, Source: "Schultz 1997", Speaker: types.SpeakerUser, CreatedAt: time.Now()},
+		{ID: "d1", Text: "d1", Basis: types.BasisDeduction, Speaker: types.SpeakerUser, CreatedAt: time.Now()},
+		{ID: "d2", Text: "d2", Basis: types.BasisDeduction, Speaker: types.SpeakerUser, CreatedAt: time.Now()},
+	}
+	edges := []types.Edge{
+		{FromID: "d1", ToID: "anchor", Relation: types.RelDependsOn},
+		{FromID: "d2", ToID: "anchor", Relation: types.RelDependsOn},
+	}
+	_, vulns := Analyze(claims, edges, "test")
+	if vulns.StrengthCount < 1 {
+		t.Errorf("StrengthCount = %d, want >= 1", vulns.StrengthCount)
+	}
+	// Count strength items manually to confirm InfoCount didn't swallow them.
+	var actualStrengths int
+	for _, v := range vulns.Items {
+		if strings.HasPrefix(v.Type, "strength_") {
+			actualStrengths++
+			if v.Severity != "info" {
+				t.Errorf("strength finding has severity %q, want info", v.Severity)
+			}
+		}
+	}
+	if actualStrengths != vulns.StrengthCount {
+		t.Errorf("StrengthCount = %d, but %d items have strength_ prefix", vulns.StrengthCount, actualStrengths)
+	}
+	// InfoCount must not include strengths — StrengthCount is the sole
+	// counter for them. The two counters partition severity=info items
+	// (strength_-prefixed → StrengthCount; rest → InfoCount).
+	var expectedInfo int
+	for _, v := range vulns.Items {
+		if v.Severity == "info" && !strings.HasPrefix(v.Type, "strength_") {
+			expectedInfo++
+		}
+	}
+	if vulns.InfoCount != expectedInfo {
+		t.Errorf("InfoCount = %d but expected %d non-strength info items", vulns.InfoCount, expectedInfo)
+	}
+}
+
+// TestProductiveStressTest_ContradictsProxy verifies the broadened detector
+// fires when a mid-chain claim has an incoming contradicts edge (the
+// structural proxy for "someone pushed back") even without the Challenged
+// flag explicitly set.
+func TestProductiveStressTest_ContradictsProxy(t *testing.T) {
+	claims := []types.Claim{
+		{ID: "premise", Text: "the stressed premise", Basis: types.BasisVibes, Speaker: types.SpeakerUser, CreatedAt: time.Now()},
+		{ID: "upstream", Text: "upstream node", Basis: types.BasisResearch, Speaker: types.SpeakerUser, CreatedAt: time.Now()},
+		{ID: "downstream", Text: "downstream node", Basis: types.BasisDeduction, Speaker: types.SpeakerUser, CreatedAt: time.Now()},
+		{ID: "critic", Text: "counter-argument", Basis: types.BasisResearch, Speaker: types.SpeakerAssistant, CreatedAt: time.Now()},
+	}
+	edges := []types.Edge{
+		// premise has both outgoing (it depends on upstream) and incoming
+		// (downstream depends on premise) support/depends_on edges — i.e.,
+		// premise is mid-chain, which is what the detector requires.
+		{FromID: "premise", ToID: "upstream", Relation: types.RelDependsOn},
+		{FromID: "downstream", ToID: "premise", Relation: types.RelDependsOn},
+		// Incoming contradicts from a critic — the proxy for "someone
+		// pushed back on premise."
+		{FromID: "critic", ToID: "premise", Relation: types.RelContradicts},
+	}
+	out := findProductiveStressTest(claims, edges)
+	if len(out) == 0 {
+		t.Fatal("expected productive_stress_test finding via contradicts proxy, got 0")
+	}
+	if out[0].ClaimIDs[0] != "premise" {
+		t.Errorf("finding anchor = %q, want premise", out[0].ClaimIDs[0])
+	}
+}
