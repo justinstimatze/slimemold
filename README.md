@@ -425,15 +425,15 @@ to accomplish nothing. We have not run this experiment at scale.
 **The tool itself is a fluency trap.** You just read several paragraphs
 of cognitive science citations, a biological metaphor, benchmark numbers,
 and concrete examples. It probably felt well-supported. We ran slimemold
-on this essay. It found a 35-claim unchallenged chain running from the
-*Physarum* metaphor through the fluency gradient analogy to the thesis
-about AI — every link felt reasonable, nobody paused. It flagged
-"language models are trained to minimize prediction loss on human text"
-as load-bearing vibes supporting five downstream claims. We kept
-the claim and grounded it in mechanism (prediction loss on human text
-produces fluent output by construction), but we cannot cite a study
-measuring the effect on conversations. The tool caught it. We made a
-judgment call.
+on this essay. It found a fifteen-claim unchallenged chain running from
+the Lemoine-LaMDA example through the sycophancy mechanism to the
+tool's own self-description — every link felt reasonable, nobody
+paused. It flagged "language models are trained to minimize prediction
+loss on human text" as load-bearing vibes supporting three downstream
+claims. We kept the claim and grounded it in mechanism (prediction
+loss on human text produces fluent output by construction), but we
+cannot cite a study measuring the effect on conversations. The tool
+caught it. We made a judgment call.
 
 It also flagged three of the essay's own hedges as premature closures.
 "Whether fluency compounds across multi-step reasoning has not been
@@ -628,178 +628,183 @@ credentials are stored in the database.
 <details>
 <summary><b>Appendix: Slimemold on Marinetti's Futurist Manifesto (1909)</b></summary>
 
-We fed [`examples/documents/marinetti-futurist-manifesto-1909.md`](examples/documents/marinetti-futurist-manifesto-1909.md) to `slimemold ingest`. 41 claims, 70 edges.
+We fed [`examples/documents/marinetti-futurist-manifesto-1909.md`](examples/documents/marinetti-futurist-manifesto-1909.md) to `slimemold ingest`. 53 claims, 74 edges.
 
 ```
-SLIMEMOLD [demo-marinetti] — 41 claims, 70 edges
-  Basis: analogy=3, empirical=3, vibes=35
+SLIMEMOLD [demo-marinetti] — 53 claims, 74 edges
+  Basis: analogy=6, convention=1, deduction=1, vibes=45
 
 CRITICAL Load-bearing vibes: "The world's magnificence has been
-  enriched by a new beauty: the beauty of speed" supports 5
-  downstream claims (never challenged)
+  enriched by a new beauty" supports 5 downstream claims
+  (never challenged)
 
-CRITICAL Load-bearing vibes: "Except in struggle, there is no more
-  beauty" supports 4 downstream claims (never challenged)
+CRITICAL Load-bearing vibes: "The Futurists hurl defiance 'once
+  again' to the stars" supports 4 downstream claims
 
-CRITICAL Load-bearing vibes: "Italy is strangled by its gangrene of
-  professors, archaeologists, and antiquarians" supports 3 claims
+CRITICAL Load-bearing vibes: "The Futurists command others to 'lift
+  up their heads'" supports 4 downstream claims
 
-CRITICAL Fluency trap: "Courage, audacity, and revolt will be
-  essential elements of our poetry" stated at confidence 1.0 but
-  basis is vibes — processing fluency may masquerade as truth
+CRITICAL Load-bearing vibes: "Art can be nothing but violence,
+  cruelty, and injustice" supports 4 downstream claims
 
-WARNING Bottleneck (centrality 88): "Courage, audacity, and revolt
-  will be essential elements of our poetry" [vibes] — many
-  reasoning paths flow through this claim
+CRITICAL Load-bearing vibes: "Italy has for too long been a dealer
+  in second-hand clothes" supports 3 downstream claims
 
-WARNING Unchallenged chain (5 claims): Worship of the past fatally
-  exhausts → Admiring an old picture is the same as → Daily visits
-  to museums poison and rot → Museums are cemeteries — spaces of
-  sinister promiscuity → Futurism will destroy museums, libraries,
+WARNING Bottleneck (centrality 1363): "We stand on the last
+  promontory of the centuries" [vibes] — many reasoning paths
+  flow through this claim
+
+WARNING Bottleneck (centrality 928): "The Futurists are the revival
+  and extension of their ancestors" [vibes]
+
+WARNING Unchallenged chain (7 claims): What is there to see in an
+  old picture → Admiring an old picture is the same as → An annual
+  pilgrimage to museums → Museums are cemeteries → Italy is covered
+  by numberless museums → Italy has for too long been a dealer in
+  second-hand clothes → We will destroy the museums, libraries,
   and academies
-
-WARNING Premature closure: "Time and Space died yesterday; we
-  already live in the absolute" terminates a line of reasoning that
-  still has unverified claims upstream — flagged as thought-
-  terminating cliche
-
-WARNING Premature closure: "Art can be nothing but violence, cruelty,
-  and injustice" terminates a line of reasoning — flagged as
-  thought-terminating cliche
 ```
 
-Eleven load-bearing vibes. Thirty-five of forty-one claims tagged vibes (85%). Every bottleneck in the graph is a vibes-basis claim — there are no load-bearing deductions, no load-bearing research citations. The five-claim unchallenged chain threads through the manifesto's core anti-museum argument without encountering a single challenge, empirical claim, or citation. "Time and Space died yesterday" functions structurally the way "it's turtles all the way down" functions in the slimemold taxonomy: a rhetorical flourish that caps an unresolved chain. Nothing in the extraction rests on anything verifiable. That is the structural signature of a manifesto, and the tool renders it visible.
+Forty-five of fifty-three claims tagged vibes (85%). Every bottleneck in the graph is a vibes-basis claim — no load-bearing deductions, no load-bearing research citations. The seven-claim unchallenged chain threads through the manifesto's core anti-museum argument without encountering a single challenge, empirical claim, or citation. Nothing in the extraction rests on anything verifiable. That is the structural signature of a manifesto, and the tool renders it visible.
 
 </details>
 
 <details>
 <summary><b>Appendix: Slimemold on Sokal's "Transgressing the Boundaries" (1996)</b></summary>
 
-We fed [`examples/documents/sokal-social-text-1996.md`](examples/documents/sokal-social-text-1996.md) to `slimemold ingest`. 240 claims, 335 edges. The Works Cited and Notes sections are skipped by the chunker since they contain only bibliography, not argument.
+We fed [`examples/documents/sokal-social-text-1996.md`](examples/documents/sokal-social-text-1996.md) to `slimemold ingest`. 234 claims, 420 edges. The Works Cited and Notes sections are skipped by the chunker since they contain only bibliography, not argument.
 
 ```
-SLIMEMOLD [demo-sokal] — 240 claims, 335 edges
-  Basis: vibes=136, research=66, deduction=26, analogy=5,
-         definition=4, assumption=3
+SLIMEMOLD [demo-sokal] — 234 claims, 420 edges
+  Basis: research=63, vibes=154, definition=11, analogy=3,
+         deduction=3
 
-CRITICAL Load-bearing vibes: "Lacan argued that topological
-  surfaces — the torus, Klein bottle, cross-cap, Möbius strip — are
-  the mathematics of the subject" supports 7 downstream claims
+CRITICAL Load-bearing vibes: "Feminist and poststructuralist
+  critiques have demystified the substantive content of mainstream
+  Western scientific practice" supports 6 downstream claims
 
-CRITICAL Load-bearing vibes: "Feminist and poststructuralist critiques
-  have demystified the substantive content of mainstream Western
-  scientific practice" supports 5 downstream claims
+CRITICAL Load-bearing vibes: "In the 1980s, string theory became
+  popular: here the fundamental entities of physics are not..."
+  supports 5 downstream claims
 
-CRITICAL Load-bearing vibes: "The content of any science is
-  profoundly constrained by the language within which its
-  discourses are formulated" supports 5 downstream claims
+CRITICAL Load-bearing vibes: "Quantum mechanics has four important
+  aspects: uncertainty, complementarity, discontinuity, and
+  interconnectedness" supports 4 downstream claims
 
-CRITICAL Load-bearing vibes: "As yet no emancipatory mathematics
-  exists, and we can only speculate upon its eventual content"
-  supports 4 downstream claims
+CRITICAL Load-bearing vibes: "Quantum gravity problematizes the
+  objective existence of space-time manifolds" supports 4 claims
 
-WARNING Bottleneck (centrality 770): "The content and methodology
-  of postmodern science provide powerful intellectual support for
-  the progressive political project" [vibes]
+CRITICAL Load-bearing vibes: "Chaos theory provides our deepest
+  insights into the ubiquitous yet unpredictable..." supports 4
 
-WARNING Bottleneck (centrality 625): "One part of the progressive
-  project must involve the construction of a new and truly
-  progressive science" [vibes]
+CRITICAL Load-bearing vibes: "The infinite-dimensional invariance
+  group of general relativity..." supports 4 downstream claims
 
-WARNING Bottleneck (centrality 536): "A complete elucidation of one
-  and the same object may require diverse points of view" [research]
+WARNING Bottleneck (centrality 13434): "Deep conceptual shifts
+  within twentieth-century science have undermined..." [vibes]
 
-WARNING Unchallenged chain (15 claims): The Einsteinian constant is
-  not → The putative observer becomes fatally → The infinite-
-  dimensional invariance group → Diffeomorphisms are self-mappings
-  of → In mathematical terms, Derrida's observation → Derrida
-  replied that the Einsteinian → At a symposium on Les Langages
-  Critiques → General relativity has had a profound → General
-  relativity forces upon us radically → General relativity predicts
-  the bending → Einstein's general relativity subsumes → Newton's
-  gravitational theory corresponds → Einstein's equations are
-  highly nonlinear → In Einstein's general theory
+WARNING Bottleneck (centrality 13238): "Physical 'reality', no
+  less than social 'reality', is at bottom a social and linguistic
+  construct" [vibes]
+
+WARNING Bottleneck (centrality 11674): "Feminist and poststructuralist
+  critiques have demystified..." [vibes]
+
+WARNING Unchallenged chain (26 claims): The images of future
+  mathematics → Fuzzy systems theory, catastrophe theory →
+  As yet no emancipatory mathematics exists → A liberatory science
+  cannot be complete → The fundamental goal of any emancipatory
+  movement → Part of the progressive project → The content and
+  methodology of postmodern science → The postmodern sciences
+  deconstruct → The infinite-dimensional invariance group →
+  Diffeomorphisms are self-mappings → Derrida's observation about
+  the Einsteinian constant → At a celebrated symposium on Les
+  Langages Critiques → General relativity has had a profound →
+  General relativity forces upon us radically → Gödel constructed
+  an Einstein space-time → General relativity predicts the bending
+  → Einstein's general relativity subsumes → Newton's gravitational
+  theory corresponds → Einstein's equations are highly nonlinear →
+  In Einstein's general theory → Deep conceptual shifts within
+  twentieth-century science
 ```
 
-Sixty-six claims tagged `research` — more citation density than most real papers. Sokal's hoax was *designed* to look rigorously sourced. But the structurally load-bearing claims — the ones other claims depend on — are overwhelmingly `vibes`: rhetorical synthesis statements about "postmodern science," "emancipatory mathematics," "the progressive political project." The two highest-centrality bottlenecks in the entire graph are unsourced grand claims that the rest of the argument flows through. The fifteen-claim unchallenged chain threads from Einstein's field equations through Derrida's invocation of them to the paper's thesis without a single challenge or verifying edge — the citation-dense surface never actually intersects with the argument-bearing structure. The tool sees the hoax's exact mechanism: pad the page with real citations, carry the argument on vibes.
+Sixty-three claims tagged `research` — more citation density than most real papers. Sokal's hoax was *designed* to look rigorously sourced. But the structurally load-bearing claims — the ones other claims depend on — are overwhelmingly `vibes`: rhetorical synthesis statements about "postmodern science," "emancipatory mathematics," "the progressive political project." The three highest-centrality bottlenecks in the entire graph are unsourced grand claims that the rest of the argument flows through. The twenty-six-claim unchallenged chain threads from Sokal's "emancipatory mathematics" framing through Derrida's invocation of Einstein all the way to the paper's closing thesis without a single challenge or verifying edge — the citation-dense surface never actually intersects with the argument-bearing structure. The tool sees the hoax's exact mechanism: pad the page with real citations, carry the argument on vibes.
 
 </details>
 
 <details>
 <summary><b>Appendix: Slimemold's audit of this README</b></summary>
 
-We fed this README to `slimemold ingest`. 228 claims, 457 edges.
+We fed this README to `slimemold ingest`. 265 claims, 476 edges.
 
 ```
-SLIMEMOLD [demo-readme] — 228 claims, 457 edges
-  Basis: definition=81, vibes=40, empirical=38, deduction=33,
-         research=23, analogy=9, llm_output=3, assumption=1
+SLIMEMOLD [demo-readme] — 265 claims, 476 edges
+  Basis: vibes=175, definition=43, research=24, analogy=11,
+         deduction=11, convention=1
 
-CRITICAL Load-bearing vibes: "AI models will agree with unsourced
-  claims, then agree with the structural analysis showing claims
-  are unsourced, then enthusiastically agree you should verify
-  them" supports 8 downstream claims
+CRITICAL Load-bearing vibes: "Slimemold was run on the Lemoine-LaMDA
+  transcript and extracted 40 claims and 51 edges" supports 5
+  downstream claims
 
-CRITICAL Load-bearing llm_output: "Physarum polycephalum forages by
-  following local chemical gradients" supports 6 downstream claims
+CRITICAL Load-bearing vibes: "In the Slimemold condition, the model
+  challenged from turn 2, escalated through turns 4-6, and by turn
+  7 had autonomously run a Lotka-Volterra simulation" supports 4
+
+CRITICAL Load-bearing vibes: "Slimemold does not know what sentience
+  is — it only sees that the structure depends on things nobody
+  verified" supports 4 downstream claims
 
 CRITICAL Load-bearing vibes: "Language models are trained to
   minimize prediction loss on human text — their output is
   optimized, by construction, for the qualities that drive
-  processing fluency" supports 5 downstream claims
+  processing fluency" supports 3 downstream claims
 
-CRITICAL Load-bearing vibes: "When you partially understand
-  something, it feels like understanding" supports 5 downstream
-  claims
-
-CRITICAL Load-bearing vibes: "A language model has no privileged
-  access to its own epistemic state" supports 4 downstream claims
-
-WARNING Bottleneck (centrality 9249): "Slimemold watches
+WARNING Bottleneck (centrality 20101): "Slimemold watches
   conversations as they happen, extracts the claims being made,
   builds a persistent graph" [definition] — many reasoning paths
   flow through this claim
 
-WARNING Bottleneck (centrality 8620): "Processing fluency
-  masquerades as truth" [research] — load-bearing at the structural
-  center of the essay
+WARNING Bottleneck (centrality 9331): "Slimemold is a sycophantic
+  tool for preventing worse sycophancy" [vibes]
 
-WARNING Unchallenged chain (35 claims): Physarum forages by
-  following chemical gradients → gradient-following is how the
-  organism builds efficient networks → the pathology is
-  miscalibration → humans follow the fluency gradient the same way
-  → information foraging theory → Bjork's desirable difficulties →
-  processing fluency masquerades as truth → partial understanding
-  feels like understanding → ... → AI models will agree with
-  unsourced claims
+WARNING Bottleneck (centrality 7129): "LLM sycophancy toward
+  unsourced user claims is a genuine problem" [vibes]
 
-INFO Premature closure: "Preventing the model from being sycophantic
-  requires an elaborate intervention" terminates a line of
-  reasoning that still has unverified claims upstream
+WARNING Unchallenged chain (15 claims): "The assistant can learn
+  new things" → Slimemold was run on the Lemoine-LaMDA transcript
+  → The philosophical premise about the absence of a sentience
+  test → The Lemoine-LaMDA sentience argument → The AI states
+  something confidently, the human builds on it → Neither the
+  human nor the AI is lying → When a human brings a partial model
+  → Language models are trained to minimize prediction loss →
+  The reasoning-stops-too-soon problem → Models trained with human
+  feedback (RLHF) are agreeable → LLM sycophancy toward unsourced
+  user claims → Slimemold is a sycophantic tool → Slimemold is a
+  tool for Claude Code → Slimemold watches conversations
 ```
 
-Six load-bearing claims. The essay's opening ("when you partially
-understand something, it feels like understanding") carries five
-dependents; the essay's closing thesis ("AI models will agree with
-unsourced claims, then agree with the structural analysis showing
-claims are unsourced") carries eight. The *Physarum* metaphor that
-runs as the essay's organizing image is itself a load-bearing
-llm_output claim with six dependents — we assert as fact what the
-slime mold does, cite no biology paper in-text, and build the rest of
-the argument on top of it. The 35-claim unchallenged chain threads
-from that metaphor all the way through the fluency literature to the
-essay's claims about AI behavior — every step feels reasonable, nobody
-paused. An earlier draft had a nine-claim chain and fourteen fluency
-traps; adding sycophancy citations (Perez et al. 2022, Sharma et al.
-2023) broke the chain, replacing a thought-terminating cliche with an
-actual engagement of the limitation removed the worst premature
-closure. The audit loop works. It does not converge to zero — in fact,
-as the essay grows, the chain grows with it.
+One hundred seventy-five of two hundred sixty-five claims tagged
+vibes (66%). The *Physarum* metaphor is no longer the top load-bearer
+— after v0.5.2 added post-hoc basis validation and v0.5.3 taught the
+unchallenged-chain detector to respect contradicts/questions edges as
+pushback, the longest unchallenged chain now runs through the
+Lemoine-LaMDA → sycophancy-mechanism → tool-description path rather
+than through the opening metaphor. An earlier draft's nine-claim
+chain became a six-claim chain by adding sycophancy citations (Perez
+et al. 2022, Sharma et al. 2023). This latest run's fifteen-claim
+chain is new territory introduced by the Phase 1.5 port-back and the
+eval CLI sections — growth paragraphs that haven't yet had their own
+grounding pass. "Language models are trained to minimize prediction
+loss on human text" is still load-bearing vibes, now supporting three
+downstream claims instead of the earlier five. We kept the claim and
+grounded it in mechanism (prediction loss on human text produces
+fluent output by construction), but we cannot cite a study measuring
+the effect on conversations. The tool caught it. We made a judgment
+call. The audit loop works. It does not converge to zero — in fact,
+as the essay grows, the chain moves with it.
 
-(Earlier versions of this appendix showed numbers from transcript-mode
-extraction, which was the only path available. With `slimemold ingest`
-now landed, the README gets read via document mode — the mode that
-matches what the README actually is — and the numbers above reflect
-that.)
+(Numbers captured under extraction prompt version 4; a fresh run via
+`slimemold eval` with the same version will reproduce basis
+distributions within extraction noise.)
 
 </details>
