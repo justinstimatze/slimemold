@@ -696,13 +696,17 @@ func TestEchoChamberWithContradiction(t *testing.T) {
 // priority-eligible finding when its (claim_id, finding_type) appears in the
 // recentFires set — end-to-end integration of the cooldown filter.
 func TestFormatHookFindings_Cooldown(t *testing.T) {
-	// Build a minimal graph with one load-bearing vibes claim.
+	// Graph size must exceed HookColdStartMinClaims or the hook short-
+	// circuits before any filtering logic runs.
 	anchorID := "claim-anchor"
 	downstreamID := "claim-downstream"
 	claims := []types.Claim{
 		{ID: anchorID, Text: "load-bearing vibes anchor", Basis: types.BasisVibes, Speaker: types.SpeakerUser, CreatedAt: time.Now()},
 		{ID: downstreamID, Text: "downstream A", Basis: types.BasisDeduction, Speaker: types.SpeakerUser, CreatedAt: time.Now()},
 		{ID: "claim-c", Text: "downstream B", Basis: types.BasisDeduction, Speaker: types.SpeakerUser, CreatedAt: time.Now()},
+		{ID: "claim-d", Text: "filler D", Basis: types.BasisDeduction, Speaker: types.SpeakerUser, CreatedAt: time.Now()},
+		{ID: "claim-e", Text: "filler E", Basis: types.BasisDeduction, Speaker: types.SpeakerUser, CreatedAt: time.Now()},
+		{ID: "claim-f", Text: "filler F", Basis: types.BasisDeduction, Speaker: types.SpeakerUser, CreatedAt: time.Now()},
 	}
 	edges := []types.Edge{
 		{FromID: downstreamID, ToID: anchorID, Relation: types.RelDependsOn},
@@ -742,11 +746,15 @@ func TestFormatHookFindings_Cooldown(t *testing.T) {
 // TestFormatHookFindings_AgeDecay verifies that a priority candidate whose
 // anchor claim is older than HookMaxClaimAge gets filtered out.
 func TestFormatHookFindings_AgeDecay(t *testing.T) {
+	// Graph size must exceed HookColdStartMinClaims.
 	anchorID := "old-claim"
 	claims := []types.Claim{
 		{ID: anchorID, Text: "ancient load-bearing vibes", Basis: types.BasisVibes, Speaker: types.SpeakerUser, CreatedAt: time.Now().Add(-2 * HookMaxClaimAge)},
 		{ID: "d1", Text: "d1", Basis: types.BasisDeduction, Speaker: types.SpeakerUser, CreatedAt: time.Now()},
 		{ID: "d2", Text: "d2", Basis: types.BasisDeduction, Speaker: types.SpeakerUser, CreatedAt: time.Now()},
+		{ID: "f1", Text: "filler 1", Basis: types.BasisDeduction, Speaker: types.SpeakerUser, CreatedAt: time.Now()},
+		{ID: "f2", Text: "filler 2", Basis: types.BasisDeduction, Speaker: types.SpeakerUser, CreatedAt: time.Now()},
+		{ID: "f3", Text: "filler 3", Basis: types.BasisDeduction, Speaker: types.SpeakerUser, CreatedAt: time.Now()},
 	}
 	edges := []types.Edge{
 		{FromID: "d1", ToID: anchorID, Relation: types.RelDependsOn},
@@ -831,5 +839,40 @@ func TestProductiveStressTest_ContradictsProxy(t *testing.T) {
 	}
 	if out[0].ClaimIDs[0] != "premise" {
 		t.Errorf("finding anchor = %q, want premise", out[0].ClaimIDs[0])
+	}
+}
+
+// TestFormatHookFindings_ColdStart verifies the HookColdStartMinClaims gate:
+// below the minimum graph size the hook stays silent even when individual
+// detectors would otherwise fire.
+func TestFormatHookFindings_ColdStart(t *testing.T) {
+	// 3-claim graph — below HookColdStartMinClaims (6). Construct a shape
+	// that WOULD trigger load_bearing_vibes in a larger graph.
+	claims := []types.Claim{
+		{ID: "anchor", Text: "vibes anchor", Basis: types.BasisVibes, Speaker: types.SpeakerUser, CreatedAt: time.Now()},
+		{ID: "d1", Text: "d1", Basis: types.BasisDeduction, Speaker: types.SpeakerUser, CreatedAt: time.Now()},
+		{ID: "d2", Text: "d2", Basis: types.BasisDeduction, Speaker: types.SpeakerUser, CreatedAt: time.Now()},
+	}
+	edges := []types.Edge{
+		{FromID: "d1", ToID: "anchor", Relation: types.RelDependsOn},
+		{FromID: "d2", ToID: "anchor", Relation: types.RelDependsOn},
+	}
+	topo, vulns := Analyze(claims, edges, "test")
+	// Sanity: without cold-start, there IS a load-bearing vibes finding in vulns.
+	foundInVulns := false
+	for _, v := range vulns.Items {
+		if v.Type == "load_bearing_vibes" {
+			foundInVulns = true
+		}
+	}
+	if !foundInVulns {
+		t.Fatal("setup: expected load_bearing_vibes in vulns for a below-cold-start graph")
+	}
+
+	// FormatHookFindings should return empty despite vulns having items —
+	// cold-start gate blocks the hook.
+	summary, pickedID, _ := FormatHookFindings(topo, vulns, claims, nil, 0, 0, 5)
+	if summary != "" || pickedID != "" {
+		t.Errorf("cold-start failed: got summary=%q picked=%q, want empty", summary, pickedID)
 	}
 }

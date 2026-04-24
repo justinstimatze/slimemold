@@ -502,6 +502,38 @@ slimemold audit                    # text findings summary
 Project resolution: `--project` flag > `.slimemold-project` file > directory
 name.
 
+### Session model
+
+Slimemold's graph **accumulates per-project across days.** A single project
+collects claims from every conversation you have in that directory over
+weeks or months. This is deliberate: essay revision, research threads, and
+long-arc project work all benefit from cross-session accumulation. The
+audit and viz commands let you query that history.
+
+To keep stale findings from dominating live-conversation hook output, the
+hook applies three filters before surfacing a priority finding:
+
+- **Cold-start floor** — below ~6 claims, the hook stays silent. Small
+  graphs produce small-sample artifacts that look load-bearing but aren't.
+- **Age decay** — anchor claims older than a week drop out of priority
+  selection. Old claims stay in the graph (queryable via `audit`) but stop
+  nagging in live hook output.
+- **Per-claim cooldown** — once a `(claim, finding_type)` fires, it's
+  suppressed for 24 hours so the same finding doesn't pound across every
+  turn.
+
+If you want a clean slate (new topic, different line of inquiry), use
+`slimemold reset` — it wipes the project's claims and edges and lets you
+start over. The extraction cache and hook fire log survive reset;
+re-ingesting previously-seen content is near-free thanks to the cache.
+
+This differs deliberately from session-isolating tools that scope by
+day or by workspace+date. Those work well for short-horizon use cases
+(coding assistants, daily ticket queues) where yesterday's context
+actively distracts from today's. For slimemold's use cases — reasoning
+topology mapping over long-running projects — the accumulation is the
+feature.
+
 ### Ingesting documents
 
 `slimemold ingest` runs the same extraction and analysis pipeline over authored

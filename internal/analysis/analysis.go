@@ -961,13 +961,24 @@ func clusterClaimIDs(cl types.ClusterInfo) []string {
 }
 
 // Hook filter constants. Tunable but deliberately conservative:
+//
 // HookCooldownWindow suppresses the same (claim, finding_type) from firing
-// twice within a day; HookMaxClaimAge drops any claim older than a week
-// from priority selection — stale findings from prior sessions otherwise
-// dominate the priority slot because they accumulate in the graph forever.
+// twice within a day.
+//
+// HookMaxClaimAge drops any claim older than a week from priority selection
+// — stale findings from prior sessions otherwise dominate the priority slot
+// because slimemold's graph accumulates cross-session by design. Age decay
+// is the substitute for session isolation (see README "Session Model").
+//
+// HookColdStartMinClaims gates the whole hook on graph size. On a tiny
+// graph (first few turns of a conversation), load-bearing analysis is
+// unreliable regardless of whether individual claims cross the per-detector
+// dependent thresholds — three claims in a chain look load-bearing but
+// it's just small-N artifact. Imported from buddy's COLD_START_MIN_CLAIMS.
 const (
-	HookCooldownWindow = 24 * time.Hour
-	HookMaxClaimAge    = 7 * 24 * time.Hour
+	HookCooldownWindow     = 24 * time.Hour
+	HookMaxClaimAge        = 7 * 24 * time.Hour
+	HookColdStartMinClaims = 6
 )
 
 // FormatHookFindings produces a terse, directive summary for hook injection.
@@ -978,7 +989,18 @@ const (
 // Returns (summary, pickedClaimID, pickedFindingType). Callers should call
 // db.LogHookFire(project, pickedClaimID, pickedFindingType) to record the
 // fire, so subsequent invocations within the cooldown window skip it.
+//
+// Discipline: **never fabricate a finding to fill silence.** If no detector
+// fires, no finding passes the cooldown/age filters, or the graph is below
+// HookColdStartMinClaims, return "". The hook is allowed to produce a
+// finding or be silent — it is not allowed to manufacture one because the
+// slot exists.
 func FormatHookFindings(topo *types.Topology, vulns *types.Vulnerabilities, claims []types.Claim, recentFires map[string]bool, newClaims, newEdges, maxFindings int) (string, string, string) {
+	// Cold-start gate: below a minimum graph size, load-bearing analysis is
+	// dominated by small-sample artifacts. Suppress the hook entirely.
+	if len(claims) < HookColdStartMinClaims {
+		return "", "", ""
+	}
 	if len(vulns.Items) == 0 {
 		return "", "", ""
 	}
