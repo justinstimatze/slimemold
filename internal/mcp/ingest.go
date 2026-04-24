@@ -287,8 +287,19 @@ func documentSessionID(displayPath string) string {
 // DocumentSessionID is the exported form used by callers that need to
 // correlate ingested documents to their session_id (e.g. the eval command
 // building per-document summaries from a shared project graph).
-func DocumentSessionID(absPath string) string {
-	return documentSessionID(absPath)
+//
+// The input path is resolved to absolute via filepath.Abs before hashing so
+// callers get the same session_id that CoreIngestDocument uses internally,
+// regardless of whether they pass a relative or absolute path. Silent
+// fallback to the input on Abs error — the error case is essentially
+// impossible on valid input, and returning ("", error) would make the
+// signature awkward for callers who just want a lookup key.
+func DocumentSessionID(path string) string {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		abs = path
+	}
+	return documentSessionID(abs)
 }
 
 func formatDocumentSource(displayPath string, headingPath []string) string {

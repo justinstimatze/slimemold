@@ -876,3 +876,70 @@ func TestFormatHookFindings_ColdStart(t *testing.T) {
 		t.Errorf("cold-start failed: got summary=%q picked=%q, want empty", summary, pickedID)
 	}
 }
+
+// TestUnchallengedChain_BreaksOnPushbackEdge verifies that an incoming
+// contradicts or questions edge mid-chain breaks the chain — a preexisting
+// gap until v0.5.2, since the detector previously only checked the
+// Challenged flag (which is set only via explicit MCP claims.challenge
+// calls, almost never in real data).
+func TestUnchallengedChain_BreaksOnPushbackEdge(t *testing.T) {
+	// Build a 5-claim chain a→b→c→d→e. Without pushback, this is a clean
+	// 5-claim unchallenged chain.
+	claims := []types.Claim{
+		makeClaim("a", "first", types.BasisVibes),
+		makeClaim("b", "second", types.BasisVibes),
+		makeClaim("c", "third (middle)", types.BasisVibes),
+		makeClaim("d", "fourth", types.BasisVibes),
+		makeClaim("e", "fifth", types.BasisVibes),
+		// A critic off-chain that questions the middle claim.
+		makeClaim("critic", "counter", types.BasisResearch),
+	}
+	chainEdges := []types.Edge{
+		makeEdge("a", "b", types.RelDependsOn),
+		makeEdge("b", "c", types.RelDependsOn),
+		makeEdge("c", "d", types.RelDependsOn),
+		makeEdge("d", "e", types.RelDependsOn),
+	}
+
+	// Run 1: chain with no pushback — expect a long chain to fire.
+	_, vulns := Analyze(claims, chainEdges, "test")
+	var foundLong bool
+	for _, v := range vulns.Items {
+		if v.Type == "unchallenged_chain" && len(v.ClaimIDs) >= 4 {
+			foundLong = true
+		}
+	}
+	if !foundLong {
+		t.Fatal("setup: expected a long unchallenged_chain finding without pushback")
+	}
+
+	// Run 2: add a questions edge pointing at 'c' mid-chain. Chain should
+	// break, and either no unchallenged_chain fires OR it fires with a
+	// shorter length that stops at c.
+	withQuestions := append([]types.Edge(nil), chainEdges...)
+	withQuestions = append(withQuestions, makeEdge("critic", "c", types.RelQuestions))
+	_, vulns = Analyze(claims, withQuestions, "test")
+	for _, v := range vulns.Items {
+		if v.Type == "unchallenged_chain" {
+			for _, id := range v.ClaimIDs {
+				if id == "c" {
+					t.Errorf("unchallenged_chain should not include claim 'c' after a questions edge targets it, got chain %v", v.ClaimIDs)
+				}
+			}
+		}
+	}
+
+	// Run 3: same but with a contradicts edge. Same expectation.
+	withContradicts := append([]types.Edge(nil), chainEdges...)
+	withContradicts = append(withContradicts, makeEdge("critic", "c", types.RelContradicts))
+	_, vulns = Analyze(claims, withContradicts, "test")
+	for _, v := range vulns.Items {
+		if v.Type == "unchallenged_chain" {
+			for _, id := range v.ClaimIDs {
+				if id == "c" {
+					t.Errorf("unchallenged_chain should not include claim 'c' after a contradicts edge targets it, got chain %v", v.ClaimIDs)
+				}
+			}
+		}
+	}
+}

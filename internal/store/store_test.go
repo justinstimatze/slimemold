@@ -522,3 +522,102 @@ func TestHookFireLogRoundtrip(t *testing.T) {
 		t.Errorf("future-cutoff should return 0 fires, got %d", len(fires))
 	}
 }
+
+// TestEdgeRelationCheckMigration verifies that an existing DB created with
+// the old edges.relation CHECK constraint (pre-'questions') is rebuilt on
+// Open, data is preserved, and the new constraint accepts 'questions'.
+func TestEdgeRelationCheckMigration(t *testing.T) {
+	dir := t.TempDir()
+	projectDir := filepath.Join(dir, "test-project")
+	if err := os.MkdirAll(projectDir, 0700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	dbPath := filepath.Join(projectDir, "graph.sqlite")
+	dsn := dbPath + "?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=foreign_keys(ON)"
+
+	// Create a DB with the OLD edges schema — CHECK only allows the three
+	// original relation values.
+	{
+		raw, err := sql.Open("sqlite", dsn)
+		if err != nil {
+			t.Fatalf("raw open: %v", err)
+		}
+		// Need claims too for the FK.
+		oldClaimsSchema := `CREATE TABLE claims (
+			id          TEXT PRIMARY KEY,
+			text        TEXT NOT NULL,
+			basis       TEXT NOT NULL CHECK(basis IN ('research','empirical','analogy','vibes','llm_output','deduction','assumption','definition','convention')),
+			confidence  REAL DEFAULT 0.5,
+			source      TEXT DEFAULT '',
+			session_id  TEXT NOT NULL,
+			project     TEXT NOT NULL,
+			turn_number INTEGER DEFAULT 0,
+			speaker     TEXT DEFAULT 'user' CHECK(speaker IN ('user','assistant','document')),
+			created_at  TEXT NOT NULL,
+			challenged  INTEGER DEFAULT 0,
+			verified    INTEGER DEFAULT 0,
+			terminates_inquiry INTEGER DEFAULT 0
+		)`
+		oldEdgesSchema := `CREATE TABLE edges (
+			id          TEXT PRIMARY KEY,
+			from_id     TEXT NOT NULL REFERENCES claims(id),
+			to_id       TEXT NOT NULL REFERENCES claims(id),
+			relation    TEXT NOT NULL CHECK(relation IN ('supports','depends_on','contradicts')),
+			strength    REAL DEFAULT 1.0,
+			created_at  TEXT NOT NULL
+		)`
+		for _, stmt := range []string{oldClaimsSchema, oldEdgesSchema} {
+			if _, err := raw.Exec(stmt); err != nil {
+				t.Fatalf("old schema: %v", err)
+			}
+		}
+		// Seed a claim + edge.
+		now := time.Now().Format(time.RFC3339)
+		if _, err := raw.Exec(`INSERT INTO claims (id, text, basis, session_id, project, speaker, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+			"c1", "claim one", "vibes", "s1", "test-project", "user", now); err != nil {
+			t.Fatalf("seed claim: %v", err)
+		}
+		if _, err := raw.Exec(`INSERT INTO claims (id, text, basis, session_id, project, speaker, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+			"c2", "claim two", "vibes", "s1", "test-project", "user", now); err != nil {
+			t.Fatalf("seed claim 2: %v", err)
+		}
+		if _, err := raw.Exec(`INSERT INTO edges (id, from_id, to_id, relation, created_at) VALUES (?, ?, ?, ?, ?)`,
+			"e1", "c1", "c2", "supports", now); err != nil {
+			t.Fatalf("seed edge: %v", err)
+		}
+		// Confirm the old constraint rejects 'questions'.
+		_, err = raw.Exec(`INSERT INTO edges (id, from_id, to_id, relation, created_at) VALUES (?, ?, ?, ?, ?)`,
+			"e2", "c1", "c2", "questions", now)
+		if err == nil {
+			t.Fatal("expected old edges schema to reject relation='questions'")
+		}
+		raw.Close()
+	}
+
+	// Open via the store — migrations run, including migrateEdgeRelationCheck.
+	db, err := Open(dir, "test-project")
+	if err != nil {
+		t.Fatalf("Open after edge migration: %v", err)
+	}
+	defer db.Close()
+
+	// Preserved edge must still be there.
+	edges, err := db.GetEdgesByProject("test-project")
+	if err != nil {
+		t.Fatalf("GetEdgesByProject: %v", err)
+	}
+	var preserved bool
+	for _, e := range edges {
+		if e.ID == "e1" && e.Relation == types.RelSupports {
+			preserved = true
+		}
+	}
+	if !preserved {
+		t.Error("seeded edge lost during migration")
+	}
+
+	// 'questions' relation should now be accepted.
+	if _, err := db.CreateEdge(&types.Edge{FromID: "c1", ToID: "c2", Relation: types.RelQuestions}); err != nil {
+		t.Fatalf("CreateEdge with relation=questions after migration: %v", err)
+	}
+}

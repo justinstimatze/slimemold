@@ -406,11 +406,21 @@ func findUnchallengedChains(claims []types.Claim, edges []types.Edge) []types.Vu
 		claimMap[claims[i].ID] = &claims[i]
 	}
 
-	// Build directed adjacency (depends_on, supports)
+	// Build directed adjacency (depends_on, supports) and a set of claims
+	// with incoming pushback (contradicts or questions). A claim that has
+	// been contradicted or questioned mid-chain breaks the "unchallenged"
+	// property — nobody pushed back is only true if no pushback edge ends
+	// at this claim. Previously the detector only checked c.Challenged,
+	// which is set by explicit claims.challenge calls; incoming-edge
+	// pushback from the conversation itself was ignored.
 	children := make(map[string][]string)
+	pushedBack := make(map[string]bool)
 	for _, e := range edges {
-		if e.Relation == types.RelDependsOn || e.Relation == types.RelSupports {
+		switch e.Relation {
+		case types.RelDependsOn, types.RelSupports:
 			children[e.FromID] = append(children[e.FromID], e.ToID)
+		case types.RelContradicts, types.RelQuestions:
+			pushedBack[e.ToID] = true
 		}
 	}
 
@@ -421,7 +431,7 @@ func findUnchallengedChains(claims []types.Claim, edges []types.Edge) []types.Vu
 	var dfs func(id string, chain []string)
 	dfs = func(id string, chain []string) {
 		c, ok := claimMap[id]
-		if !ok || c.Challenged || visited[id] {
+		if !ok || c.Challenged || pushedBack[id] || visited[id] {
 			if len(chain) > len(longest) {
 				longest = make([]string, len(chain))
 				copy(longest, chain)

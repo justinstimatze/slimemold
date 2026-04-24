@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/md5"
+	"embed"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -20,6 +21,14 @@ import (
 	"github.com/justinstimatze/slimemold/internal/store"
 	"github.com/justinstimatze/slimemold/internal/viz"
 )
+
+// evalCorpus embeds the demo documents into the binary so `slimemold eval`
+// works regardless of the caller's CWD (installed binaries, etc.). Writing
+// out to a temp directory at eval-time costs ~200KB of binary size and a
+// few ms per run.
+//
+//go:embed examples/documents/marinetti-futurist-manifesto-1909.md examples/documents/sokal-social-text-1996.md
+var evalCorpus embed.FS
 
 func main() {
 	if len(os.Args) < 2 {
@@ -696,21 +705,50 @@ func cmdEval() {
 		os.Exit(1)
 	}
 
-	const evalProject = "slimemold-eval"
-	demos := []string{
+	// Embedded demo filenames (inside the evalCorpus go:embed FS).
+	embeddedPaths := []string{
 		"examples/documents/marinetti-futurist-manifesto-1909.md",
 		"examples/documents/sokal-social-text-1996.md",
 	}
 
-	dbProject, _ := resolveDBProject("")
-	db, err := store.Open(cfg.DataDir, dbProject)
+	// Extract embeds into a persistent well-known location so the content
+	// hash is stable across invocations (extraction cache hits). Under
+	// cfg.DataDir so it lives alongside the eval DB.
+	corpusDir := filepath.Join(cfg.DataDir, "eval-corpus")
+	if err := os.MkdirAll(corpusDir, 0700); err != nil {
+		fmt.Fprintf(os.Stderr, "slimemold: eval corpus dir: %s\n", err)
+		os.Exit(1)
+	}
+	var demos []string
+	for _, rel := range embeddedPaths {
+		data, err := evalCorpus.ReadFile(rel)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "slimemold: missing embedded corpus file %s: %s\n", rel, err)
+			os.Exit(1)
+		}
+		out := filepath.Join(corpusDir, filepath.Base(rel))
+		if err := os.WriteFile(out, data, 0600); err != nil {
+			fmt.Fprintf(os.Stderr, "slimemold: writing eval corpus file: %s\n", err)
+			os.Exit(1)
+		}
+		demos = append(demos, out)
+	}
+
+	// Hardcode BOTH the DB project directory AND the query project name to
+	// "slimemold-eval" so the eval DB lives at a fixed location regardless
+	// of the caller's CWD. Previous behavior used resolveDBProject("") which
+	// was CWD-derived — that meant cache entries didn't persist across
+	// invocations from different directories.
+	const evalProject = "slimemold-eval"
+	db, err := store.Open(cfg.DataDir, evalProject)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "slimemold: database error: %s\n", err)
 		os.Exit(1)
 	}
 	defer db.Close()
 
-	// Fresh eval project each run so numbers are reproducible.
+	// Fresh eval project each run so numbers are reproducible. Cache
+	// entries in the eval DB's extract_cache survive DeleteProject.
 	_ = db.DeleteProject(evalProject)
 
 	extractor := extract.New(cfg.AnthropicAPIKey, cfg.Model)
