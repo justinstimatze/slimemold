@@ -756,7 +756,10 @@ func findEchoChamber(claims []types.Claim, edges []types.Edge) []types.Vulnerabi
 			continue
 		}
 		crossSpeakerEdges++
-		if e.Relation == types.RelContradicts {
+		// Both contradicts and questions count as cross-speaker pushback for
+		// echo-chamber detection. A questions edge is epistemic challenge
+		// without counter-claim — still friction, still absence of echo.
+		if e.Relation == types.RelContradicts || e.Relation == types.RelQuestions {
 			crossSpeakerContradictions++
 		}
 	}

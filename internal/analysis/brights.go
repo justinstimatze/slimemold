@@ -84,17 +84,19 @@ func findProductiveStressTest(claims []types.Claim, edges []types.Edge) []types.
 
 	hasIncoming := make(map[string]bool)
 	hasOutgoing := make(map[string]bool)
-	hasContradictsIn := make(map[string]bool)
+	hasPushbackIn := make(map[string]bool)
 	for _, e := range edges {
 		switch e.Relation {
 		case types.RelSupports, types.RelDependsOn:
 			hasOutgoing[e.FromID] = true
 			hasIncoming[e.ToID] = true
-		case types.RelContradicts:
-			// Contradicts is bidirectional in slimemold's semantics, but we
-			// only care about "something pushed back on this claim" — which
-			// is exactly what an incoming contradicts edge encodes.
-			hasContradictsIn[e.ToID] = true
+		case types.RelContradicts, types.RelQuestions:
+			// Either direction counts as "something pushed back on this
+			// claim." Contradicts is a counter-claim; questions is an
+			// epistemic challenge without counter-claim. For the stress-
+			// test signal we treat them equivalently — both mean the
+			// premise was interrogated mid-chain and survived.
+			hasPushbackIn[e.ToID] = true
 		}
 	}
 
@@ -104,7 +106,7 @@ func findProductiveStressTest(claims []types.Claim, edges []types.Edge) []types.
 		if seen[c.ID] {
 			continue
 		}
-		challenged := c.Challenged || hasContradictsIn[c.ID]
+		challenged := c.Challenged || hasPushbackIn[c.ID]
 		if !challenged {
 			continue
 		}

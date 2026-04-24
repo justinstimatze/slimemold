@@ -24,7 +24,11 @@ import (
 // documentPromptVersion bumps whenever systemPrompt + documentModeSupplement
 // changes in a way that invalidates prior cached extractions. The cache key
 // includes this so we don't serve stale results after a prompt edit.
-const documentPromptVersion = 3
+const documentPromptVersion = 4
+
+// DocumentPromptVersion exposes the version constant so outside packages
+// (e.g. the eval CLI) can label snapshots by prompt identity.
+func DocumentPromptVersion() int { return documentPromptVersion }
 
 // CoreIngestDocument chunks an authored document and extracts claims from each
 // chunk. One session per ingest, named deterministically from the path so
@@ -200,9 +204,11 @@ func resolveEdgesForClaim(txDB *store.DB, ec types.ExtractedClaim, indexToID map
 	n += resolveIntraBatchEdges(txDB, fromID, ec.DependsOnIndices, indexToID, types.RelDependsOn)
 	n += resolveIntraBatchEdges(txDB, fromID, ec.SupportsIndices, indexToID, types.RelSupports)
 	n += resolveIntraBatchEdges(txDB, fromID, ec.ContradictsIndices, indexToID, types.RelContradicts)
+	n += resolveIntraBatchEdges(txDB, fromID, ec.QuestionsIndices, indexToID, types.RelQuestions)
 	n += resolveCrossBatchEdges(txDB, fromID, ec.DependsOnExisting, types.RelDependsOn)
 	n += resolveCrossBatchEdges(txDB, fromID, ec.SupportsExisting, types.RelSupports)
 	n += resolveCrossBatchEdges(txDB, fromID, ec.ContradictsExisting, types.RelContradicts)
+	n += resolveCrossBatchEdges(txDB, fromID, ec.QuestionsExisting, types.RelQuestions)
 	return n
 }
 
@@ -276,6 +282,13 @@ func readDocument(path string) (string, string, error) {
 func documentSessionID(displayPath string) string {
 	sum := sha256.Sum256([]byte(displayPath))
 	return "doc:" + hex.EncodeToString(sum[:])[:12]
+}
+
+// DocumentSessionID is the exported form used by callers that need to
+// correlate ingested documents to their session_id (e.g. the eval command
+// building per-document summaries from a shared project graph).
+func DocumentSessionID(absPath string) string {
+	return documentSessionID(absPath)
 }
 
 func formatDocumentSource(displayPath string, headingPath []string) string {

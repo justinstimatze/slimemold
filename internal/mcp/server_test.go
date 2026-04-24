@@ -284,3 +284,46 @@ func TestCoreGetVulnerabilities(t *testing.T) {
 		t.Error("expected critical vulnerabilities for load-bearing vibes")
 	}
 }
+
+func TestValidateBasis_DowngradesWithoutSignal(t *testing.T) {
+	// Transcript uses a neutral string so our source strings below don't
+	// accidentally match — the research guardrail walks the source for its
+	// first significant word and checks for it in the transcript.
+	transcript := "foo bar baz"
+	claims := []types.ExtractedClaim{
+		// Research without source in transcript → llm_output
+		{Text: "Einstein showed special relativity", Basis: "research", Source: "Einstein 1905"},
+		// Research with empty source → llm_output (no source at all)
+		{Text: "latency is bounded", Basis: "research", Source: ""},
+		// Deduction without logical-step signal → vibes
+		{Text: "the system will obviously scale linearly", Basis: "deduction"},
+		// Deduction WITH signal → stays deduction
+		{Text: "if latency is bounded then throughput follows", Basis: "deduction"},
+		// Empirical without observer signal → vibes
+		{Text: "latency is typically 200ms under load", Basis: "empirical"},
+		// Empirical WITH signal → stays empirical
+		{Text: "we measured latency at 200ms under load", Basis: "empirical"},
+		// Convention without declared-practice signal → vibes
+		{Text: "beads is the best issue tracker", Basis: "convention"},
+		// Convention WITH signal → stays convention
+		{Text: "this project uses beads for issue tracking", Basis: "convention"},
+	}
+
+	validateResearchBasis(claims, transcript)
+
+	expected := []string{
+		"llm_output", // research-with-non-matching-source
+		"llm_output", // research-with-empty-source
+		"vibes",      // deduction-without-signal
+		"deduction",  // deduction-with-signal
+		"vibes",      // empirical-without-signal
+		"empirical",  // empirical-with-signal
+		"vibes",      // convention-without-signal
+		"convention", // convention-with-signal
+	}
+	for i, want := range expected {
+		if claims[i].Basis != want {
+			t.Errorf("claim %d: basis = %q, want %q (text %q)", i, claims[i].Basis, want, claims[i].Text)
+		}
+	}
+}

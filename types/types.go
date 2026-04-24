@@ -28,6 +28,13 @@ const (
 	RelSupports    Relation = "supports"
 	RelDependsOn   Relation = "depends_on"
 	RelContradicts Relation = "contradicts"
+	// RelQuestions — "A questions B." Claim A raises epistemic doubt about
+	// claim B without asserting B is wrong. Distinct from contradicts: a
+	// question is asking for clarification/justification, a contradiction
+	// is counter-evidence. Ported from the buddy port, which added this
+	// edge type and uses it as the cleanest "pushback" signal for the
+	// productive-stress-test pattern.
+	RelQuestions Relation = "questions"
 )
 
 // Speaker identifies who made a claim.
@@ -152,10 +159,12 @@ type ExtractedClaim struct {
 	DependsOnIndices   []int `json:"depends_on_indices"`
 	SupportsIndices    []int `json:"supports_indices"`
 	ContradictsIndices []int `json:"contradicts_indices"`
+	QuestionsIndices   []int `json:"questions_indices"`
 	// Cross-batch edges (existing claim IDs from the graph)
 	DependsOnExisting   []string `json:"depends_on_existing"`
 	SupportsExisting    []string `json:"supports_existing"`
 	ContradictsExisting []string `json:"contradicts_existing"`
+	QuestionsExisting   []string `json:"questions_existing"`
 	// Premature closure detection
 	TerminatesInquiry bool `json:"terminates_inquiry"`
 }

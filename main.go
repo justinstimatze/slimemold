@@ -54,6 +54,8 @@ func main() {
 		cmdReset(project)
 	case "ingest":
 		cmdIngest(project, args[1:])
+	case "eval":
+		cmdEval()
 	case "help", "--help", "-h":
 		usage()
 	default:
@@ -76,6 +78,7 @@ Usage:
   slimemold [--project NAME] status     Check if the hook is working
   slimemold [--project NAME] reset     Clear all data for project
   slimemold [--project NAME] ingest PATH   Ingest a document (text or markdown) into the graph
+  slimemold eval                       Run the demo corpus through extraction and print a basis-distribution snapshot
   slimemold help                       Show this help
 
 Project resolution: --project flag > .slimemold-project file > directory name
@@ -663,6 +666,125 @@ func cmdIngest(projectOverride string, args []string) {
 	fmt.Fprintf(os.Stderr, "\nslimemold: %d new claims, %d new edges (total: %d claims, %d edges)\n",
 		result.NewClaims, result.NewEdges, result.TotalClaims, result.TotalEdges)
 	fmt.Println(result.Summary)
+}
+
+// cmdEval runs the demo corpus through extraction and prints a basis-
+// distribution snapshot as JSON. Purpose: regression-detect prompt changes.
+// The workflow is:
+//
+//  1. Run `slimemold eval` before changing the extraction prompt — capture
+//     the output as a baseline (e.g. `slimemold eval > baseline.json`).
+//  2. Change the prompt, bump documentPromptVersion.
+//  3. Run `slimemold eval` again — diff against the baseline.
+//
+// Drift in basis distribution (especially in vibes/convention/research
+// ratios) is a signal the prompt change altered classification behavior.
+// No pass/fail is emitted — it's left to the caller to decide what drift
+// is acceptable; this command is the measurement, not the policy.
+//
+// Cost: first run after a prompt change re-extracts all chunks (~$0.30 at
+// current Sonnet pricing). Subsequent runs hit the cache and complete in
+// seconds. Uses project name "slimemold-eval" to isolate from real data.
+func cmdEval() {
+	cfg, err := config.Load()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "slimemold: config error: %s\n", err)
+		os.Exit(1)
+	}
+	if cfg.AnthropicAPIKey == "" {
+		fmt.Fprintln(os.Stderr, "slimemold: ANTHROPIC_API_KEY required for eval")
+		os.Exit(1)
+	}
+
+	const evalProject = "slimemold-eval"
+	demos := []string{
+		"examples/documents/marinetti-futurist-manifesto-1909.md",
+		"examples/documents/sokal-social-text-1996.md",
+	}
+
+	dbProject, _ := resolveDBProject("")
+	db, err := store.Open(cfg.DataDir, dbProject)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "slimemold: database error: %s\n", err)
+		os.Exit(1)
+	}
+	defer db.Close()
+
+	// Fresh eval project each run so numbers are reproducible.
+	_ = db.DeleteProject(evalProject)
+
+	extractor := extract.New(cfg.AnthropicAPIKey, cfg.Model)
+
+	type perDoc struct {
+		Path        string         `json:"path"`
+		Claims      int            `json:"claims"`
+		Edges       int            `json:"edges"`
+		BasisCounts map[string]int `json:"basis_counts"`
+	}
+	type evalReport struct {
+		Model         string   `json:"model"`
+		PromptVersion int      `json:"prompt_version"`
+		Docs          []perDoc `json:"docs"`
+	}
+
+	report := evalReport{Model: cfg.Model, PromptVersion: mcp.DocumentPromptVersion()}
+
+	for _, docPath := range demos {
+		fmt.Fprintf(os.Stderr, "slimemold eval: ingesting %s\n", docPath)
+		if _, err := mcp.CoreIngestDocument(context.Background(), db, extractor, evalProject, docPath, 0); err != nil {
+			fmt.Fprintf(os.Stderr, "slimemold: eval ingest error on %s: %s\n", docPath, err)
+			os.Exit(1)
+		}
+	}
+
+	claims, _ := db.GetClaimsByProject(evalProject)
+	edges, _ := db.GetEdgesByProject(evalProject)
+
+	// Per-doc breakdown keyed on session_id, which CoreIngestDocument
+	// sets deterministically from the absolute document path via
+	// DocumentSessionID. Source on individual claims is LLM-provided and
+	// not reliable as a filename — using the session_id correlation
+	// avoids that.
+	basisByDoc := make(map[string]map[string]int)
+	claimCountByDoc := make(map[string]int)
+	claimToSession := make(map[string]string, len(claims))
+	for _, c := range claims {
+		sid := c.SessionID
+		if basisByDoc[sid] == nil {
+			basisByDoc[sid] = make(map[string]int)
+		}
+		basisByDoc[sid][string(c.Basis)]++
+		claimCountByDoc[sid]++
+		claimToSession[c.ID] = sid
+	}
+	edgesByDoc := make(map[string]int)
+	for _, e := range edges {
+		if sid, ok := claimToSession[e.FromID]; ok {
+			edgesByDoc[sid]++
+		}
+	}
+
+	// Stable ordering by demos[] order so the JSON diffs cleanly.
+	for _, docPath := range demos {
+		abs, err := filepath.Abs(docPath)
+		if err != nil {
+			continue
+		}
+		sid := mcp.DocumentSessionID(abs)
+		report.Docs = append(report.Docs, perDoc{
+			Path:        docPath,
+			Claims:      claimCountByDoc[sid],
+			Edges:       edgesByDoc[sid],
+			BasisCounts: basisByDoc[sid],
+		})
+	}
+
+	out, err := json.MarshalIndent(report, "", "  ")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "slimemold: eval marshal error: %s\n", err)
+		os.Exit(1)
+	}
+	fmt.Println(string(out))
 }
 
 // hookRegistered checks if a slimemold hook is registered for the given event type.

@@ -22,7 +22,7 @@ CREATE TABLE IF NOT EXISTS edges (
     from_id     TEXT NOT NULL REFERENCES claims(id),
     to_id       TEXT NOT NULL REFERENCES claims(id),
     relation    TEXT NOT NULL CHECK(relation IN (
-        'supports','depends_on','contradicts'
+        'supports','depends_on','contradicts','questions'
     )),
     strength    REAL DEFAULT 1.0,
     created_at  TEXT NOT NULL

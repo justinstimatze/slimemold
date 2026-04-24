@@ -26,6 +26,7 @@ Edge types (directional — get the direction right):
 - depends_on: "THIS claim depends on THAT claim" — THIS cannot be asserted without THAT as a premise or prerequisite. The dependency is a foundation.
 - supports: "THIS claim provides evidence for THAT claim" — THIS reinforces THAT but THAT could stand without it.
 - contradicts: "THIS claim is in tension with THAT claim" — they cannot both be true.
+- questions: "THIS claim raises doubt about THAT claim" — THIS asks for clarification, justification, or evidence for THAT without asserting that THAT is wrong. Use this when the speaker pushes back with "but how do we know?", "is that sourced?", "what's the evidence?", "is that always true?" — epistemic challenge without counter-claim. Distinct from contradicts (which requires a counter-claim that can't coexist with the target).
 
 IMPORTANT: If A supports B, do NOT also say B depends_on A. They describe the same relationship from different angles. Pick the stronger one (depends_on if B truly cannot stand without A; supports if A merely reinforces B).
 
@@ -33,11 +34,13 @@ For references WITHIN this batch (new claims referencing other new claims):
 - depends_on_indices: indices of claims THIS claim depends on
 - supports_indices: indices of claims THIS claim provides evidence for
 - contradicts_indices: indices of claims THIS claim contradicts
+- questions_indices: indices of claims THIS claim raises doubt about
 
 For references to EXISTING claims (listed in the prompt with [ID] prefixes):
 - depends_on_existing: IDs of existing claims THIS claim depends on
 - supports_existing: IDs of existing claims THIS claim provides evidence for
 - contradicts_existing: IDs of existing claims THIS claim contradicts
+- questions_existing: IDs of existing claims THIS claim raises doubt about
 
 EVERY non-foundational claim MUST have at least one edge. If claim B builds on claim A, B's depends_on should reference A. A graph with many orphans (unconnected claims) is a failure of extraction.
 

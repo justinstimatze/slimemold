@@ -144,10 +144,12 @@ func buildExtractionSchema() anthropic.ToolInputSchemaParam {
 						"depends_on_indices":  map[string]interface{}{"type": "array", "items": map[string]string{"type": "integer"}, "description": "Indices of claims in THIS batch that this claim depends on"},
 						"supports_indices":    map[string]interface{}{"type": "array", "items": map[string]string{"type": "integer"}, "description": "Indices of claims in THIS batch that this claim supports"},
 						"contradicts_indices": map[string]interface{}{"type": "array", "items": map[string]string{"type": "integer"}, "description": "Indices of claims in THIS batch that this claim contradicts"},
+						"questions_indices":   map[string]interface{}{"type": "array", "items": map[string]string{"type": "integer"}, "description": "Indices of claims in THIS batch that this claim raises doubt about (epistemic challenge without counter-claim)"},
 						// Cross-batch edges (existing claim IDs)
 						"depends_on_existing":  map[string]interface{}{"type": "array", "items": map[string]string{"type": "string"}, "description": "IDs of existing claims this depends on"},
 						"supports_existing":    map[string]interface{}{"type": "array", "items": map[string]string{"type": "string"}, "description": "IDs of existing claims this supports"},
 						"contradicts_existing": map[string]interface{}{"type": "array", "items": map[string]string{"type": "string"}, "description": "IDs of existing claims this contradicts"},
+						"questions_existing":   map[string]interface{}{"type": "array", "items": map[string]string{"type": "string"}, "description": "IDs of existing claims this raises doubt about"},
 						// Premature closure detection
 						"terminates_inquiry": map[string]interface{}{"type": "boolean", "description": "True if this claim functions as a rhetorical stop signal — a phrase that feels like a conclusion but doesn't actually resolve the open question (e.g. 'it's turtles all the way down', 'correlation isn't causation', 'it is what it is', 'at the end of the day'). NOT true for actual conclusions that resolve something with evidence or reasoning."},
 					},

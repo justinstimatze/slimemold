@@ -505,6 +505,7 @@ func migrate(db *sql.DB) {
 	}
 	migrateSpeakerCheck(db)
 	migrateBasisCheck(db)
+	migrateEdgeRelationCheck(db)
 }
 
 // migrateSpeakerCheck widens the claims.speaker CHECK constraint to include
@@ -527,6 +528,64 @@ func migrateSpeakerCheck(db *sql.DB) {
 // created from schema.sql already have the marker and this is a no-op.
 func migrateBasisCheck(db *sql.DB) {
 	rebuildClaimsIfMissing(db, "'convention'", oldBasisRebuild)
+}
+
+// migrateEdgeRelationCheck widens the edges.relation CHECK constraint to
+// include 'questions'. The edges table is structurally simpler than claims
+// (no dependent columns), so the rebuild is inlined rather than sharing
+// rebuildClaimsIfMissing.
+func migrateEdgeRelationCheck(db *sql.DB) {
+	var tableSQL string
+	if err := db.QueryRow(`SELECT sql FROM sqlite_master WHERE type='table' AND name='edges'`).Scan(&tableSQL); err != nil {
+		return
+	}
+	if strings.Contains(tableSQL, "'questions'") {
+		return
+	}
+
+	if _, err := db.Exec(`PRAGMA foreign_keys = OFF`); err != nil {
+		return
+	}
+	defer func() { _, _ = db.Exec(`PRAGMA foreign_keys = ON`) }()
+
+	tx, err := db.Begin()
+	if err != nil {
+		return
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+
+	stmts := []string{
+		`CREATE TABLE edges_new (
+			id          TEXT PRIMARY KEY,
+			from_id     TEXT NOT NULL REFERENCES claims(id),
+			to_id       TEXT NOT NULL REFERENCES claims(id),
+			relation    TEXT NOT NULL CHECK(relation IN (
+				'supports','depends_on','contradicts','questions'
+			)),
+			strength    REAL DEFAULT 1.0,
+			created_at  TEXT NOT NULL
+		)`,
+		`INSERT INTO edges_new SELECT id, from_id, to_id, relation, strength, created_at FROM edges`,
+		`DROP TABLE edges`,
+		`ALTER TABLE edges_new RENAME TO edges`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_edges_unique ON edges(from_id, to_id, relation)`,
+		`CREATE INDEX IF NOT EXISTS idx_edges_from ON edges(from_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_edges_to ON edges(to_id)`,
+	}
+	for _, stmt := range stmts {
+		if _, err := tx.Exec(stmt); err != nil {
+			return
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return
+	}
+	committed = true
 }
 
 // rebuildClaimsIfMissing rebuilds the claims table using the provided DDL

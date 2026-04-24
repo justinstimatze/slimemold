@@ -103,60 +103,14 @@ func CoreParseTranscript(ctx context.Context, db *store.DB, extractor *extract.E
 		newClaims++
 	}
 
-	// Phase 2: Create edges using index resolution (intra-batch) and ID resolution (cross-batch)
+	// Phase 2: Create edges using index resolution (intra-batch) and ID
+	// resolution (cross-batch). Shared helper with CoreIngestDocument
+	// (see internal/mcp/ingest.go) — keeps both call sites under the
+	// gocognit linter budget and ensures edge handling stays consistent
+	// across transcript and document ingestion paths.
 	newEdges := 0
-
 	for _, ec := range result.Claims {
-		fromID, ok := indexToID[ec.Index]
-		if !ok {
-			continue
-		}
-
-		// Intra-batch edges: resolve by numeric index
-		for _, targetIdx := range ec.DependsOnIndices {
-			if toID, ok := indexToID[targetIdx]; ok && toID != fromID {
-				if createEdgeIfNew(txDB, fromID, toID, types.RelDependsOn) {
-					newEdges++
-				}
-			}
-		}
-		for _, targetIdx := range ec.SupportsIndices {
-			if toID, ok := indexToID[targetIdx]; ok && toID != fromID {
-				if createEdgeIfNew(txDB, fromID, toID, types.RelSupports) {
-					newEdges++
-				}
-			}
-		}
-		for _, targetIdx := range ec.ContradictsIndices {
-			if toID, ok := indexToID[targetIdx]; ok && toID != fromID {
-				if createEdgeIfNew(txDB, fromID, toID, types.RelContradicts) {
-					newEdges++
-				}
-			}
-		}
-
-		// Cross-batch edges: resolve by existing claim ID
-		for _, existingID := range ec.DependsOnExisting {
-			if existingID != fromID && claimExists(txDB, existingID) {
-				if createEdgeIfNew(txDB, fromID, existingID, types.RelDependsOn) {
-					newEdges++
-				}
-			}
-		}
-		for _, existingID := range ec.SupportsExisting {
-			if existingID != fromID && claimExists(txDB, existingID) {
-				if createEdgeIfNew(txDB, fromID, existingID, types.RelSupports) {
-					newEdges++
-				}
-			}
-		}
-		for _, existingID := range ec.ContradictsExisting {
-			if existingID != fromID && claimExists(txDB, existingID) {
-				if createEdgeIfNew(txDB, fromID, existingID, types.RelContradicts) {
-					newEdges++
-				}
-			}
-		}
+		newEdges += resolveEdgesForClaim(txDB, ec, indexToID)
 	}
 
 	// Phase 3: Prune noisy edges — cap outgoing degree per claim
@@ -589,9 +543,11 @@ func deduplicateBatch(claims []types.ExtractedClaim) []types.ExtractedClaim {
 			rep.DependsOnIndices = appendUnique(rep.DependsOnIndices, other.DependsOnIndices...)
 			rep.SupportsIndices = appendUnique(rep.SupportsIndices, other.SupportsIndices...)
 			rep.ContradictsIndices = appendUnique(rep.ContradictsIndices, other.ContradictsIndices...)
+			rep.QuestionsIndices = appendUnique(rep.QuestionsIndices, other.QuestionsIndices...)
 			rep.DependsOnExisting = appendUniqueStr(rep.DependsOnExisting, other.DependsOnExisting...)
 			rep.SupportsExisting = appendUniqueStr(rep.SupportsExisting, other.SupportsExisting...)
 			rep.ContradictsExisting = appendUniqueStr(rep.ContradictsExisting, other.ContradictsExisting...)
+			rep.QuestionsExisting = appendUniqueStr(rep.QuestionsExisting, other.QuestionsExisting...)
 			// Keep stronger basis if available
 			if basisRank(other.Basis) < basisRank(rep.Basis) {
 				rep.Basis = other.Basis
@@ -607,6 +563,7 @@ func deduplicateBatch(claims []types.ExtractedClaim) []types.ExtractedClaim {
 		deduped[i].DependsOnIndices = remapIndices(deduped[i].DependsOnIndices, indexRemap, deduped[i].Index)
 		deduped[i].SupportsIndices = remapIndices(deduped[i].SupportsIndices, indexRemap, deduped[i].Index)
 		deduped[i].ContradictsIndices = remapIndices(deduped[i].ContradictsIndices, indexRemap, deduped[i].Index)
+		deduped[i].QuestionsIndices = remapIndices(deduped[i].QuestionsIndices, indexRemap, deduped[i].Index)
 	}
 
 	return deduped
@@ -746,18 +703,23 @@ func pruneHighDegreeEdges(db *store.DB, project string) {
 		outgoing[e.FromID] = append(outgoing[e.FromID], e)
 	}
 
-	// Priority: contradicts (keep) > depends_on > supports (prune first)
-	// Unknown relation types get lowest priority (pruned first)
+	// Priority: contradicts (keep) > questions > depends_on > supports
+	// (prune first). Unknown relation types get lowest priority.
+	// Questions ranks above depends_on because pushback edges are rare and
+	// high-signal — losing a questions edge would hide real epistemic
+	// challenge from the productive-stress-test / echo-chamber detectors.
 	relPriority := func(r types.Relation) int {
 		switch r {
 		case types.RelContradicts:
 			return 0 // highest priority (keep)
-		case types.RelDependsOn:
+		case types.RelQuestions:
 			return 1
-		case types.RelSupports:
+		case types.RelDependsOn:
 			return 2
+		case types.RelSupports:
+			return 3
 		default:
-			return 3 // lowest priority (prune first)
+			return 4 // lowest priority (prune first)
 		}
 	}
 
@@ -922,13 +884,32 @@ func readTranscriptText(path string, sinceTurn int) (string, error) {
 	return strings.Join(parts, "\n"), nil
 }
 
-// validateResearchBasis checks research-classified claims against the transcript
-// and downgrades to llm_output if the cited source text isn't found in the transcript.
+// validateResearchBasis checks basis classifications against the claim text
+// and transcript, downgrading common hallucination patterns:
+//
+//   - "research" without an in-text citation → llm_output (the extractor
+//     sometimes upgrades confident-but-uncited assertions)
+//   - "deduction" without logical-step signals ("if", "therefore",
+//     "because", "follows from") → vibes
+//   - "empirical" without observer/measurement signals ("I/we", "saw",
+//     "measured", "observed", "tested") → vibes
+//   - "convention" without declared-practice signals ("we use", "this
+//     project", "must", "our workflow") → vibes
+//
+// Each check is conservative — a genuine claim with unusual phrasing can
+// get downgraded, but the failure mode of a false downgrade is "claim stays
+// load-bearing vibes," which is structurally harmless. The opposite failure
+// (hallucinated upgrade persisting) is much worse because it hides real
+// load-bearing structure from the detectors.
+//
+// The name remains validateResearchBasis for historical reasons; it now
+// validates several basis types.
 func validateResearchBasis(claims []types.ExtractedClaim, transcript string) {
 	transcriptLower := strings.ToLower(transcript)
 
 	for i := range claims {
 		c := &claims[i]
+		claimTextLower := strings.ToLower(c.Text)
 
 		switch c.Basis {
 		case "research":
@@ -956,6 +937,56 @@ func validateResearchBasis(claims []types.ExtractedClaim, transcript string) {
 				c.Source = ""
 			}
 
+		case "deduction":
+			// Deduction claims should contain logical-step signals. Without
+			// any of them, the extractor is likely calling two sequential
+			// assertions "deduction" — that's vibes.
+			if !containsAny(claimTextLower, []string{
+				"if ", "therefore", " then ", "because", "follows from",
+				"implies", "entails", "consequently", "hence", "thus",
+				"given that", "it follows",
+			}) {
+				c.Basis = "vibes"
+			}
+
+		case "empirical":
+			// Empirical claims should reference first-person observation
+			// or explicit measurement. Absent any marker, the extractor is
+			// likely calling a confident factual claim "empirical."
+			if !containsAny(claimTextLower, []string{
+				"i saw", "i observed", "i measured", "i tested", "i tried",
+				"we saw", "we observed", "we measured", "we tested", "we tried",
+				"we ran", "i ran", "observed", "measured", "noticed",
+				"in our experiment", "in our test", "empirically",
+			}) {
+				c.Basis = "vibes"
+			}
+
+		case "convention":
+			// Convention claims should declare a practice/policy by a named
+			// actor (project/team/organization/author voice). Absent those
+			// signals, the extractor is calling a general factual claim
+			// "convention."
+			if !containsAny(claimTextLower, []string{
+				"we use", "we track", "we follow", "we require",
+				"this project", "the project uses", "this team", "our workflow",
+				"our convention", "agents should", "agents must",
+				"must use", "must be", "required to", "by convention",
+				"the convention is", "standard practice",
+			}) {
+				c.Basis = "vibes"
+			}
 		}
 	}
+}
+
+// containsAny returns true if any of the needles appears as a substring of
+// haystack (both are expected to be already-lowercased).
+func containsAny(haystack string, needles []string) bool {
+	for _, n := range needles {
+		if strings.Contains(haystack, n) {
+			return true
+		}
+	}
+	return false
 }
