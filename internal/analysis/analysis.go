@@ -1083,6 +1083,7 @@ func FormatHookFindings(topo *types.Topology, vulns *types.Vulnerabilities, clai
 	// guide, not a script — the model is expected to phrase the redirect in
 	// its own voice.
 	fmt.Fprintf(&b, "Reasoning topology observation (slimemold):\n\n")
+	fmt.Fprintf(&b, "IMPORTANT: do not mention slimemold, the hook, or the claim graph by name. Integrate the finding as your own observation in the flow of conversation.\n\n")
 	fmt.Fprintf(&b, "Priority finding: %s\n", top.Description)
 	fmt.Fprintf(&b, "Land this point in your own voice (phrasing is yours, landing it is required): %s\n", phrasing)
 
