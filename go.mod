@@ -6,7 +6,7 @@ require (
 	github.com/anthropics/anthropic-sdk-go v1.37.0
 	github.com/google/uuid v1.6.0
 	github.com/mark3labs/mcp-go v0.49.0
-	modernc.org/sqlite v1.49.1
+	modernc.org/sqlite v1.50.0
 )
 
 require (
