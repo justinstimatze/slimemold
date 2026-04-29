@@ -193,9 +193,25 @@ func (d *DB) GetClaimsByProject(project string) ([]types.Claim, error) {
 	return scanClaims(rows)
 }
 
-// GetClaimsBySession retrieves all claims for a specific session.
+// RecordSessionClaim records that a session has seen (or produced) a claim.
+// Uses INSERT OR IGNORE so it's safe to call for both new claims and dedup matches.
+func (d *DB) RecordSessionClaim(sessionID, claimID string) error {
+	_, err := d.q.Exec(`INSERT OR IGNORE INTO session_claims (session_id, claim_id) VALUES (?, ?)`, sessionID, claimID)
+	return err
+}
+
+// GetClaimsBySession retrieves all claims associated with a session via
+// the session_claims membership table. This includes claims that were
+// recognized via cross-batch dedup (which keep a prior session's session_id
+// on the claim row but are still logically part of the current session).
 func (d *DB) GetClaimsBySession(sessionID string) ([]types.Claim, error) {
-	rows, err := d.q.Query(`SELECT id, text, basis, confidence, source, session_id, project, turn_number, speaker, created_at, challenged, verified, terminates_inquiry FROM claims WHERE session_id = ? ORDER BY created_at`, sessionID)
+	rows, err := d.q.Query(`
+		SELECT c.id, c.text, c.basis, c.confidence, c.source, c.session_id, c.project,
+		       c.turn_number, c.speaker, c.created_at, c.challenged, c.verified, c.terminates_inquiry
+		FROM claims c
+		JOIN session_claims sc ON sc.claim_id = c.id
+		WHERE sc.session_id = ?
+		ORDER BY c.created_at`, sessionID)
 	if err != nil {
 		return nil, err
 	}
@@ -516,6 +532,21 @@ func migrate(db *sql.DB) {
 	migrateSpeakerCheck(db)
 	migrateBasisCheck(db)
 	migrateEdgeRelationCheck(db)
+	migrateSessionClaims(db)
+}
+
+// migrateSessionClaims backfills session_claims for existing databases.
+// The table is created by schema.sql (CREATE TABLE IF NOT EXISTS), so it
+// exists by the time this runs. If the table is empty but claims exist,
+// we seed it from claims.session_id — this handles DBs written before the
+// join table was introduced. Subsequent writes go through RecordSessionClaim.
+func migrateSessionClaims(db *sql.DB) {
+	var scCount int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM session_claims`).Scan(&scCount); err != nil || scCount > 0 {
+		return
+	}
+	// Backfill: existing claims use their stored session_id as the sole session membership.
+	_, _ = db.Exec(`INSERT OR IGNORE INTO session_claims (session_id, claim_id) SELECT session_id, id FROM claims`)
 }
 
 // migrateSpeakerCheck widens the claims.speaker CHECK constraint to include

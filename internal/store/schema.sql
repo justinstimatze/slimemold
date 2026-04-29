@@ -57,6 +57,17 @@ CREATE TABLE IF NOT EXISTS hook_fire_log (
 );
 CREATE INDEX IF NOT EXISTS idx_hook_fire_log_project_time ON hook_fire_log(project, fired_at);
 
+-- session_claims tracks which sessions have "seen" each claim — including
+-- claims recognized via cross-batch dedup (which keep the original session_id
+-- on the claim row). Querying this table instead of claims.session_id gives
+-- accurate per-session membership even when claims are shared across sessions.
+CREATE TABLE IF NOT EXISTS session_claims (
+    session_id  TEXT NOT NULL,
+    claim_id    TEXT NOT NULL REFERENCES claims(id) ON DELETE CASCADE,
+    PRIMARY KEY (session_id, claim_id)
+);
+CREATE INDEX IF NOT EXISTS idx_session_claims_session ON session_claims(session_id);
+
 CREATE INDEX IF NOT EXISTS idx_claims_project ON claims(project);
 CREATE INDEX IF NOT EXISTS idx_claims_basis ON claims(basis);
 CREATE INDEX IF NOT EXISTS idx_claims_text ON claims(text);

@@ -202,6 +202,11 @@ func cmdDeliver() {
 	logDir := filepath.Join(cfg.DataDir, "tmp")
 	pendingFile := filepath.Join(logDir, "pending-"+hash+".txt")
 
+	// Skip stale pending files — a session that ended more than 12h ago
+	// can't ground the finding it was going to deliver, so don't.
+	if info, err := os.Stat(pendingFile); err != nil || time.Since(info.ModTime()) > 12*time.Hour {
+		return
+	}
 	if data, err := os.ReadFile(pendingFile); err == nil && len(data) > 0 {
 		// Keep delivering until the next extraction replaces the file.
 		// This provides constant corrective pressure between extractions

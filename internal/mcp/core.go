@@ -86,6 +86,9 @@ func CoreParseTranscript(ctx context.Context, db *store.DB, extractor *extract.E
 		// Cross-batch dedup: skip if a similar claim already exists in the graph.
 		if match := existingIndex.findSimilar(ec.Text, types.Speaker(ec.Speaker)); match != nil {
 			indexToID[ec.Index] = match.ID
+			// Record session membership even for deduped claims so
+			// GetClaimsBySession returns a complete view of this session.
+			_ = txDB.RecordSessionClaim(sessionID, match.ID)
 			continue
 		}
 
@@ -105,6 +108,7 @@ func CoreParseTranscript(ctx context.Context, db *store.DB, extractor *extract.E
 		if err := txDB.CreateClaim(claim); err != nil {
 			return nil, fmt.Errorf("creating claim: %w", err)
 		}
+		_ = txDB.RecordSessionClaim(sessionID, claim.ID)
 		indexToID[ec.Index] = claim.ID
 		newClaims++
 	}
