@@ -445,12 +445,6 @@ func cmdInit() {
 	hasStop := hookRegistered(settings, "Stop")
 	hasSubmit := hookRegistered(settings, "UserPromptSubmit")
 
-	mcpServers, _ := settings["mcpServers"].(map[string]interface{})
-	if mcpServers == nil {
-		mcpServers = map[string]interface{}{}
-	}
-	_, hasMCP := mcpServers["slimemold"]
-
 	dirty := false
 
 	if hasStop && hasSubmit {
@@ -489,19 +483,6 @@ func cmdInit() {
 		dirty = true
 	}
 
-	if hasMCP {
-		fmt.Fprintf(os.Stderr, "  settings.json: slimemold MCP already registered, skipping\n")
-	} else {
-		mcpServers["slimemold"] = map[string]interface{}{
-			"command": exe,
-			"args":    []string{"mcp"},
-			"env":     map[string]interface{}{},
-		}
-		settings["mcpServers"] = mcpServers
-		fmt.Fprintf(os.Stderr, "    MCP slimemold → %s mcp\n", exe)
-		dirty = true
-	}
-
 	if dirty {
 		_ = os.MkdirAll(filepath.Dir(settingsPath), 0700)
 		data, _ := json.MarshalIndent(settings, "", "  ")
@@ -526,7 +507,7 @@ func cmdInit() {
 		fmt.Fprintf(os.Stderr, "    3. Project .env:      echo 'ANTHROPIC_API_KEY=sk-ant-...' >> .env\n")
 	}
 
-	fmt.Fprintf(os.Stderr, "\nDone. Restart Claude Code or run /mcp to connect.\n")
+	fmt.Fprintf(os.Stderr, "\nDone. Hooks are active immediately in new Claude Code sessions.\n")
 }
 
 func cmdViz(projectOverride string) {
