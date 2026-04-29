@@ -263,6 +263,7 @@ func cmdHook() {
 
 	logDir := filepath.Join(cfg.DataDir, "tmp")
 	_ = os.MkdirAll(logDir, 0700)
+	cleanStaleLocks(logDir)
 	logFile, _ := os.OpenFile(filepath.Join(logDir, "hook.log"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
 	logf := func(format string, args ...interface{}) {
 		if logFile != nil {
@@ -879,6 +880,33 @@ func cmdAnalyzeWinze(args []string) {
 	topo, vulns := analysis.Analyze(claims, edges, "winze")
 	fmt.Printf("Winze KB: %d claims, %d edges\n\n", topo.ClaimCount, topo.EdgeCount)
 	fmt.Print(analysis.FormatAuditSummary(topo, vulns))
+}
+
+// cleanStaleLocks removes hook lock files whose owner PIDs are no longer alive.
+// Called at cmdHook startup so sessions killed mid-extraction don't leave locks
+// behind permanently (normal stale detection only fires on lock contention).
+func cleanStaleLocks(logDir string) {
+	matches, _ := filepath.Glob(filepath.Join(logDir, "hook-*.lock"))
+	for _, lf := range matches {
+		data, err := os.ReadFile(lf)
+		if err != nil {
+			_ = os.Remove(lf)
+			continue
+		}
+		pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
+		if err != nil {
+			_ = os.Remove(lf)
+			continue
+		}
+		proc, err := os.FindProcess(pid)
+		if err != nil {
+			_ = os.Remove(lf)
+			continue
+		}
+		if err := proc.Signal(syscall.Signal(0)); err != nil {
+			_ = os.Remove(lf) // process not alive
+		}
+	}
 }
 
 // hookRegistered checks if a slimemold hook is registered for the given event type.

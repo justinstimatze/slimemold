@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"time"
@@ -190,6 +191,12 @@ func CountTranscriptTurns(path string) (int, error) {
 	return count, scanner.Err()
 }
 
+// maxTailBytes is the maximum number of bytes read from the end of a transcript
+// when sinceTurn==0. 2MB covers several hundred conversation turns in practice,
+// well above the 50-message cap. Avoids reading megabytes of history before the
+// LLM timeout even starts.
+const maxTailBytes = 2 * 1024 * 1024
+
 // readRecentTranscript reads a Claude Code transcript (.jsonl) and extracts
 // recent conversation turns.
 func readRecentTranscript(path string, sinceTurn int) (string, error) {
@@ -199,30 +206,42 @@ func readRecentTranscript(path string, sinceTurn int) (string, error) {
 	}
 	defer func() { _ = f.Close() }()
 
-	var lines []string
-	scanner := bufio.NewScanner(f)
-	// Increase buffer for large transcripts
-	scanner.Buffer(make([]byte, 0, 1024*1024), 10*1024*1024)
-	for scanner.Scan() {
-		lines = append(lines, scanner.Text())
-	}
-	if err := scanner.Err(); err != nil {
-		return "", err
+	skipFirstLine := false
+	if sinceTurn == 0 {
+		// For baseline reads (sinceTurn==0), seek to the tail so a large session
+		// file doesn't force full I/O before the LLM timeout starts.
+		if info, err := f.Stat(); err == nil && info.Size() > maxTailBytes {
+			if _, err := f.Seek(-maxTailBytes, io.SeekEnd); err == nil {
+				skipFirstLine = true // the seek may land mid-line; discard the first
+			}
+		}
+	} else {
+		// For incremental reads (sinceTurn > 0), warn if the file is very large —
+		// we still do a forward scan to count turns, which can be slow on huge files.
+		if info, err := f.Stat(); err == nil && info.Size() > 10*1024*1024 {
+			fmt.Fprintf(os.Stderr, "slimemold: transcript is %.0fMB — extraction may be slow\n", float64(info.Size())/(1024*1024))
+		}
 	}
 
-	// Parse JSONL and extract recent messages
+	scanner := bufio.NewScanner(f)
+	scanner.Buffer(make([]byte, 0, 1024*1024), 10*1024*1024)
+
 	var messages []string
 	turnCount := 0
 
-	for _, line := range lines {
+	for scanner.Scan() {
+		if skipFirstLine {
+			skipFirstLine = false
+			continue
+		}
+
 		var entry map[string]interface{}
-		if err := json.Unmarshal([]byte(line), &entry); err != nil {
+		if err := json.Unmarshal([]byte(scanner.Text()), &entry); err != nil {
 			continue
 		}
 
 		role, _ := entry["role"].(string)
 		if role == "" {
-			// Try nested structure
 			if msg, ok := entry["message"].(map[string]interface{}); ok {
 				role, _ = msg["role"].(string)
 				entry = msg
@@ -238,16 +257,19 @@ func readRecentTranscript(path string, sinceTurn int) (string, error) {
 			continue
 		}
 
-		// Extract text content
 		text := extractTextContent(entry)
 		if text != "" {
 			messages = append(messages, fmt.Sprintf("[%s]: %s", role, text))
 		}
+
+		// For sinceTurn > 0: stop once we have enough — no need to read to EOF.
+		if sinceTurn > 0 && len(messages) >= 50 {
+			break
+		}
 	}
 
-	// Take last ~50 messages to stay within output token budget (16k).
-	// More messages = more claims = larger output JSON. 50 messages typically
-	// produces 30-80 claims which fits comfortably in 16k output tokens.
+	// Take last 50 messages (applies to sinceTurn==0 tail reads where the tail
+	// may still contain more than 50 messages).
 	if len(messages) > 50 {
 		messages = messages[len(messages)-50:]
 	}
