@@ -84,11 +84,12 @@ func CoreParseTranscript(ctx context.Context, db *store.DB, extractor *extract.E
 
 	for _, ec := range result.Claims {
 		// Cross-batch dedup: skip if a similar claim already exists in the graph.
+		// Do NOT call RecordSessionClaim for dedup matches — old-session claims
+		// should stay in their origin session. Adding them here bleeds stale
+		// state observations (e.g. "feature X is missing") into the current
+		// session's findings after the feature has been implemented.
 		if match := existingIndex.findSimilar(ec.Text, types.Speaker(ec.Speaker)); match != nil {
 			indexToID[ec.Index] = match.ID
-			// Record session membership even for deduped claims so
-			// GetClaimsBySession returns a complete view of this session.
-			_ = txDB.RecordSessionClaim(sessionID, match.ID)
 			continue
 		}
 
@@ -157,10 +158,18 @@ func CoreParseTranscript(ctx context.Context, db *store.DB, extractor *extract.E
 				sessionIDs[c.ID] = true
 			}
 			sessionEdges := filterEdgesByClaimSet(edges, sessionIDs)
-			sessionTopo, sessionVulns := analysis.Analyze(sessionClaims, sessionEdges, project)
-			findingClaims = sessionClaims
-			findingTopo = sessionTopo
-			findingVulns = sessionVulns
+			// Filter out claims the model has explicitly closed (B-manual) and
+			// claims superseded by newer contradicting claims in this session
+			// (B-auto: extractor sets contradicts edges when it sees a resolution).
+			sessionClaims = filterClosed(sessionClaims)
+			sessionClaims = filterSuperseded(sessionClaims, sessionEdges)
+			if len(sessionClaims) > 0 {
+				sessionEdges = filterEdgesByClaimSet(sessionEdges, claimIDSet(sessionClaims))
+				sessionTopo, sessionVulns := analysis.Analyze(sessionClaims, sessionEdges, project)
+				findingClaims = sessionClaims
+				findingTopo = sessionTopo
+				findingVulns = sessionVulns
+			}
 		}
 	}
 
@@ -1027,6 +1036,69 @@ func filterEdgesByClaimSet(edges []types.Edge, claimIDs map[string]bool) []types
 	for _, e := range edges {
 		if claimIDs[e.FromID] && claimIDs[e.ToID] {
 			out = append(out, e)
+		}
+	}
+	return out
+}
+
+// claimIDSet builds a set of claim IDs from a slice.
+func claimIDSet(claims []types.Claim) map[string]bool {
+	set := make(map[string]bool, len(claims))
+	for _, c := range claims {
+		set[c.ID] = true
+	}
+	return set
+}
+
+// filterClosed removes claims marked as closed from the slice.
+// Closed claims are explicitly retired by the model after confirming the
+// underlying state assertion is no longer true (e.g. "X is missing" after X
+// was implemented). They are excluded from hook findings but kept in the DB
+// for provenance.
+func filterClosed(claims []types.Claim) []types.Claim {
+	out := claims[:0:0]
+	for _, c := range claims {
+		if !c.Closed {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+// filterSuperseded removes claims that have been contradicted by a newer claim
+// in the same set. This is B-auto: when the extractor sees a resolution claim
+// ("X has been implemented") and produces a contradicts edge to an older claim
+// ("X is missing"), the older claim is automatically retired from findings
+// without requiring an explicit close call.
+func filterSuperseded(claims []types.Claim, edges []types.Edge) []types.Claim {
+	if len(edges) == 0 {
+		return claims
+	}
+	byID := make(map[string]types.Claim, len(claims))
+	for _, c := range claims {
+		byID[c.ID] = c
+	}
+	superseded := make(map[string]bool)
+	for _, e := range edges {
+		if e.Relation != types.RelContradicts {
+			continue
+		}
+		from, fromOK := byID[e.FromID]
+		to, toOK := byID[e.ToID]
+		if !fromOK || !toOK {
+			continue
+		}
+		if !from.CreatedAt.IsZero() && !to.CreatedAt.IsZero() && from.CreatedAt.After(to.CreatedAt) {
+			superseded[to.ID] = true
+		}
+	}
+	if len(superseded) == 0 {
+		return claims
+	}
+	out := claims[:0:0]
+	for _, c := range claims {
+		if !superseded[c.ID] {
+			out = append(out, c)
 		}
 	}
 	return out

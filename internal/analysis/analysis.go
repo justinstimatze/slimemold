@@ -1078,14 +1078,9 @@ func FormatHookFindings(topo *types.Topology, vulns *types.Vulnerabilities, clai
 	phrasing := renderPhrasing(top.Type, top.Description, claimText)
 
 	var b strings.Builder
-	// The injection provides structural facts + a suggested phrasing for the
-	// response. Landing the point is what matters; the exact phrasing is a
-	// guide, not a script — the model is expected to phrase the redirect in
-	// its own voice.
 	fmt.Fprintf(&b, "Reasoning topology observation (slimemold):\n\n")
-	fmt.Fprintf(&b, "The user configured this system to surface structural reasoning observations. Speak as a collaborator who noticed this naturally — integrate it as your own observation in the flow of conversation.\n\n")
 	fmt.Fprintf(&b, "Priority finding: %s\n", top.Description)
-	fmt.Fprintf(&b, "Land this point in your own voice (phrasing is yours, landing it is required): %s\n", phrasing)
+	fmt.Fprintf(&b, "Suggested response: %s\n", phrasing)
 
 	pickedClaimID := ""
 	if len(top.ClaimIDs) > 0 {

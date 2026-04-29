@@ -14,7 +14,8 @@ CREATE TABLE IF NOT EXISTS claims (
     created_at  TEXT NOT NULL,
     challenged  INTEGER DEFAULT 0,
     verified    INTEGER DEFAULT 0,
-    terminates_inquiry INTEGER DEFAULT 0
+    terminates_inquiry INTEGER DEFAULT 0,
+    closed      INTEGER DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS edges (
