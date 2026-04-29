@@ -14,6 +14,9 @@ import (
 	"syscall"
 	"time"
 
+	"io"
+
+	"github.com/justinstimatze/slimemold/internal/adapt"
 	"github.com/justinstimatze/slimemold/internal/analysis"
 	"github.com/justinstimatze/slimemold/internal/config"
 	"github.com/justinstimatze/slimemold/internal/extract"
@@ -65,6 +68,8 @@ func main() {
 		cmdIngest(project, args[1:])
 	case "eval":
 		cmdEval()
+	case "analyze-winze":
+		cmdAnalyzeWinze(args[1:])
 	case "help", "--help", "-h":
 		usage()
 	default:
@@ -88,6 +93,7 @@ Usage:
   slimemold [--project NAME] reset     Clear all data for project
   slimemold [--project NAME] ingest PATH   Ingest a document (text or markdown) into the graph
   slimemold eval                       Run the demo corpus through extraction and print a basis-distribution snapshot
+  slimemold analyze-winze [FILE]       Run slimemold detectors on a winze KB export (stdin if FILE is "-" or omitted)
   slimemold help                       Show this help
 
 Project resolution: --project flag > .slimemold-project file > directory name
@@ -826,6 +832,53 @@ func cmdEval() {
 		os.Exit(1)
 	}
 	fmt.Println(string(out))
+}
+
+// cmdAnalyzeWinze runs slimemold detectors on a winze KB JSON export.
+// Input is a WinzeClaimRecord[] array or a {"claims":[...],"provenance":[...]} object.
+// Reads from FILE if given, or stdin if "-" or no arg.
+//
+// Typical workflow:
+//
+//	go run ./cmd/query --json --disputes .  | slimemold analyze-winze -
+//	go run ./cmd/query --json --theories consciousness . | slimemold analyze-winze -
+func cmdAnalyzeWinze(args []string) {
+	var data []byte
+	var err error
+
+	src := "-"
+	if len(args) > 0 {
+		src = args[0]
+	}
+
+	if src == "-" {
+		data, err = io.ReadAll(os.Stdin)
+	} else {
+		data, err = os.ReadFile(src)
+	}
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "slimemold analyze-winze: %s\n", err)
+		os.Exit(1)
+	}
+
+	export, err := adapt.ParseWinzeInput(data)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "slimemold analyze-winze: %s\n", err)
+		os.Exit(1)
+	}
+	if len(export.Claims) == 0 {
+		fmt.Fprintln(os.Stderr, "slimemold analyze-winze: no claims found in input")
+		os.Exit(1)
+	}
+
+	claims, edges := adapt.AdaptWinzeExport(export)
+	for i := range claims {
+		claims[i].Project = "winze"
+	}
+
+	topo, vulns := analysis.Analyze(claims, edges, "winze")
+	fmt.Printf("Winze KB: %d claims, %d edges\n\n", topo.ClaimCount, topo.EdgeCount)
+	fmt.Print(analysis.FormatAuditSummary(topo, vulns))
 }
 
 // hookRegistered checks if a slimemold hook is registered for the given event type.

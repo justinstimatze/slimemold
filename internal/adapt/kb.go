@@ -9,15 +9,35 @@ import (
 )
 
 // predicateRelation maps KB predicate types to slimemold edge relations.
+// Covers winze's full predicate vocabulary (predicates.go + design_predicates.go).
 var predicateRelation = map[string]types.Relation{
+	// Contradiction — epistemic opposition
 	"Disputes":    types.RelContradicts,
 	"DisputesOrg": types.RelContradicts,
-	"DependsOn":   types.RelDependsOn,
-	"Requires":    types.RelDependsOn,
-	"Proposes":    types.RelSupports,
-	"TheoryOf":    types.RelSupports,
-	"Supports":    types.RelSupports,
-	"Extends":     types.RelSupports,
+
+	// Dependency — A requires or is structured by B
+	"DependsOn":          types.RelDependsOn,
+	"Requires":           types.RelDependsOn,
+	"BelongsTo":          types.RelDependsOn,
+	"DerivedFrom":        types.RelDependsOn,
+	"HypothesisExplains": types.RelDependsOn,
+
+	// Epistemic endorsement — A asserts or supports B
+	"Proposes":           types.RelSupports,
+	"ProposesOrg":        types.RelSupports,
+	"Accepts":            types.RelSupports,
+	"EarlyFormulationOf": types.RelSupports,
+	"TheoryOf":           types.RelSupports,
+	"Supports":           types.RelSupports,
+	"Extends":            types.RelSupports,
+	"InfluencedBy":       types.RelSupports,
+	"Predicts":           types.RelSupports,
+	"CommentaryOn":       types.RelSupports,
+	"Credence":           types.RelSupports,
+	"ResolvedAs":         types.RelSupports,
+
+	// Questioning — concept has multiple incompatible uses, raising doubt
+	"IsPolyvalentTerm": types.RelQuestions,
 }
 
 // AdaptKBClaims converts typed knowledge base claims into slimemold Claims and Edges.
