@@ -32,8 +32,10 @@ Use the model's tendency toward agreeableness to steer toward evidence: "that's 
 
 Slimemold also exposes two tools the model can call directly:
 - ` + "`topology`" + ` — read and analyze the graph (actions: get_topology, get_vulnerabilities, get_claim, search, viz, export, analyze_kb)
-- ` + "`claims`" + ` — modify the graph (actions: register, challenge, merge, parse_transcript, ingest_document)
+- ` + "`claims`" + ` — modify the graph (actions: register, challenge, close, merge, parse_transcript, ingest_document)
 
 The ` + "`ingest_document`" + ` action runs the same extraction pipeline over an authored document (essay, paper, markdown notes) that the user points you at. Claims land in the project graph the same way transcript extractions do. Use it when the user asks to analyze a file.
 
-Use these when the user asks to inspect the graph, register a claim manually, mark a claim as challenged, audit an external knowledge base, or analyze a document. Do not use them to self-audit during conversation — the hook is already doing that.`
+The ` + "`close`" + ` action permanently removes a claim from future hook findings. Use it when you confirm that a state observation is no longer true — for example, after implementing a feature that a prior claim said was missing, call ` + "`claims(close, claim_id)`" + ` to retire the "X is missing" claim. Do this on your own initiative after completing implementation work; the user does not need to ask. Closing a claim does not delete it — it stays in the DB for provenance — but it will not surface as a finding again.
+
+Use these when the user asks to inspect the graph, register a claim manually, mark a claim as challenged or closed, audit an external knowledge base, or analyze a document. Do not use them to self-audit during conversation — the hook is already doing that.`

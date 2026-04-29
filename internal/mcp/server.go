@@ -72,7 +72,7 @@ var topologySchema = json.RawMessage(`{
 var claimsSchema = json.RawMessage(`{
 	"type": "object",
 	"properties": {
-		"action": {"type": "string", "description": "Action: register | challenge | merge | parse_transcript | ingest_document", "enum": ["register", "challenge", "merge", "parse_transcript", "ingest_document"]},
+		"action": {"type": "string", "description": "Action: register | challenge | close | merge | parse_transcript | ingest_document", "enum": ["register", "challenge", "close", "merge", "parse_transcript", "ingest_document"]},
 		"project": {"type": "string", "description": "Project name"},
 		"text": {"type": "string", "description": "Claim text (for register)"},
 		"basis": {"type": "string", "description": "Epistemic basis (for register)"},
@@ -104,7 +104,7 @@ func RunMCP(db *store.DB, extractor *extract.Extractor, project string) error {
 
 	srv := server.NewMCPServer(
 		"slimemold",
-		"0.5.7",
+		"0.5.8",
 		server.WithToolCapabilities(true),
 		server.WithInstructions(serverInstructions),
 	)
@@ -254,6 +254,15 @@ func (s *mcpServer) handleClaims(ctx context.Context, req sdkmcp.CallToolRequest
 			return sdkmcp.NewToolResultError(err.Error()), nil
 		}
 		return sdkmcp.NewToolResultText(fmt.Sprintf("Claim %s challenged: %s", args.ClaimID, args.Result)), nil
+
+	case "close":
+		if args.ClaimID == "" {
+			return sdkmcp.NewToolResultError("claim_id required"), nil
+		}
+		if err := s.db.CloseClaim(args.ClaimID); err != nil {
+			return sdkmcp.NewToolResultError(err.Error()), nil
+		}
+		return sdkmcp.NewToolResultText(fmt.Sprintf("Claim %s closed — excluded from future findings", args.ClaimID)), nil
 
 	case "merge":
 		if args.KeepID == "" || args.AbsorbID == "" {

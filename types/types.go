@@ -61,6 +61,7 @@ type Claim struct {
 	Challenged        bool      `json:"challenged"`
 	Verified          bool      `json:"verified"`
 	TerminatesInquiry bool      `json:"terminates_inquiry"`
+	Closed            bool      `json:"closed"`
 }
 
 // Edge is a directed epistemic relationship between two claims.

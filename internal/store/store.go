@@ -136,12 +136,12 @@ func (d *DB) CreateClaim(c *types.Claim) error {
 	}
 
 	_, err := d.q.Exec(`
-		INSERT INTO claims (id, text, basis, confidence, source, session_id, project, turn_number, speaker, created_at, challenged, verified, terminates_inquiry)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		INSERT INTO claims (id, text, basis, confidence, source, session_id, project, turn_number, speaker, created_at, challenged, verified, terminates_inquiry, closed)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		c.ID, c.Text, string(c.Basis), c.Confidence, c.Source,
 		c.SessionID, c.Project, c.TurnNumber, string(c.Speaker),
 		c.CreatedAt.Format(time.RFC3339), boolToInt(c.Challenged), boolToInt(c.Verified),
-		boolToInt(c.TerminatesInquiry),
+		boolToInt(c.TerminatesInquiry), boolToInt(c.Closed),
 	)
 	return err
 }
@@ -179,13 +179,13 @@ func (d *DB) DeleteEdge(id string) error {
 
 // GetClaim retrieves a single claim by ID.
 func (d *DB) GetClaim(id string) (*types.Claim, error) {
-	row := d.q.QueryRow(`SELECT id, text, basis, confidence, source, session_id, project, turn_number, speaker, created_at, challenged, verified, terminates_inquiry FROM claims WHERE id = ?`, id)
+	row := d.q.QueryRow(`SELECT id, text, basis, confidence, source, session_id, project, turn_number, speaker, created_at, challenged, verified, terminates_inquiry, closed FROM claims WHERE id = ?`, id)
 	return scanClaim(row)
 }
 
 // GetClaimsByProject retrieves all claims for a project.
 func (d *DB) GetClaimsByProject(project string) ([]types.Claim, error) {
-	rows, err := d.q.Query(`SELECT id, text, basis, confidence, source, session_id, project, turn_number, speaker, created_at, challenged, verified, terminates_inquiry FROM claims WHERE project = ? ORDER BY created_at`, project)
+	rows, err := d.q.Query(`SELECT id, text, basis, confidence, source, session_id, project, turn_number, speaker, created_at, challenged, verified, terminates_inquiry, closed FROM claims WHERE project = ? ORDER BY created_at`, project)
 	if err != nil {
 		return nil, err
 	}
@@ -207,7 +207,7 @@ func (d *DB) RecordSessionClaim(sessionID, claimID string) error {
 func (d *DB) GetClaimsBySession(sessionID string) ([]types.Claim, error) {
 	rows, err := d.q.Query(`
 		SELECT c.id, c.text, c.basis, c.confidence, c.source, c.session_id, c.project,
-		       c.turn_number, c.speaker, c.created_at, c.challenged, c.verified, c.terminates_inquiry
+		       c.turn_number, c.speaker, c.created_at, c.challenged, c.verified, c.terminates_inquiry, c.closed
 		FROM claims c
 		JOIN session_claims sc ON sc.claim_id = c.id
 		WHERE sc.session_id = ?
@@ -237,7 +237,7 @@ func (d *DB) GetEdgesByProject(project string) ([]types.Edge, error) {
 // SearchClaims does a case-insensitive text search across claims.
 func (d *DB) SearchClaims(project, query string, basis string) ([]types.Claim, error) {
 	escaped := strings.NewReplacer("%", "\\%", "_", "\\_").Replace(query)
-	q := `SELECT id, text, basis, confidence, source, session_id, project, turn_number, speaker, created_at, challenged, verified, terminates_inquiry
+	q := `SELECT id, text, basis, confidence, source, session_id, project, turn_number, speaker, created_at, challenged, verified, terminates_inquiry, closed
 		FROM claims WHERE project = ? AND text LIKE ? ESCAPE '\'`
 	args := []any{project, "%" + escaped + "%"}
 
@@ -259,7 +259,7 @@ func (d *DB) SearchClaims(project, query string, basis string) ([]types.Claim, e
 func (d *DB) FindClaimByText(project, text string) (*types.Claim, error) {
 	normalized := strings.ToLower(strings.TrimSpace(text))
 	row := d.q.QueryRow(`
-		SELECT id, text, basis, confidence, source, session_id, project, turn_number, speaker, created_at, challenged, verified, terminates_inquiry
+		SELECT id, text, basis, confidence, source, session_id, project, turn_number, speaker, created_at, challenged, verified, terminates_inquiry, closed
 		FROM claims WHERE project = ? AND LOWER(text) = ?
 		LIMIT 1`, project, normalized)
 	c, err := scanClaim(row)
@@ -274,7 +274,7 @@ func (d *DB) FindClaimBySubstring(project, text string) ([]types.Claim, error) {
 	escaped := strings.NewReplacer("%", "\\%", "_", "\\_").Replace(strings.ToLower(strings.TrimSpace(text)))
 	normalized := "%" + escaped + "%"
 	rows, err := d.q.Query(`
-		SELECT id, text, basis, confidence, source, session_id, project, turn_number, speaker, created_at, challenged, verified
+		SELECT id, text, basis, confidence, source, session_id, project, turn_number, speaker, created_at, challenged, verified, terminates_inquiry, closed
 		FROM claims WHERE project = ? AND LOWER(text) LIKE ? ESCAPE '\'
 		ORDER BY created_at`, project, normalized)
 	if err != nil {
@@ -302,6 +302,14 @@ func (d *DB) ChallengeClaim(id, result, revisedText, revisedBasis, notes string)
 		}
 		return nil
 	})
+}
+
+// CloseClaim marks a claim as permanently closed so it is excluded from future
+// hook findings. Unlike ChallengeClaim (which records an epistemic event), Close
+// is a maintenance action: the claim was about transient state that is now resolved.
+func (d *DB) CloseClaim(id string) error {
+	_, err := d.q.Exec(`UPDATE claims SET closed = 1 WHERE id = ?`, id)
+	return err
 }
 
 // MergeClaims absorbs one claim into another, redirecting all edges.
@@ -408,10 +416,10 @@ type scannable interface {
 func scanClaim(s scannable) (*types.Claim, error) {
 	var c types.Claim
 	var basis, speaker, createdAt string
-	var challenged, verified, terminatesInquiry int
+	var challenged, verified, terminatesInquiry, closed int
 	err := s.Scan(&c.ID, &c.Text, &basis, &c.Confidence, &c.Source,
 		&c.SessionID, &c.Project, &c.TurnNumber, &speaker, &createdAt,
-		&challenged, &verified, &terminatesInquiry)
+		&challenged, &verified, &terminatesInquiry, &closed)
 	if err != nil {
 		return nil, err
 	}
@@ -421,6 +429,7 @@ func scanClaim(s scannable) (*types.Claim, error) {
 	c.Challenged = challenged != 0
 	c.Verified = verified != 0
 	c.TerminatesInquiry = terminatesInquiry != 0
+	c.Closed = closed != 0
 	return &c, nil
 }
 
@@ -525,6 +534,7 @@ func (d *DB) RecentHookFires(project string, since time.Time) (map[string]bool, 
 func migrate(db *sql.DB) {
 	migrations := []string{
 		`ALTER TABLE claims ADD COLUMN terminates_inquiry INTEGER DEFAULT 0`,
+		`ALTER TABLE claims ADD COLUMN closed INTEGER DEFAULT 0`,
 	}
 	for _, m := range migrations {
 		_, _ = db.Exec(m) // ignore "duplicate column name" errors
@@ -689,9 +699,10 @@ var oldSpeakerRebuild = []string{
 		created_at  TEXT NOT NULL,
 		challenged  INTEGER DEFAULT 0,
 		verified    INTEGER DEFAULT 0,
-		terminates_inquiry INTEGER DEFAULT 0
+		terminates_inquiry INTEGER DEFAULT 0,
+		closed      INTEGER DEFAULT 0
 	)`,
-	`INSERT INTO claims_new SELECT id, text, basis, confidence, source, session_id, project, turn_number, speaker, created_at, challenged, verified, terminates_inquiry FROM claims`,
+	`INSERT INTO claims_new SELECT id, text, basis, confidence, source, session_id, project, turn_number, speaker, created_at, challenged, verified, terminates_inquiry, 0 FROM claims`,
 	`DROP TABLE claims`,
 	`ALTER TABLE claims_new RENAME TO claims`,
 	`CREATE INDEX IF NOT EXISTS idx_claims_project ON claims(project)`,
@@ -720,9 +731,10 @@ var oldBasisRebuild = []string{
 		created_at  TEXT NOT NULL,
 		challenged  INTEGER DEFAULT 0,
 		verified    INTEGER DEFAULT 0,
-		terminates_inquiry INTEGER DEFAULT 0
+		terminates_inquiry INTEGER DEFAULT 0,
+		closed      INTEGER DEFAULT 0
 	)`,
-	`INSERT INTO claims_new SELECT id, text, basis, confidence, source, session_id, project, turn_number, speaker, created_at, challenged, verified, terminates_inquiry FROM claims`,
+	`INSERT INTO claims_new SELECT id, text, basis, confidence, source, session_id, project, turn_number, speaker, created_at, challenged, verified, terminates_inquiry, 0 FROM claims`,
 	`DROP TABLE claims`,
 	`ALTER TABLE claims_new RENAME TO claims`,
 	`CREATE INDEX IF NOT EXISTS idx_claims_project ON claims(project)`,
