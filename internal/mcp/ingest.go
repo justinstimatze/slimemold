@@ -158,6 +158,7 @@ func ingestOneChunk(ctx context.Context, db *store.DB, extractor *extract.Extrac
 	for _, ec := range result.Claims {
 		if match := existingIndex.findSimilar(ec.Text, types.Speaker(ec.Speaker)); match != nil {
 			indexToID[ec.Index] = match.ID
+			_ = txDB.RecordSessionClaim(sessionID, match.ID)
 			continue
 		}
 		claim := &types.Claim{
@@ -175,6 +176,7 @@ func ingestOneChunk(ctx context.Context, db *store.DB, extractor *extract.Extrac
 		if err := txDB.CreateClaim(claim); err != nil {
 			return 0, 0, fmt.Errorf("creating claim: %w", err)
 		}
+		_ = txDB.RecordSessionClaim(sessionID, claim.ID)
 		indexToID[ec.Index] = claim.ID
 		newClaims++
 	}

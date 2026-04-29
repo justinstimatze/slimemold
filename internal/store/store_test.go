@@ -268,6 +268,118 @@ func TestCreateAudit(t *testing.T) {
 	}
 }
 
+func TestGetClaimsBySession(t *testing.T) {
+	db := testDB(t)
+
+	c1 := &types.Claim{Text: "session one claim", Basis: types.BasisVibes, SessionID: "s1", Project: "test-project", Speaker: types.SpeakerUser}
+	c2 := &types.Claim{Text: "session two claim", Basis: types.BasisVibes, SessionID: "s2", Project: "test-project", Speaker: types.SpeakerUser}
+	db.CreateClaim(c1)
+	db.CreateClaim(c2)
+
+	// Direct membership via RecordSessionClaim
+	if err := db.RecordSessionClaim("s1", c1.ID); err != nil {
+		t.Fatalf("RecordSessionClaim s1/c1: %v", err)
+	}
+	if err := db.RecordSessionClaim("s2", c2.ID); err != nil {
+		t.Fatalf("RecordSessionClaim s2/c2: %v", err)
+	}
+
+	// Dedup simulation: s2 also "sees" c1 (which belongs to s1)
+	if err := db.RecordSessionClaim("s2", c1.ID); err != nil {
+		t.Fatalf("RecordSessionClaim s2/c1 (dedup): %v", err)
+	}
+
+	// s1 sees only c1
+	s1Claims, err := db.GetClaimsBySession("s1")
+	if err != nil {
+		t.Fatalf("GetClaimsBySession s1: %v", err)
+	}
+	if len(s1Claims) != 1 || s1Claims[0].ID != c1.ID {
+		t.Errorf("s1: got %d claims, want 1 (c1)", len(s1Claims))
+	}
+
+	// s2 sees both c1 (deduped) and c2 (new)
+	s2Claims, err := db.GetClaimsBySession("s2")
+	if err != nil {
+		t.Fatalf("GetClaimsBySession s2: %v", err)
+	}
+	if len(s2Claims) != 2 {
+		t.Errorf("s2: got %d claims, want 2 (c1 deduped + c2 new)", len(s2Claims))
+	}
+
+	// Idempotent: double-recording must not create duplicate rows
+	if err := db.RecordSessionClaim("s2", c1.ID); err != nil {
+		t.Fatalf("RecordSessionClaim idempotent: %v", err)
+	}
+	s2Claims, _ = db.GetClaimsBySession("s2")
+	if len(s2Claims) != 2 {
+		t.Errorf("after dupe insert: got %d claims, want 2", len(s2Claims))
+	}
+}
+
+func TestMigrateSessionClaimsBackfill(t *testing.T) {
+	dir := t.TempDir()
+
+	// Simulate a DB written before session_claims existed:
+	// open, insert claims without RecordSessionClaim, close.
+	db, err := Open(dir, "test-project")
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	c1 := &types.Claim{Text: "old claim alpha", Basis: types.BasisVibes, SessionID: "legacy-session", Project: "test-project", Speaker: types.SpeakerUser}
+	c2 := &types.Claim{Text: "old claim beta", Basis: types.BasisVibes, SessionID: "legacy-session", Project: "test-project", Speaker: types.SpeakerUser}
+	db.CreateClaim(c1)
+	db.CreateClaim(c2)
+
+	// Manually delete session_claims rows that migrateSessionClaims just inserted
+	// (simulates upgrading from a binary that didn't know about the table).
+	if _, err := db.db.Exec(`DELETE FROM session_claims`); err != nil {
+		t.Fatalf("clearing session_claims: %v", err)
+	}
+	db.Close()
+
+	// Re-open — migrateSessionClaims should backfill.
+	db2, err := Open(dir, "test-project")
+	if err != nil {
+		t.Fatalf("re-Open: %v", err)
+	}
+	t.Cleanup(func() { db2.Close() })
+
+	claims, err := db2.GetClaimsBySession("legacy-session")
+	if err != nil {
+		t.Fatalf("GetClaimsBySession after backfill: %v", err)
+	}
+	if len(claims) != 2 {
+		t.Errorf("backfill: got %d claims, want 2", len(claims))
+	}
+}
+
+func TestRecordSessionClaimInsideTransaction(t *testing.T) {
+	db := testDB(t)
+
+	txDB, err := db.Begin()
+	if err != nil {
+		t.Fatalf("Begin: %v", err)
+	}
+
+	c := &types.Claim{ID: "tx-claim-2", Text: "transactional claim", Basis: types.BasisVibes, SessionID: "s1", Project: "test-project", Speaker: types.SpeakerUser}
+	if err := txDB.CreateClaim(c); err != nil {
+		t.Fatalf("CreateClaim in tx: %v", err)
+	}
+	// RecordSessionClaim must succeed within the same transaction (FK to not-yet-committed claim).
+	if err := txDB.RecordSessionClaim("s1", c.ID); err != nil {
+		t.Fatalf("RecordSessionClaim in tx: %v", err)
+	}
+	if err := txDB.Commit(); err != nil {
+		t.Fatalf("Commit: %v", err)
+	}
+
+	claims, _ := db.GetClaimsBySession("s1")
+	if len(claims) != 1 || claims[0].ID != c.ID {
+		t.Errorf("post-commit: got %d claims, want 1", len(claims))
+	}
+}
+
 func TestTransactionCommit(t *testing.T) {
 	db := testDB(t)
 
