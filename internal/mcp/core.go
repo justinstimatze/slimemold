@@ -58,7 +58,8 @@ func CoreParseTranscript(ctx context.Context, db *store.DB, extractor *extract.E
 		validateResearchBasis(result.Claims, chunk)
 	}
 
-	if sessionID == "" {
+	providedSessionID := sessionID != ""
+	if !providedSessionID {
 		sessionID = fmt.Sprintf("session-%d", time.Now().Unix())
 	}
 
@@ -145,7 +146,7 @@ func CoreParseTranscript(ctx context.Context, db *store.DB, extractor *extract.E
 	findingClaims := claims
 	findingTopo := topo
 	findingVulns := vulns
-	if os.Getenv("SLIMEMOLD_SCOPE") != "all" && sessionID != "" && !strings.HasPrefix(sessionID, "session-") {
+	if os.Getenv("SLIMEMOLD_SCOPE") != "all" && providedSessionID {
 		if sessionClaims, err := db.GetClaimsBySession(sessionID); err == nil && len(sessionClaims) > 0 {
 			sessionIDs := make(map[string]bool, len(sessionClaims))
 			for _, c := range sessionClaims {
