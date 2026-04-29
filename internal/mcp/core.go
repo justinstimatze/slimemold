@@ -21,7 +21,10 @@ import (
 )
 
 // CoreParseTranscript extracts claims from a transcript and runs analysis.
-func CoreParseTranscript(ctx context.Context, db *store.DB, extractor *extract.Extractor, project, transcriptPath string, sinceTurn int) (*types.AuditResult, error) {
+// sessionID is the Claude Code session identifier; pass "" to auto-generate one.
+// When non-empty, hook findings are scoped to claims from this session only
+// (cross-session claims are excluded from the priority finding selection).
+func CoreParseTranscript(ctx context.Context, db *store.DB, extractor *extract.Extractor, project, transcriptPath string, sinceTurn int, sessionID string) (*types.AuditResult, error) {
 	// Validate transcript path — restrict to JSONL files in expected locations
 	if err := validateTranscriptPath(transcriptPath); err != nil {
 		return nil, err
@@ -55,7 +58,9 @@ func CoreParseTranscript(ctx context.Context, db *store.DB, extractor *extract.E
 		validateResearchBasis(result.Claims, chunk)
 	}
 
-	sessionID := fmt.Sprintf("session-%d", time.Now().Unix())
+	if sessionID == "" {
+		sessionID = fmt.Sprintf("session-%d", time.Now().Unix())
+	}
 
 	// Phase 0.5: Intra-batch dedup — merge near-identical claims before insertion.
 	// The model often extracts 2-5 phrasings of the same proposition. Merging them
@@ -124,7 +129,7 @@ func CoreParseTranscript(ctx context.Context, db *store.DB, extractor *extract.E
 	// Phase 4: Integrity validation (read-only, on committed data)
 	integrityWarnings := validateIntegrity(db, project)
 
-	// Run analysis
+	// Full project analysis (for audit summary and history).
 	claims, _ := db.GetClaimsByProject(project)
 	edges, _ := db.GetEdgesByProject(project)
 	topo, vulns := analysis.Analyze(claims, edges, project)
@@ -134,11 +139,31 @@ func CoreParseTranscript(ctx context.Context, db *store.DB, extractor *extract.E
 
 	summary := analysis.FormatAuditSummary(topo, vulns)
 
+	// Session-scoped analysis for hook findings: only surface claims that
+	// belong to this session so concurrent sessions don't bleed into each
+	// other's findings. SLIMEMOLD_SCOPE=all restores the previous global view.
+	findingClaims := claims
+	findingTopo := topo
+	findingVulns := vulns
+	if os.Getenv("SLIMEMOLD_SCOPE") != "all" && sessionID != "" && !strings.HasPrefix(sessionID, "session-") {
+		if sessionClaims, err := db.GetClaimsBySession(sessionID); err == nil && len(sessionClaims) > 0 {
+			sessionIDs := make(map[string]bool, len(sessionClaims))
+			for _, c := range sessionClaims {
+				sessionIDs[c.ID] = true
+			}
+			sessionEdges := filterEdgesByClaimSet(edges, sessionIDs)
+			sessionTopo, sessionVulns := analysis.Analyze(sessionClaims, sessionEdges, project)
+			findingClaims = sessionClaims
+			findingTopo = sessionTopo
+			findingVulns = sessionVulns
+		}
+	}
+
 	// Cooldown filter: skip findings whose (claim, type) fired inside the
 	// HookCooldownWindow. Logs the pick after formatting so subsequent
 	// invocations within the window suppress it.
 	recentFires, _ := db.RecentHookFires(project, time.Now().Add(-analysis.HookCooldownWindow))
-	hookSummary, pickedClaimID, pickedFindingType := analysis.FormatHookFindings(topo, vulns, claims, recentFires, newClaims, newEdges, 5)
+	hookSummary, pickedClaimID, pickedFindingType := analysis.FormatHookFindings(findingTopo, findingVulns, findingClaims, recentFires, newClaims, newEdges, 5)
 	if pickedClaimID != "" && pickedFindingType != "" {
 		_ = db.LogHookFire(project, pickedClaimID, pickedFindingType)
 	}
@@ -989,4 +1014,15 @@ func containsAny(haystack string, needles []string) bool {
 		}
 	}
 	return false
+}
+
+// filterEdgesByClaimSet returns edges where both endpoints are in the claim ID set.
+func filterEdgesByClaimSet(edges []types.Edge, claimIDs map[string]bool) []types.Edge {
+	out := edges[:0:0]
+	for _, e := range edges {
+		if claimIDs[e.FromID] && claimIDs[e.ToID] {
+			out = append(out, e)
+		}
+	}
+	return out
 }

@@ -193,6 +193,16 @@ func (d *DB) GetClaimsByProject(project string) ([]types.Claim, error) {
 	return scanClaims(rows)
 }
 
+// GetClaimsBySession retrieves all claims for a specific session.
+func (d *DB) GetClaimsBySession(sessionID string) ([]types.Claim, error) {
+	rows, err := d.q.Query(`SELECT id, text, basis, confidence, source, session_id, project, turn_number, speaker, created_at, challenged, verified, terminates_inquiry FROM claims WHERE session_id = ? ORDER BY created_at`, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	return scanClaims(rows)
+}
+
 // GetEdgesByProject retrieves all edges for claims in a project.
 func (d *DB) GetEdgesByProject(project string) ([]types.Edge, error) {
 	rows, err := d.q.Query(`

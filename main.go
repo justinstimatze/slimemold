@@ -171,7 +171,8 @@ func cmdMCP(projectOverride string) {
 // Returns instantly — no API calls, no DB access.
 func cmdDeliver() {
 	var input struct {
-		CWD string `json:"cwd"`
+		CWD       string `json:"cwd"`
+		SessionID string `json:"session_id"`
 	}
 	if err := json.NewDecoder(os.Stdin).Decode(&input); err != nil || input.CWD == "" {
 		return
@@ -191,7 +192,13 @@ func cmdDeliver() {
 		}
 	}
 
-	hash := fmt.Sprintf("%x", md5.Sum([]byte(project)))[:8]
+	// Key the pending file on session_id when available so concurrent sessions
+	// in the same project don't deliver each other's findings.
+	pendingKey := input.SessionID
+	if pendingKey == "" {
+		pendingKey = project
+	}
+	hash := fmt.Sprintf("%x", md5.Sum([]byte(pendingKey)))[:8]
 	logDir := filepath.Join(cfg.DataDir, "tmp")
 	pendingFile := filepath.Join(logDir, "pending-"+hash+".txt")
 
@@ -230,6 +237,7 @@ func cmdHook() {
 	var input struct {
 		CWD            string `json:"cwd"`
 		TranscriptPath string `json:"transcript_path"`
+		SessionID      string `json:"session_id"`
 	}
 	if err := json.NewDecoder(os.Stdin).Decode(&input); err != nil || input.CWD == "" || input.TranscriptPath == "" {
 		return
@@ -262,7 +270,15 @@ func cmdHook() {
 			project = name
 		}
 	}
-	hash := fmt.Sprintf("%x", md5.Sum([]byte(project)))[:8]
+
+	// Key per-session state files on session_id when available so concurrent
+	// sessions in the same project don't trample each other's turn counters,
+	// locks, or pending findings. Status stays project-scoped (for `status` cmd).
+	sessionKey := input.SessionID
+	if sessionKey == "" {
+		sessionKey = project
+	}
+	hash := fmt.Sprintf("%x", md5.Sum([]byte(sessionKey)))[:8]
 	pendingFile := filepath.Join(logDir, "pending-"+hash+".txt")
 
 	if cfg.AnthropicAPIKey == "" {
@@ -357,7 +373,7 @@ func cmdHook() {
 
 	logf("extracting [%s] from %s (since turn %d)", project, filepath.Base(input.TranscriptPath), sinceTurn)
 
-	audit, err := mcp.CoreParseTranscript(ctx, db, extractor, project, input.TranscriptPath, sinceTurn)
+	audit, err := mcp.CoreParseTranscript(ctx, db, extractor, project, input.TranscriptPath, sinceTurn, input.SessionID)
 	if err != nil {
 		logf("extraction error: %s", err)
 		return
@@ -370,14 +386,15 @@ func cmdHook() {
 		_ = os.WriteFile(lastTurnFile, []byte(strconv.Itoa(audit.LastTurn)), 0600)
 	}
 
-	// Write status
+	// Write status (project-scoped so `slimemold status` can find it regardless of session).
+	projectHash := fmt.Sprintf("%x", md5.Sum([]byte(project)))[:8]
 	statusJSON, _ := json.Marshal(map[string]interface{}{
 		"project": project, "timestamp": time.Now().Format(time.RFC3339),
 		"claims": audit.TotalClaims, "edges": audit.TotalEdges,
 		"new_claims": audit.NewClaims,
 		"findings":   audit.Vulnerabilities.CriticalCount + audit.Vulnerabilities.WarningCount,
 	})
-	_ = os.WriteFile(filepath.Join(logDir, "status-"+hash+".json"), statusJSON, 0600)
+	_ = os.WriteFile(filepath.Join(logDir, "status-"+projectHash+".json"), statusJSON, 0600)
 
 	// Write findings to pending file — delivered by the UserPromptSubmit hook
 	if audit.HookSummary != "" {

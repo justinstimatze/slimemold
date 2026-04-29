@@ -28,7 +28,7 @@ func main() {
 	db, _ := store.Open(dir, "readme-selfcheck")
 	defer db.Close()
 	ext := extract.New(apiKey, model)
-	result, err := mcp.CoreParseTranscript(context.Background(), db, ext, "readme-selfcheck", "/tmp/readme-audit.jsonl", 0)
+	result, err := mcp.CoreParseTranscript(context.Background(), db, ext, "readme-selfcheck", "/tmp/readme-audit.jsonl", 0, "")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "extraction error:", err)
 		os.Exit(1)
