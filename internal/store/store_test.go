@@ -145,6 +145,7 @@ func TestFindClaimByText(t *testing.T) {
 	}
 	if got == nil {
 		t.Fatal("expected match, got nil")
+		return
 	}
 	if got.Text != "Exact Match Claim" {
 		t.Errorf("text = %q", got.Text)

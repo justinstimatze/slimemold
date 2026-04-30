@@ -120,7 +120,7 @@ func TestAdaptWinzeExportPredicateMapping(t *testing.T) {
 func TestAdaptWinzeExportSkipsEmptySlots(t *testing.T) {
 	export := &WinzeExport{
 		Claims: []WinzeClaimRecord{
-			{VarName: "c1", Predicate: "Proposes", Subject: "", Object: "B"}, // empty subject
+			{VarName: "c1", Predicate: "Proposes", Subject: "", Object: "B"},  // empty subject
 			{VarName: "c2", Predicate: "Proposes", Subject: "A", Object: ""},  // empty object
 			{VarName: "c3", Predicate: "Proposes", Subject: "A", Object: "B"}, // valid
 		},

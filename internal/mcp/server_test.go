@@ -155,9 +155,11 @@ func TestDeduplicateBatch(t *testing.T) {
 	}
 	if merged == nil {
 		t.Fatal("merged claim not found")
+		return
 	}
 	if fish == nil {
 		t.Fatal("fish claim not found")
+		return
 	}
 	// Longer text wins
 	if !containsWord(merged.Text, "airwaves") {
