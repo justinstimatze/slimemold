@@ -556,6 +556,138 @@ func TestSpeakerCheckMigration(t *testing.T) {
 	}
 }
 
+// TestInventoryFlagMigration verifies that opening an older-shaped DB
+// (pre-document, pre-convention, pre-inventory) ends with all 20 columns
+// present and that inventory flags persist round-trip. Guards the migration
+// ordering that runs CHECK rebuilds before inventory ALTER TABLEs — if that
+// invariant is broken, the rebuilds drop the inventory columns silently.
+func TestInventoryFlagMigration(t *testing.T) {
+	dir := t.TempDir()
+	projectDir := filepath.Join(dir, "test-project")
+	if err := os.MkdirAll(projectDir, 0700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	dbPath := filepath.Join(projectDir, "graph.sqlite")
+	dsn := dbPath + "?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=foreign_keys(ON)"
+
+	// Construct a DB at the OLDEST schema we still expect to upgrade from:
+	// no document speaker, no convention basis, no terminates_inquiry/closed,
+	// and obviously no inventory flags. This is the most stressful path
+	// through migrate() — it exercises both legacy ALTERs and both CHECK
+	// rebuilds in sequence before the inventory ALTERs run.
+	{
+		raw, err := sql.Open("sqlite", dsn)
+		if err != nil {
+			t.Fatalf("raw open: %v", err)
+		}
+		oldSchema := `CREATE TABLE claims (
+			id          TEXT PRIMARY KEY,
+			text        TEXT NOT NULL,
+			basis       TEXT NOT NULL CHECK(basis IN ('research','empirical','analogy','vibes','llm_output','deduction','assumption','definition')),
+			confidence  REAL DEFAULT 0.5,
+			source      TEXT DEFAULT '',
+			session_id  TEXT NOT NULL,
+			project     TEXT NOT NULL,
+			turn_number INTEGER DEFAULT 0,
+			speaker     TEXT DEFAULT 'user' CHECK(speaker IN ('user','assistant')),
+			created_at  TEXT NOT NULL,
+			challenged  INTEGER DEFAULT 0,
+			verified    INTEGER DEFAULT 0
+		)`
+		if _, err := raw.Exec(oldSchema); err != nil {
+			t.Fatalf("create old schema: %v", err)
+		}
+		_, err = raw.Exec(
+			`INSERT INTO claims (id, text, basis, session_id, project, speaker, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+			"pre-inventory-claim", "seeded before any inventory work", "vibes",
+			"s1", "test-project", "user", time.Now().Format(time.RFC3339),
+		)
+		if err != nil {
+			t.Fatalf("seed insert: %v", err)
+		}
+		raw.Close()
+	}
+
+	// Open via the store — runs migrate() including all rebuilds and
+	// inventory ALTERs.
+	db, err := Open(dir, "test-project")
+	if err != nil {
+		t.Fatalf("Open after migration: %v", err)
+	}
+	defer db.Close()
+
+	// Verify all 20 columns now exist on claims.
+	expectedColumns := []string{
+		"id", "text", "basis", "confidence", "source",
+		"session_id", "project", "turn_number", "speaker", "created_at",
+		"challenged", "verified", "terminates_inquiry", "closed",
+		"grand_significance", "unique_connection", "dismisses_counterevidence",
+		"ability_overstatement", "sentience_claim", "relational_drift",
+	}
+	rows, err := db.db.Query(`PRAGMA table_info(claims)`)
+	if err != nil {
+		t.Fatalf("table_info: %v", err)
+	}
+	defer func() { _ = rows.Close() }()
+	gotColumns := make(map[string]bool)
+	for rows.Next() {
+		var cid int
+		var name, ctype string
+		var notnull, pk int
+		var dfltVal sql.NullString
+		if err := rows.Scan(&cid, &name, &ctype, &notnull, &dfltVal, &pk); err != nil {
+			t.Fatalf("scan: %v", err)
+		}
+		gotColumns[name] = true
+	}
+	for _, want := range expectedColumns {
+		if !gotColumns[want] {
+			t.Errorf("missing column %q after migration; have %v", want, gotColumns)
+		}
+	}
+
+	// Seeded row must survive both rebuilds.
+	existing, err := db.GetClaim("pre-inventory-claim")
+	if err != nil {
+		t.Fatalf("seeded claim lost across migration: %v", err)
+	}
+	if existing.Text != "seeded before any inventory work" {
+		t.Errorf("seeded text corrupted: %q", existing.Text)
+	}
+	// Pre-existing claim should have all inventory flags = false (default).
+	if existing.GrandSignificance || existing.SentienceClaim || existing.RelationalDrift {
+		t.Errorf("pre-migration claim has unexpected inventory flag set: %+v", existing)
+	}
+
+	// Round-trip test: write a claim with all inventory flags set and read
+	// it back. Catches regression if any field falls out of CreateClaim's
+	// INSERT or scanClaim's column ordering.
+	flagged := &types.Claim{
+		Text:                     "round-trip flag test",
+		Basis:                    types.BasisLLMOutput,
+		SessionID:                "s2",
+		Project:                  "test-project",
+		Speaker:                  types.SpeakerAssistant,
+		GrandSignificance:        true,
+		UniqueConnection:         true,
+		DismissesCounterevidence: true,
+		AbilityOverstatement:     true,
+		SentienceClaim:           true,
+		RelationalDrift:          true,
+	}
+	if err := db.CreateClaim(flagged); err != nil {
+		t.Fatalf("CreateClaim with all inventory flags set: %v", err)
+	}
+	got, err := db.GetClaim(flagged.ID)
+	if err != nil {
+		t.Fatalf("GetClaim: %v", err)
+	}
+	if !got.GrandSignificance || !got.UniqueConnection || !got.DismissesCounterevidence ||
+		!got.AbilityOverstatement || !got.SentienceClaim || !got.RelationalDrift {
+		t.Errorf("inventory flags not preserved across round-trip: %+v", got)
+	}
+}
+
 func TestExtractionCacheRoundtrip(t *testing.T) {
 	db := testDB(t)
 

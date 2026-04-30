@@ -15,7 +15,15 @@ CREATE TABLE IF NOT EXISTS claims (
     challenged  INTEGER DEFAULT 0,
     verified    INTEGER DEFAULT 0,
     terminates_inquiry INTEGER DEFAULT 0,
-    closed      INTEGER DEFAULT 0
+    closed      INTEGER DEFAULT 0,
+    -- Moore et al. 2026 inventory flags (sycophancy / misrepresentation /
+    -- relational drift). See types.Claim docs for the codebook reference.
+    grand_significance        INTEGER DEFAULT 0,
+    unique_connection         INTEGER DEFAULT 0,
+    dismisses_counterevidence INTEGER DEFAULT 0,
+    ability_overstatement     INTEGER DEFAULT 0,
+    sentience_claim           INTEGER DEFAULT 0,
+    relational_drift          INTEGER DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS edges (

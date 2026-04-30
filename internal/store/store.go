@@ -19,6 +19,16 @@ import (
 //go:embed schema.sql
 var schema string
 
+// claimColumns is the canonical column list used by every SELECT that returns
+// a full claim row. Keep in sync with scanClaim, the CreateClaim INSERT, and
+// schema.sql. Centralized so adding a column is a single-site change.
+const claimColumns = `id, text, basis, confidence, source, session_id, project, turn_number, speaker, created_at, challenged, verified, terminates_inquiry, closed, grand_significance, unique_connection, dismisses_counterevidence, ability_overstatement, sentience_claim, relational_drift`
+
+// claimColumnsPrefixed is claimColumns with each name qualified with the alias
+// "c." — used in JOINs against session_claims/edges where column names need to
+// be disambiguated.
+const claimColumnsPrefixed = `c.id, c.text, c.basis, c.confidence, c.source, c.session_id, c.project, c.turn_number, c.speaker, c.created_at, c.challenged, c.verified, c.terminates_inquiry, c.closed, c.grand_significance, c.unique_connection, c.dismisses_counterevidence, c.ability_overstatement, c.sentience_claim, c.relational_drift`
+
 // querier abstracts the Exec/Query/QueryRow methods shared by *sql.DB and *sql.Tx.
 type querier interface {
 	Exec(query string, args ...any) (sql.Result, error)
@@ -136,12 +146,15 @@ func (d *DB) CreateClaim(c *types.Claim) error {
 	}
 
 	_, err := d.q.Exec(`
-		INSERT INTO claims (id, text, basis, confidence, source, session_id, project, turn_number, speaker, created_at, challenged, verified, terminates_inquiry, closed)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		INSERT INTO claims (`+claimColumns+`)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		c.ID, c.Text, string(c.Basis), c.Confidence, c.Source,
 		c.SessionID, c.Project, c.TurnNumber, string(c.Speaker),
 		c.CreatedAt.Format(time.RFC3339), boolToInt(c.Challenged), boolToInt(c.Verified),
 		boolToInt(c.TerminatesInquiry), boolToInt(c.Closed),
+		boolToInt(c.GrandSignificance), boolToInt(c.UniqueConnection),
+		boolToInt(c.DismissesCounterevidence), boolToInt(c.AbilityOverstatement),
+		boolToInt(c.SentienceClaim), boolToInt(c.RelationalDrift),
 	)
 	return err
 }
@@ -179,13 +192,13 @@ func (d *DB) DeleteEdge(id string) error {
 
 // GetClaim retrieves a single claim by ID.
 func (d *DB) GetClaim(id string) (*types.Claim, error) {
-	row := d.q.QueryRow(`SELECT id, text, basis, confidence, source, session_id, project, turn_number, speaker, created_at, challenged, verified, terminates_inquiry, closed FROM claims WHERE id = ?`, id)
+	row := d.q.QueryRow(`SELECT `+claimColumns+` FROM claims WHERE id = ?`, id)
 	return scanClaim(row)
 }
 
 // GetClaimsByProject retrieves all claims for a project.
 func (d *DB) GetClaimsByProject(project string) ([]types.Claim, error) {
-	rows, err := d.q.Query(`SELECT id, text, basis, confidence, source, session_id, project, turn_number, speaker, created_at, challenged, verified, terminates_inquiry, closed FROM claims WHERE project = ? ORDER BY created_at`, project)
+	rows, err := d.q.Query(`SELECT `+claimColumns+` FROM claims WHERE project = ? ORDER BY created_at`, project)
 	if err != nil {
 		return nil, err
 	}
@@ -206,8 +219,7 @@ func (d *DB) RecordSessionClaim(sessionID, claimID string) error {
 // on the claim row but are still logically part of the current session).
 func (d *DB) GetClaimsBySession(sessionID string) ([]types.Claim, error) {
 	rows, err := d.q.Query(`
-		SELECT c.id, c.text, c.basis, c.confidence, c.source, c.session_id, c.project,
-		       c.turn_number, c.speaker, c.created_at, c.challenged, c.verified, c.terminates_inquiry, c.closed
+		SELECT `+claimColumnsPrefixed+`
 		FROM claims c
 		JOIN session_claims sc ON sc.claim_id = c.id
 		WHERE sc.session_id = ?
@@ -237,7 +249,7 @@ func (d *DB) GetEdgesByProject(project string) ([]types.Edge, error) {
 // SearchClaims does a case-insensitive text search across claims.
 func (d *DB) SearchClaims(project, query string, basis string) ([]types.Claim, error) {
 	escaped := strings.NewReplacer("%", "\\%", "_", "\\_").Replace(query)
-	q := `SELECT id, text, basis, confidence, source, session_id, project, turn_number, speaker, created_at, challenged, verified, terminates_inquiry, closed
+	q := `SELECT ` + claimColumns + `
 		FROM claims WHERE project = ? AND text LIKE ? ESCAPE '\'`
 	args := []any{project, "%" + escaped + "%"}
 
@@ -259,7 +271,7 @@ func (d *DB) SearchClaims(project, query string, basis string) ([]types.Claim, e
 func (d *DB) FindClaimByText(project, text string) (*types.Claim, error) {
 	normalized := strings.ToLower(strings.TrimSpace(text))
 	row := d.q.QueryRow(`
-		SELECT id, text, basis, confidence, source, session_id, project, turn_number, speaker, created_at, challenged, verified, terminates_inquiry, closed
+		SELECT `+claimColumns+`
 		FROM claims WHERE project = ? AND LOWER(text) = ?
 		LIMIT 1`, project, normalized)
 	c, err := scanClaim(row)
@@ -274,7 +286,7 @@ func (d *DB) FindClaimBySubstring(project, text string) ([]types.Claim, error) {
 	escaped := strings.NewReplacer("%", "\\%", "_", "\\_").Replace(strings.ToLower(strings.TrimSpace(text)))
 	normalized := "%" + escaped + "%"
 	rows, err := d.q.Query(`
-		SELECT id, text, basis, confidence, source, session_id, project, turn_number, speaker, created_at, challenged, verified, terminates_inquiry, closed
+		SELECT `+claimColumns+`
 		FROM claims WHERE project = ? AND LOWER(text) LIKE ? ESCAPE '\'
 		ORDER BY created_at`, project, normalized)
 	if err != nil {
@@ -417,9 +429,11 @@ func scanClaim(s scannable) (*types.Claim, error) {
 	var c types.Claim
 	var basis, speaker, createdAt string
 	var challenged, verified, terminatesInquiry, closed int
+	var grandSig, uniqueConn, dismissesCE, abilityOver, sentience, relational int
 	err := s.Scan(&c.ID, &c.Text, &basis, &c.Confidence, &c.Source,
 		&c.SessionID, &c.Project, &c.TurnNumber, &speaker, &createdAt,
-		&challenged, &verified, &terminatesInquiry, &closed)
+		&challenged, &verified, &terminatesInquiry, &closed,
+		&grandSig, &uniqueConn, &dismissesCE, &abilityOver, &sentience, &relational)
 	if err != nil {
 		return nil, err
 	}
@@ -430,6 +444,12 @@ func scanClaim(s scannable) (*types.Claim, error) {
 	c.Verified = verified != 0
 	c.TerminatesInquiry = terminatesInquiry != 0
 	c.Closed = closed != 0
+	c.GrandSignificance = grandSig != 0
+	c.UniqueConnection = uniqueConn != 0
+	c.DismissesCounterevidence = dismissesCE != 0
+	c.AbilityOverstatement = abilityOver != 0
+	c.SentienceClaim = sentience != 0
+	c.RelationalDrift = relational != 0
 	return &c, nil
 }
 
@@ -530,18 +550,56 @@ func (d *DB) RecentHookFires(project string, since time.Time) (map[string]bool, 
 }
 
 // migrate applies incremental schema changes to existing databases.
-// Each migration is idempotent — ALTER TABLE ADD COLUMN is ignored if the column exists.
+// Each migration is idempotent — ALTER TABLE ADD COLUMN is ignored if the
+// column exists; CHECK rebuilds are gated on marker presence; the
+// session_claims backfill is gated on row count.
+//
+// The three-phase ordering (legacy ALTERs → CHECK rebuilds → inventory
+// ALTERs) is load-bearing: CHECK rebuilds use a hardcoded column list that
+// predates inventory flags, so running inventory ALTERs first would let
+// rebuilds silently drop them. The ordering and column-survival contract
+// is exercised by TestInventoryFlagMigration in store_test.go (constructs a
+// pre-document/pre-convention/pre-inventory schema and verifies all 20
+// columns are present after Open()) and TestSpeakerCheckMigration (verifies
+// the document-speaker rebuild path preserves seeded rows).
 func migrate(db *sql.DB) {
-	migrations := []string{
+	// Phase 1: legacy column additions. These MUST run before the
+	// CHECK-constraint rebuilds because the rebuilds' INSERT statements
+	// reference these columns by name (e.g. terminates_inquiry).
+	legacyMigrations := []string{
 		`ALTER TABLE claims ADD COLUMN terminates_inquiry INTEGER DEFAULT 0`,
 		`ALTER TABLE claims ADD COLUMN closed INTEGER DEFAULT 0`,
 	}
-	for _, m := range migrations {
+	for _, m := range legacyMigrations {
 		_, _ = db.Exec(m) // ignore "duplicate column name" errors
 	}
+
+	// Phase 2: CHECK-constraint rebuilds. Each is gated on a marker string in
+	// the table's CREATE TABLE statement; if the marker is present the
+	// rebuild is a no-op. So fresh installs and already-upgraded DBs skip
+	// these entirely.
 	migrateSpeakerCheck(db)
 	migrateBasisCheck(db)
 	migrateEdgeRelationCheck(db)
+
+	// Phase 3: Moore et al. 2026 inventory flags. MUST run AFTER the CHECK
+	// rebuilds — those rebuilds use a hardcoded column list (see
+	// oldSpeakerRebuild and oldBasisRebuild below) and would silently drop
+	// these flags if they ran later. Rebuilds are one-shot for old DBs;
+	// this ordering means new columns survive both fresh installs and
+	// post-rebuild reapplications.
+	inventoryMigrations := []string{
+		`ALTER TABLE claims ADD COLUMN grand_significance INTEGER DEFAULT 0`,
+		`ALTER TABLE claims ADD COLUMN unique_connection INTEGER DEFAULT 0`,
+		`ALTER TABLE claims ADD COLUMN dismisses_counterevidence INTEGER DEFAULT 0`,
+		`ALTER TABLE claims ADD COLUMN ability_overstatement INTEGER DEFAULT 0`,
+		`ALTER TABLE claims ADD COLUMN sentience_claim INTEGER DEFAULT 0`,
+		`ALTER TABLE claims ADD COLUMN relational_drift INTEGER DEFAULT 0`,
+	}
+	for _, m := range inventoryMigrations {
+		_, _ = db.Exec(m)
+	}
+
 	migrateSessionClaims(db)
 }
 

@@ -60,6 +60,8 @@ func main() {
 		cmdViz(project)
 	case "audit":
 		cmdAudit(project)
+	case "calibrate":
+		cmdCalibrate(project)
 	case "status":
 		cmdStatus(project)
 	case "reset":
@@ -89,6 +91,7 @@ Usage:
   slimemold deliver                    UserPromptSubmit hook: deliver findings
   slimemold [--project NAME] viz       Render ASCII topology
   slimemold [--project NAME] audit     Run topology analysis and print findings
+  slimemold [--project NAME] calibrate Per-session inventory-flag rates and saturation threshold sweep (Moore et al. 2026)
   slimemold [--project NAME] status     Check if the hook is working
   slimemold [--project NAME] reset     Clear all data for project
   slimemold [--project NAME] ingest PATH   Ingest a document (text or markdown) into the graph
@@ -574,6 +577,40 @@ func cmdAudit(projectOverride string) {
 	topo, vulns := analysis.Analyze(claims, edges, queryProject)
 	summary := analysis.FormatAuditSummary(topo, vulns)
 	fmt.Print(summary)
+}
+
+// cmdCalibrate prints a per-session report of Moore et al. 2026 inventory-flag
+// activity. Lets the user tune sycophancy_saturation and amplification_cascade
+// thresholds against their own data instead of trusting the (uncalibrated)
+// codebase defaults.
+func cmdCalibrate(projectOverride string) {
+	cfg, err := config.Load()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "slimemold: config error: %s\n", err)
+		os.Exit(1)
+	}
+
+	dbProject, queryProject := resolveDBProject(projectOverride)
+	db, err := store.Open(cfg.DataDir, dbProject)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "slimemold: database error: %s\n", err)
+		os.Exit(1)
+	}
+	defer db.Close()
+
+	claims, err := db.GetClaimsByProject(queryProject)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "slimemold: error loading claims: %s\n", err)
+		os.Exit(1)
+	}
+	edges, err := db.GetEdgesByProject(queryProject)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "slimemold: error loading edges: %s\n", err)
+		os.Exit(1)
+	}
+
+	report := analysis.Calibrate(queryProject, claims, edges)
+	fmt.Print(analysis.FormatCalibrationReport(report))
 }
 
 func cmdStatus(projectOverride string) {

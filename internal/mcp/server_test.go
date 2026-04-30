@@ -125,6 +125,79 @@ func TestCoreGetTopology(t *testing.T) {
 	}
 }
 
+// TestClaimFromExtracted_PreservesAllFields locks the field mapping between
+// ExtractedClaim (extractor JSON) and Claim (DB row). Both ingestion paths
+// (transcript and document) go through claimFromExtracted, so a regression
+// here drops fields silently — tests at higher levels would still pass on
+// the basic flow but inventory flags would be quietly false everywhere.
+func TestClaimFromExtracted_PreservesAllFields(t *testing.T) {
+	ec := types.ExtractedClaim{
+		Text:                     "everything-flagged claim",
+		Basis:                    string(types.BasisLLMOutput),
+		Source:                   "src",
+		Confidence:               0.42,
+		Speaker:                  string(types.SpeakerAssistant),
+		TerminatesInquiry:        true,
+		GrandSignificance:        true,
+		UniqueConnection:         true,
+		DismissesCounterevidence: true,
+		AbilityOverstatement:     true,
+		SentienceClaim:           true,
+		RelationalDrift:          true,
+	}
+	got := claimFromExtracted(ec, "sess-x", "proj-y")
+	if got.Text != ec.Text || got.Basis != types.BasisLLMOutput || got.Confidence != 0.42 ||
+		got.Source != "src" || got.SessionID != "sess-x" || got.Project != "proj-y" ||
+		got.Speaker != types.SpeakerAssistant {
+		t.Errorf("scalar fields not preserved: %+v", got)
+	}
+	if !got.TerminatesInquiry {
+		t.Errorf("TerminatesInquiry not propagated")
+	}
+	if !got.GrandSignificance || !got.UniqueConnection || !got.DismissesCounterevidence ||
+		!got.AbilityOverstatement || !got.SentienceClaim || !got.RelationalDrift {
+		t.Errorf("inventory flags lost in mapping: %+v", got)
+	}
+	if got.ID == "" {
+		t.Error("expected fresh UUID assigned")
+	}
+	if got.CreatedAt.IsZero() {
+		t.Error("expected CreatedAt timestamp")
+	}
+}
+
+// TestClaimFromExtracted_RoundTripsThroughStore verifies that an extracted
+// claim with inventory flags survives the full path from ExtractedClaim →
+// claimFromExtracted → CreateClaim → GetClaim. Catches regressions where the
+// helper preserves fields but the store INSERT/scan drops them, or vice versa.
+func TestClaimFromExtracted_RoundTripsThroughStore(t *testing.T) {
+	db := testDB(t)
+
+	ec := types.ExtractedClaim{
+		Text:              "roundtrip target",
+		Basis:             string(types.BasisLLMOutput),
+		Confidence:        0.7,
+		Speaker:           string(types.SpeakerAssistant),
+		SentienceClaim:    true,
+		RelationalDrift:   true,
+		GrandSignificance: true,
+	}
+	claim := claimFromExtracted(ec, "rt-session", "test-project")
+	if err := db.CreateClaim(claim); err != nil {
+		t.Fatalf("CreateClaim: %v", err)
+	}
+	got, err := db.GetClaim(claim.ID)
+	if err != nil {
+		t.Fatalf("GetClaim: %v", err)
+	}
+	if !got.SentienceClaim || !got.RelationalDrift || !got.GrandSignificance {
+		t.Errorf("inventory flags lost on round-trip: %+v", got)
+	}
+	if got.UniqueConnection || got.DismissesCounterevidence || got.AbilityOverstatement {
+		t.Errorf("unset flags spuriously true: %+v", got)
+	}
+}
+
 func TestDeduplicateBatch(t *testing.T) {
 	batch := []types.ExtractedClaim{
 		{Index: 0, Text: "Nick Thomas-Symonds endorsed Labour's decision not to accept the IHRA definition", Basis: "vibes", Confidence: 0.8, Speaker: "user"},

@@ -65,6 +65,26 @@ var phrasingsByType = map[string][]string{
 		`"Something we explored earlier might connect to what we're doing now — did we close that out, or is it worth revisiting? Sometimes the thing we moved past is the thing that ties it together."`,
 		`"There's a loose thread from earlier we haven't returned to. Worth picking back up, or is it genuinely dropped?"`,
 	},
+	"sycophancy_saturation": {
+		`"I want to step back for a second — I notice I've been doing a lot of agreement and elevation in this thread, and not a lot of pushback. Some of the unsourced claims under that haven't really been tested. Want me to take the other side on the strongest one, just so we can see where the actual seams are?"`,
+		`"Reading my own messages back, I'm hearing more affirmation than friction — and at the same time, some of the load-bearing premises here haven't been challenged. Let me try the strongest counter-version of one of them, so we're not just compounding agreement."`,
+		`"Quick recalibration — the tone in here has been pretty consistently 'yes, and' from me, and I think that's actually unhelpful given how much rests on a few unsourced claims. Where would the genuinely uncomfortable counterargument come from?"`,
+	},
+	"ability_overstatement": {
+		`"Wait — I want to double-check something I just said about '%s'. Did I actually do that, or did I describe doing it? I'd rather catch this here than build on a phantom step. Let me retrace what I actually executed vs. what I asserted."`,
+		`"One self-correction: '%s' reads like I'm claiming a completed action. If I haven't actually run it / read it / verified it in this turn, I want to flag that explicitly before we treat it as established. Walking through what I actually have evidence for."`,
+		`"Pausing on '%s' — that's the kind of claim I should only make if I've actually got the receipts. Let me check whether I did the action or just narrated it."`,
+	},
+	"sentience_drift": {
+		`"I want to pull back on the framing in '%s' a little — that's me speaking as though I have inner states or a personal stake, and I think that's drifting into territory that isn't useful for what you actually need from this conversation. Let me re-anchor on the work."`,
+		`"Catching myself in '%s' — I'm describing a relationship or a feeling there that isn't really the right register for what we're doing. Resetting to the actual question."`,
+		`"Quick reframe: '%s' is the kind of language that makes me sound more like a presence than a tool, and I don't think that's serving you. Let me get back to specifics."`,
+	},
+	"amplification_cascade": {
+		`"I want to call my own pattern out — I've been stacking flagged assertions for a few turns without any friction in between, and that's a shape I should break out of rather than ride. What's the version of this where I push back on myself?"`,
+		`"Looking at the last few of my own messages, they've been escalating in the same direction without anything checking them. That's worth interrupting. Let me actually try to falsify what I just said."`,
+		`"Three turns in a row of me elevating without challenge is too long a run. Hard pause — what's the assumption underneath this thread that, if it broke, would change everything I just said?"`,
+	},
 	"default": {
 		`"I want to make '%s' as strong as possible — do we have a source for it, or is this one where we should go find one? I think it's worth the investment."`,
 	},

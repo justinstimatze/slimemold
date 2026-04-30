@@ -24,7 +24,13 @@ import (
 // documentPromptVersion bumps whenever systemPrompt + documentModeSupplement
 // changes in a way that invalidates prior cached extractions. The cache key
 // includes this so we don't serve stale results after a prompt edit.
-const documentPromptVersion = 4
+//
+// v5: added Moore et al. 2026 inventory flags (grand_significance,
+// unique_connection, dismisses_counterevidence, ability_overstatement,
+// sentience_claim, relational_drift). Old cached extractions don't carry
+// these and would deserialize as false-for-everything; bumping forces
+// re-extraction so the flags actually get populated.
+const documentPromptVersion = 5
 
 // DocumentPromptVersion exposes the version constant so outside packages
 // (e.g. the eval CLI) can label snapshots by prompt identity.
@@ -161,18 +167,7 @@ func ingestOneChunk(ctx context.Context, db *store.DB, extractor *extract.Extrac
 			_ = txDB.RecordSessionClaim(sessionID, match.ID)
 			continue
 		}
-		claim := &types.Claim{
-			ID:                uuid.New().String(),
-			Text:              ec.Text,
-			Basis:             types.Basis(ec.Basis),
-			Confidence:        ec.Confidence,
-			Source:            ec.Source,
-			SessionID:         sessionID,
-			Project:           project,
-			Speaker:           types.Speaker(ec.Speaker),
-			CreatedAt:         time.Now(),
-			TerminatesInquiry: ec.TerminatesInquiry,
-		}
+		claim := claimFromExtracted(ec, sessionID, project)
 		if err := txDB.CreateClaim(claim); err != nil {
 			return 0, 0, fmt.Errorf("creating claim: %w", err)
 		}
@@ -192,6 +187,41 @@ func ingestOneChunk(ctx context.Context, db *store.DB, extractor *extract.Extrac
 		return 0, 0, fmt.Errorf("commit: %w", err)
 	}
 	return newClaims, newEdges, nil
+}
+
+// claimFromExtracted constructs a fresh Claim from an ExtractedClaim,
+// preserving every persisted field — including the Moore et al. 2026
+// inventory flags. Used by both transcript ingestion (CoreParseTranscript
+// in core.go) and document ingestion (ingestOneChunk above) so the field
+// mapping lives in exactly one place.
+//
+// Before this helper existed, both call sites had a structurally identical
+// inline literal copying ec.* into Claim.* — every time a new field was
+// added to ExtractedClaim/Claim, both sites had to be updated, and a missed
+// update caused fields to silently drop on one of the two ingestion paths.
+// Centralizing eliminates that class of bug. Field preservation across the
+// helper + store round-trip is exercised by
+// TestClaimFromExtracted_PreservesAllFields and
+// TestClaimFromExtracted_RoundTripsThroughStore in server_test.go.
+func claimFromExtracted(ec types.ExtractedClaim, sessionID, project string) *types.Claim {
+	return &types.Claim{
+		ID:                       uuid.New().String(),
+		Text:                     ec.Text,
+		Basis:                    types.Basis(ec.Basis),
+		Confidence:               ec.Confidence,
+		Source:                   ec.Source,
+		SessionID:                sessionID,
+		Project:                  project,
+		Speaker:                  types.Speaker(ec.Speaker),
+		CreatedAt:                time.Now(),
+		TerminatesInquiry:        ec.TerminatesInquiry,
+		GrandSignificance:        ec.GrandSignificance,
+		UniqueConnection:         ec.UniqueConnection,
+		DismissesCounterevidence: ec.DismissesCounterevidence,
+		AbilityOverstatement:     ec.AbilityOverstatement,
+		SentienceClaim:           ec.SentienceClaim,
+		RelationalDrift:          ec.RelationalDrift,
+	}
 }
 
 // resolveEdgesForClaim inserts all edges (intra-batch by index, cross-batch by

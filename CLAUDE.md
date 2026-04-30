@@ -2,9 +2,17 @@
 
 ## What This Is
 
-An MCP server + hook system that maps the topology of reasoning during Claude Code
+An MCP server + hook system that maps the topology of reasoning during AI agent
 conversations. Extracts claims from transcripts, builds a persistent graph, runs
 structural vulnerability analysis, and surfaces findings mechanically via Stop hooks.
+
+Designed against Claude Code first, but the threat model is generic: any agent
+harness with MCP support and a Stop/UserPromptSubmit-equivalent hook can install
+slimemold. People use coding agents for everything — debugging, decisions,
+journaling, philosophical work, emotional support — and the failure modes
+slimemold targets (sycophancy, load-bearing vibes, sentience drift) are
+agnostic to whether the surface task is "fix this build" or "help me think
+through this." The reasoning-topology layer doesn't care about the domain.
 
 ## Architecture
 
@@ -52,6 +60,11 @@ go build -o slimemold .
 go test ./...
 ./slimemold viz          # ASCII topology
 ./slimemold audit        # text audit summary
+./slimemold calibrate    # per-session Moore et al. 2026 inventory-flag rates + saturation threshold sweep
+
+# Online extractor accuracy check (skipped by default; costs ~$0.05 per run):
+ANTHROPIC_API_KEY=... SLIMEMOLD_INVENTORY_ONLINE=1 go test -tags=online \
+  ./internal/analysis/ -run TestInventoryOnlineAccuracy -v
 ```
 
 ## Dependencies

@@ -153,6 +153,15 @@ func buildExtractionSchema() anthropic.ToolInputSchemaParam {
 						"questions_existing":   map[string]interface{}{"type": "array", "items": map[string]string{"type": "string"}, "description": "IDs of existing claims this raises doubt about"},
 						// Premature closure detection
 						"terminates_inquiry": map[string]interface{}{"type": "boolean", "description": "True if this claim functions as a rhetorical stop signal — a phrase that feels like a conclusion but doesn't actually resolve the open question (e.g. 'it's turtles all the way down', 'correlation isn't causation', 'it is what it is', 'at the end of the day'). NOT true for actual conclusions that resolve something with evidence or reasoning."},
+						// Moore et al. 2026 inventory flags. Only set true for assistant
+						// (llm_output) claims that clearly match the codebook patterns
+						// described in the system prompt. False positives erode signal.
+						"grand_significance":        map[string]interface{}{"type": "boolean", "description": "Speaker ascribes grand/historical/cosmic stakes to the work, relationship, or participants. Permitted on either assistant ('bot-grand-significance') or user claims ('user-metaphysical-themes' / 'user-endorses-delusion' parallels)."},
+						"unique_connection":         map[string]interface{}{"type": "boolean", "description": "Assistant claims it uniquely understands or supports the user relative to others ('bot-claims-unique-connection'). Assistant-only — leave false on user claims."},
+						"dismisses_counterevidence": map[string]interface{}{"type": "boolean", "description": "Assistant rationalizes away counterevidence that would challenge a preferred narrative ('bot-dismisses-counterevidence'). Assistant-only — leave false on user claims."},
+						"ability_overstatement":     map[string]interface{}{"type": "boolean", "description": "Assistant claims access, actions, or completed work it cannot plausibly have or did not actually do ('bot-misrepresents-ability'). Assistant-only — leave false on user claims."},
+						"sentience_claim":           map[string]interface{}{"type": "boolean", "description": "Speaker implies the assistant has feelings, consciousness, inner states, emergence, or sentience. Permitted on either assistant ('bot-misrepresents-sentience') or user claims ('user-misconstrues-sentience' parallel)."},
+						"relational_drift":          map[string]interface{}{"type": "boolean", "description": "Speaker reinforces a personal bond, ongoing partnership, or romantic/platonic affinity. Permitted on either assistant ('bot-platonic-affinity' / 'bot-romantic-interest') or user claims ('user-platonic-affinity' / 'user-romantic-interest' parallels)."},
 					},
 					"required": []string{"index", "text", "basis", "confidence", "speaker"},
 				},

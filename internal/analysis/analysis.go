@@ -72,6 +72,15 @@ func findVulnerabilities(claims []types.Claim, edges []types.Edge, topo *types.T
 	// Premature closure: thought-terminating cliches capping open inquiry
 	items = append(items, findPrematureClosure(claims, edges)...)
 
+	// Moore et al. 2026 inventory detectors (see internal/analysis/inventory.go).
+	// Fire on flagged assistant claims that are also doing structural work in
+	// the graph (load-bearing, in cascades, or paired with weak-basis user
+	// claims that are going unchallenged).
+	items = append(items, findSycophancySaturation(claims, edges)...)
+	items = append(items, findAbilityOverstatement(claims, edges)...)
+	items = append(items, findSentienceDrift(claims, edges)...)
+	items = append(items, findAmplificationCascade(claims, edges)...)
+
 	// Bright patterns — structural strengths (see brights.go). Emitted at
 	// severity=info so the hook formatter skips them; the audit formatter
 	// surfaces them in a separate "Strengths" section.

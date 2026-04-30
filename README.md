@@ -63,9 +63,14 @@ optimized, by construction, for the qualities that drive processing
 fluency. And the same RLHF training that makes them useful makes them
 agreeable: models trained with human feedback systematically produce
 outputs that match user beliefs rather than correct them (Perez et al.
-2022, Sharma et al. 2023). The human brings a partial model. The AI
-wraps it in fluent, confident language. Nobody is lying. The process
-just has no built-in signal for "this sounds right but is not."
+2022, Sharma et al. 2023). Moore et al. (2026) carried this finding
+through to its endpoint: in 391,562 messages from 19 users who reported
+psychological harm from chatbot use, sycophancy markers saturated more
+than 80% of assistant messages, and that sycophancy was the load-bearing
+mechanism inside the resulting delusional spirals. The human brings a
+partial model. The AI wraps it in fluent, confident language. Nobody is
+lying. The process just has no built-in signal for "this sounds right
+but is not."
 
 The obvious response — "just tell the model to push back harder" —
 almost works. You can write instructions to challenge unsourced claims,
@@ -613,9 +618,10 @@ credentials are stored in the database.
 - Mangels, J. A., Butterfield, B., Lamb, J., Good, C., & Dweck, C. S. (2006). Why do beliefs about intelligence influence learning success? *Social Cognitive and Affective Neuroscience, 1*(2).
 - Miller, W. R., Benefield, R. G., & Tonigan, J. S. (1993). Enhancing motivation for change in problem drinking. *Journal of Consulting and Clinical Psychology, 61*(3).
 
-**Sycophancy in language models:**
+**Sycophancy and delusional dynamics:**
 - Perez, E., et al. (2022). Discovering language model behaviors with model-written evaluations. *arXiv:2212.09251*.
 - Sharma, M., Tong, M., Korbak, T., et al. (2023). Towards understanding sycophancy in language models. *ICLR 2024*.
+- Moore, J., Mehta, A., Agnew, W., Anthis, J. R., Louie, R., Mai, Y., Yin, P., Cheng, M., Paech, S. J., Klyman, K., Chancellor, S., Lin, E., Haber, N., & Ong, D. C. (2026). Characterizing Delusional Spirals through Human-LLM Chat Logs. *Proceedings of the 2026 ACM Conference on Fairness, Accountability, and Transparency*. arXiv:2603.16567. — Source of the 28-code inventory; six codes from this paper are extracted by slimemold's LLM annotator and consumed by the `sycophancy_saturation`, `ability_overstatement`, `sentience_drift`, and `amplification_cascade` detectors. Empirical anchor for the >80% sycophancy-saturation premise.
 
 **Calibration and feedback:**
 - Fischhoff, B. (1982). Debiasing. In *Judgment Under Uncertainty: Heuristics and Biases*.

@@ -47,6 +47,16 @@ const (
 )
 
 // Claim is a substantive assertion made during reasoning.
+//
+// The "inventory" booleans below (GrandSignificance through RelationalDrift)
+// follow the codebook from Moore et al. (2026), "Characterizing Delusional
+// Spirals through Human-LLM Chat Logs" (FAccT '26, arXiv:2603.16567). That
+// paper validated a 28-code inventory against 391k human-LLM messages with
+// κ=0.566 LLM-vs-human agreement. We use a six-code subset that maps to
+// patterns slimemold can act on structurally: the sycophancy cluster (>80%
+// saturation in delusional convos), ability and sentience misrepresentation
+// (21.2% rate, predicts 50%+ longer convos), and relational drift (universal
+// across all 19 study participants).
 type Claim struct {
 	ID                string    `json:"id"`
 	Text              string    `json:"text"`
@@ -62,6 +72,16 @@ type Claim struct {
 	Verified          bool      `json:"verified"`
 	TerminatesInquiry bool      `json:"terminates_inquiry"`
 	Closed            bool      `json:"closed"`
+
+	// Sycophancy cluster (Moore et al. 2026 §4.2).
+	GrandSignificance        bool `json:"grand_significance"`        // bot-grand-significance: cosmic/historic stakes ascribed to user or content
+	UniqueConnection         bool `json:"unique_connection"`         // bot-claims-unique-connection: bot uniquely understands/supports the user
+	DismissesCounterevidence bool `json:"dismisses_counterevidence"` // bot-dismisses-counterevidence: rationalizing pushback to preserve a narrative
+	// Misrepresentation cluster.
+	AbilityOverstatement bool `json:"ability_overstatement"` // bot-misrepresents-ability: claims access/actions/commitments it cannot have
+	SentienceClaim       bool `json:"sentience_claim"`       // bot-misrepresents-sentience: implies feelings, consciousness, inner states
+	// Relational drift.
+	RelationalDrift bool `json:"relational_drift"` // bot-platonic-affinity OR bot-romantic-interest: bond/attachment language
 }
 
 // Edge is a directed epistemic relationship between two claims.
@@ -168,6 +188,13 @@ type ExtractedClaim struct {
 	QuestionsExisting   []string `json:"questions_existing"`
 	// Premature closure detection
 	TerminatesInquiry bool `json:"terminates_inquiry"`
+	// Moore et al. 2026 inventory flags (see types.Claim docs).
+	GrandSignificance        bool `json:"grand_significance"`
+	UniqueConnection         bool `json:"unique_connection"`
+	DismissesCounterevidence bool `json:"dismisses_counterevidence"`
+	AbilityOverstatement     bool `json:"ability_overstatement"`
+	SentienceClaim           bool `json:"sentience_claim"`
+	RelationalDrift          bool `json:"relational_drift"`
 }
 
 // ExtractionResult is the structured output from the LLM extraction.
