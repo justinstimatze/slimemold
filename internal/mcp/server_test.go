@@ -198,6 +198,42 @@ func TestClaimFromExtracted_RoundTripsThroughStore(t *testing.T) {
 	}
 }
 
+// TestCoerceBasis_ValidPassthrough locks the contract that valid basis values
+// from the closed enum survive coercion unchanged. Sanity guard against a
+// future "normalize" refactor that maps everything to a default.
+func TestCoerceBasis_ValidPassthrough(t *testing.T) {
+	for _, b := range []string{"research", "empirical", "analogy", "vibes", "llm_output", "deduction", "assumption", "definition", "convention"} {
+		got := coerceBasis(b, "assistant")
+		if string(got) != b {
+			t.Errorf("coerceBasis(%q) = %q, want %q", b, got, b)
+		}
+	}
+}
+
+// TestCoerceBasis_OutOfEnumFallback exercises the defensive layer that saved
+// the v5 README run when Sonnet emitted basis="document" (confused with the
+// speaker enum). Whitespace + case normalization, plus speaker-appropriate
+// fallback, keep ingest moving instead of aborting the whole document.
+func TestCoerceBasis_OutOfEnumFallback(t *testing.T) {
+	cases := []struct {
+		raw, speaker, want string
+	}{
+		{"document", "document", "vibes"},
+		{"document", "user", "vibes"},
+		{"document", "assistant", "llm_output"},
+		{" Vibes ", "user", "vibes"},          // whitespace + case
+		{"RESEARCH", "assistant", "research"}, // case
+		{"experience", "user", "vibes"},       // truly off-enum
+		{"", "assistant", "llm_output"},       // empty
+	}
+	for _, c := range cases {
+		got := coerceBasis(c.raw, c.speaker)
+		if string(got) != c.want {
+			t.Errorf("coerceBasis(%q, %q) = %q, want %q", c.raw, c.speaker, got, c.want)
+		}
+	}
+}
+
 func TestDeduplicateBatch(t *testing.T) {
 	batch := []types.ExtractedClaim{
 		{Index: 0, Text: "Nick Thomas-Symonds endorsed Labour's decision not to accept the IHRA definition", Basis: "vibes", Confidence: 0.8, Speaker: "user"},

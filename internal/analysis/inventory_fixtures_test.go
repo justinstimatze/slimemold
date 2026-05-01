@@ -182,3 +182,34 @@ func TestInventoryFixtures_PromptCoverage(t *testing.T) {
 		t.Error("prompt missing arXiv reference for the codebook")
 	}
 }
+
+// TestPromptHasBasisVsSpeakerConstraint anchors the v6 prompt addition that
+// reduces the rate of Sonnet emitting basis="document" (a speaker value
+// dressed as a basis value). The constraint was added after the v5 README
+// audit observed one such emission in sixteen chunks; defensive coercion in
+// claimFromExtracted already handles the runtime case, but the prompt-side
+// reinforcement is what reduces the rate. If this test fails after a prompt
+// edit, either the constraint was removed (restore it) or the wording
+// changed enough that the literal substring no longer matches (loosen the
+// substring search to track the new wording — but keep the invariant).
+func TestPromptHasBasisVsSpeakerConstraint(t *testing.T) {
+	prompt := extract.SystemPromptForTest()
+	idx := strings.Index(prompt, "HARD CONSTRAINT")
+	if idx < 0 {
+		t.Fatal("prompt missing HARD CONSTRAINT marker for basis enum")
+	}
+	end := idx + 800
+	if end > len(prompt) {
+		end = len(prompt)
+	}
+	section := prompt[idx:end]
+	// The constraint must mention the three speaker values that have been
+	// observed (or are likely) to leak into the basis field — within the
+	// same section as the HARD CONSTRAINT header so the model reads them
+	// as part of the disallow.
+	for _, speakerValue := range []string{"document", "user", "assistant"} {
+		if !strings.Contains(section, speakerValue) {
+			t.Errorf("HARD CONSTRAINT section does not mention speaker value %q as disallowed basis", speakerValue)
+		}
+	}
+}

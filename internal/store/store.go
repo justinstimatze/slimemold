@@ -156,7 +156,10 @@ func (d *DB) CreateClaim(c *types.Claim) error {
 		boolToInt(c.DismissesCounterevidence), boolToInt(c.AbilityOverstatement),
 		boolToInt(c.SentienceClaim), boolToInt(c.RelationalDrift),
 	)
-	return err
+	if err != nil {
+		return fmt.Errorf("%w (basis=%q speaker=%q)", err, c.Basis, c.Speaker)
+	}
+	return nil
 }
 
 // CreateEdge inserts a new edge. Returns (true, nil) if inserted, (false, nil) if duplicate.

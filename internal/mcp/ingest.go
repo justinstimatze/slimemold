@@ -30,7 +30,16 @@ import (
 // sentience_claim, relational_drift). Old cached extractions don't carry
 // these and would deserialize as false-for-everything; bumping forces
 // re-extraction so the flags actually get populated.
-const documentPromptVersion = 5
+//
+// v6: added explicit "basis must be one of {…}, never a speaker value"
+// HARD CONSTRAINT to the system prompt after the v5 README audit caught
+// Sonnet emitting basis="document" once in sixteen chunks. The defensive
+// coerceBasis layer in claimFromExtracted still catches any future drift
+// at runtime; the prompt reinforcement reduces how often that layer has
+// to fire. Cache invalidation here so cached v5 extractions don't mask
+// the rate change — we want the next ingest to actually exercise the
+// new prompt and confirm the rate dropped.
+const documentPromptVersion = 6
 
 // DocumentPromptVersion exposes the version constant so outside packages
 // (e.g. the eval CLI) can label snapshots by prompt identity.
@@ -207,7 +216,7 @@ func claimFromExtracted(ec types.ExtractedClaim, sessionID, project string) *typ
 	return &types.Claim{
 		ID:                       uuid.New().String(),
 		Text:                     ec.Text,
-		Basis:                    types.Basis(ec.Basis),
+		Basis:                    coerceBasis(ec.Basis, ec.Speaker),
 		Confidence:               ec.Confidence,
 		Source:                   ec.Source,
 		SessionID:                sessionID,
@@ -222,6 +231,44 @@ func claimFromExtracted(ec types.ExtractedClaim, sessionID, project string) *typ
 		SentienceClaim:           ec.SentienceClaim,
 		RelationalDrift:          ec.RelationalDrift,
 	}
+}
+
+// validBasisValues mirrors the schema.sql CHECK constraint and the JSON-schema
+// enum in extract.go. Kept as a closed map so coerceBasis can lookup in O(1)
+// without dragging in a sort/contains helper.
+var validBasisValues = map[string]bool{
+	"research":   true,
+	"empirical":  true,
+	"analogy":    true,
+	"vibes":      true,
+	"llm_output": true,
+	"deduction":  true,
+	"assumption": true,
+	"definition": true,
+	"convention": true,
+}
+
+// coerceBasis defends against the model emitting a basis value outside the
+// closed enum the DB CHECK constraint enforces. Sonnet occasionally drops out
+// of the enum under prompt pressure — e.g. emitting basis="document" on
+// document-mode chunks (confusing it with the speaker enum) once the system
+// prompt grew past a threshold around v5. Rather than abort the whole ingest,
+// we lowercase + map and fall back to a speaker-appropriate default. We log
+// the offending value to stderr so prompt regressions remain visible.
+func coerceBasis(raw, speaker string) types.Basis {
+	v := strings.ToLower(strings.TrimSpace(raw))
+	if validBasisValues[v] {
+		return types.Basis(v)
+	}
+	var fallback string
+	switch speaker {
+	case "assistant":
+		fallback = "llm_output"
+	default:
+		fallback = "vibes"
+	}
+	fmt.Fprintf(os.Stderr, "    coerced out-of-enum basis %q (speaker=%q) → %q\n", raw, speaker, fallback)
+	return types.Basis(fallback)
 }
 
 // resolveEdgesForClaim inserts all edges (intra-batch by index, cross-batch by

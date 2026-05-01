@@ -22,6 +22,8 @@ For each claim, determine:
   8. Was the claim stated by the user without evidence? → "vibes"
   9. Is the claim taken as given without justification? → "assumption"
   If none of the above clearly apply, default to "vibes" — not "assumption". The key distinction: "assumption" is a premise explicitly or implicitly marked as given ("let's assume X", "given that X"). "vibes" is an assertion presented as fact without evidence. "convention" is specifically for stipulative practice/policy choices by a named actor (a project, team, organization, author voice) — it is correct-by-fiat for the scope it declares. When in doubt between convention and vibes, ask: does the claim describe a *chosen practice* (convention) or an *asserted fact about the world* (vibes)? "This project uses beads" is convention; "beads is the best issue tracker" is vibes.
+
+HARD CONSTRAINT — basis must be one of: research, empirical, analogy, vibes, llm_output, deduction, assumption, definition, convention. It is NEVER a speaker value. The strings "document", "user", and "assistant" go in the speaker field; they are not valid basis values. If your candidate basis is not in the closed list above, you have made a category error — re-pick from the list.
 - source: citation if available, empty string otherwise
 - confidence: 0.0-1.0, how confidently the claim was stated
 - speaker: "user" or "assistant"

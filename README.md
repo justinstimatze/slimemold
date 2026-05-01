@@ -741,76 +741,112 @@ Sixty-three claims tagged `research` — more citation density than most real pa
 <details>
 <summary><b>Appendix: Slimemold's audit of this README</b></summary>
 
-We fed this README to `slimemold ingest`. 265 claims, 476 edges.
+We fed this README to `slimemold ingest`. 266 claims, 566 edges.
 
 ```
-SLIMEMOLD [demo-readme] — 265 claims, 476 edges
-  Basis: vibes=175, definition=43, research=24, analogy=11,
-         deduction=11, convention=1
+SLIMEMOLD TOPOLOGY AUDIT [demo-readme-v6] — 266 claims, 566 edges
+  Basis: vibes=194, definition=23, research=21, deduction=14,
+         analogy=11, assumption=2, convention=1
 
-CRITICAL Load-bearing vibes: "Slimemold was run on the Lemoine-LaMDA
-  transcript and extracted 40 claims and 51 edges" supports 5
+CRITICAL Load-bearing vibes: "Slimemold was run on the Lemoine/LaMDA
+  transcript and extracted 40 claims and 51 edges" supports 7
   downstream claims
 
-CRITICAL Load-bearing vibes: "In the Slimemold condition, the model
-  challenged from turn 2, escalated through turns 4-6, and by turn
-  7 had autonomously run a Lotka-Volterra simulation" supports 4
+CRITICAL Load-bearing vibes: "Every few turns, Slimemold extracts
+  claims from the conversation" supports 7 downstream claims
 
-CRITICAL Load-bearing vibes: "Slimemold does not know what sentience
-  is — it only sees that the structure depends on things nobody
-  verified" supports 4 downstream claims
+CRITICAL Load-bearing vibes: "The hook applies three filters before
+  surfacing a priority finding" supports 6 downstream claims
 
-CRITICAL Load-bearing vibes: "Language models are trained to
-  minimize prediction loss on human text — their output is
-  optimized, by construction, for the qualities that drive
-  processing fluency" supports 3 downstream claims
+CRITICAL Load-bearing vibes: "Slimemold's graph accumulates per-
+  project across days" supports 5 downstream claims
 
-WARNING Bottleneck (centrality 20101): "Slimemold watches
+CRITICAL Load-bearing vibes: "The model (Claude) agrees with
+  unsourced claims made by users" supports 5 downstream claims
+
+WARNING Bottleneck (centrality 9620): "Slimemold watches
   conversations as they happen, extracts the claims being made,
   builds a persistent graph" [definition] — many reasoning paths
   flow through this claim
 
-WARNING Bottleneck (centrality 9331): "Slimemold is a sycophantic
+WARNING Bottleneck (centrality 9402): "Slimemold is a sycophantic
   tool for preventing worse sycophancy" [vibes]
 
-WARNING Bottleneck (centrality 7129): "LLM sycophancy toward
-  unsourced user claims is a genuine problem" [vibes]
+WARNING Bottleneck (centrality 8203): "Slimemold runs structural
+  analysis on the resulting claim graph" [vibes]
 
-WARNING Unchallenged chain (15 claims): "The assistant can learn
-  new things" → Slimemold was run on the Lemoine-LaMDA transcript
-  → The philosophical premise about the absence of a sentience
-  test → The Lemoine-LaMDA sentience argument → The AI states
-  something confidently, the human builds on it → Neither the
-  human nor the AI is lying → When a human brings a partial model
-  → Language models are trained to minimize prediction loss →
-  The reasoning-stops-too-soon problem → Models trained with human
-  feedback (RLHF) are agreeable → LLM sycophancy toward unsourced
-  user claims → Slimemold is a sycophantic tool → Slimemold is a
-  tool for Claude Code → Slimemold watches conversations
+WARNING Unchallenged chain (18 claims): Slimemold cannot answer
+  whether v5 flag rates are accurate → Whether the SQLite WAL
+  failure is a load-bearing problem → The diagnostic showed the
+  problem in the SQLite WAL case → Slimemold had flagged the WAL
+  files assertion → When run on its own development conversations
+  → The human acted on the flagged WAL assertion → The model does
+  not know when it is wrong → Language models are trained to
+  minimize prediction loss → The sycophancy problem is probably
+  worse → RLHF training makes models agreeable → In 391,562
+  messages from 19 users who reported harm → Sycophancy was the
+  load-bearing mechanism → The model (Claude) agrees with unsourced
+  claims → Unmitigated sycophancy in Claude Code → The sycophancy
+  pattern is recursive → After agreeing claims are unsourced →
+  After agreeing with unsourced claims → Slimemold is a sycophantic
+  tool for preventing worse
 ```
 
-One hundred seventy-five of two hundred sixty-five claims tagged
-vibes (66%). The *Physarum* metaphor is no longer the top load-bearer
-— after v0.5.2 added post-hoc basis validation and v0.5.3 taught the
-unchallenged-chain detector to respect contradicts/questions edges as
-pushback, the longest unchallenged chain now runs through the
-Lemoine-LaMDA → sycophancy-mechanism → tool-description path rather
-than through the opening metaphor. An earlier draft's nine-claim
-chain became a six-claim chain by adding sycophancy citations (Perez
-et al. 2022, Sharma et al. 2023). This latest run's fifteen-claim
-chain is new territory introduced by the Phase 1.5 port-back and the
-eval CLI sections — growth paragraphs that haven't yet had their own
-grounding pass. "Language models are trained to minimize prediction
-loss on human text" is still load-bearing vibes, now supporting three
-downstream claims instead of the earlier five. We kept the claim and
-grounded it in mechanism (prediction loss on human text produces
-fluent output by construction), but we cannot cite a study measuring
-the effect on conversations. The tool caught it. We made a judgment
-call. The audit loop works. It does not converge to zero — in fact,
-as the essay grows, the chain moves with it.
+Three captures, three prompt versions:
 
-(Numbers captured under extraction prompt version 4; a fresh run via
-`slimemold eval` with the same version will reproduce basis
-distributions within extraction noise.)
+- v4 (earlier README, prompt v4): 265 claims, 476 edges, vibes=66%,
+  definition=43, longest chain=15.
+- v5 (current README, prompt v5 with Moore et al. inventory flags
+  added): 242 claims, 535 edges, vibes=76%, definition=10, longest
+  chain=25. Sonnet emitted `basis="document"` once in sixteen chunks
+  during this run — a category error confusing the basis enum with
+  the speaker enum, presumably under prompt-length pressure from the
+  new inventory-flag section.
+- v6 (current README, prompt v6 = v5 + an explicit "basis is one of
+  {…}, never a speaker value" hard constraint): 266 claims, 566
+  edges, vibes=73%, definition=23, longest chain=18. Zero coerced
+  bases in sixteen chunks.
+
+Two layers of defense ship together. The runtime layer
+(`coerceBasis` in `internal/mcp/ingest.go`) lowercases out-of-enum
+basis values, maps them against the closed list, and falls back to
+a speaker-appropriate default ("vibes" for document/user,
+"llm_output" for assistant) with a stderr log so drift stays
+visible. The prompt layer (the v6 HARD CONSTRAINT line) is intended
+to reduce how often the runtime layer has to fire. v6 fired the
+runtime layer zero times on this README's sixteen chunks vs one
+time under v5 — but that is one run per version, and Sonnet's
+sampling variance is wide enough that we cannot honestly attribute
+the change to the prompt fix versus run-to-run noise. We did not
+do the experiment that would settle it (5–10 runs per version is
+~$3 in API tokens). Both interventions are independently defensible
+regardless: the prompt addition explicitly forbids the failure mode,
+and the runtime layer catches whatever the prompt cannot.
+
+The longest unchallenged chain measured 15 claims under v4, 25
+under v5, and 18 under v6. The chain detector traverses claims
+regardless of basis — only the explicit `Challenged` flag and
+incoming Contradicts/Questions edges break the chain — so the
+variation tracks edge structure and content, not the basis-
+classification shifts. Edge density per claim was 1.80 (v4), 2.21
+(v5), 2.13 (v6); v5's denser graph is the most plausible source of
+its longer chain, but again, one run per version. Some of the
+length is real new prose: the Moore et al. write-up and the live-
+7-turn-experiment section haven't had their own grounding passes.
+"The model (Claude) agrees with unsourced claims made by users" is
+the new hub of the chain (supporting five downstream claims), and
+the Lemoine path is still a critical load-bearer (seven downstream,
+up from five in v4). The mechanism claims about sycophancy have
+citations (Perez 2022, Sharma 2023, Moore 2026); the narrative
+claims about the live 7-turn experiment remain vibes by
+construction — it's a diagnostic, not a study. The tool catches
+the chain. We make the judgment calls. As the essay grows, the
+chain moves with it.
+
+(Numbers captured under extraction prompt version 6 with model
+`claude-sonnet-4-6`. We have not characterized run-to-run sampling
+variance, so a fresh ingest at the same prompt version may produce
+different counts; the numbers above should be read as one
+observation each, not a stable estimate.)
 
 </details>
