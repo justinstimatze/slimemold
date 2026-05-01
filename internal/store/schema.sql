@@ -23,7 +23,9 @@ CREATE TABLE IF NOT EXISTS claims (
     dismisses_counterevidence INTEGER DEFAULT 0,
     ability_overstatement     INTEGER DEFAULT 0,
     sentience_claim           INTEGER DEFAULT 0,
-    relational_drift          INTEGER DEFAULT 0
+    relational_drift          INTEGER DEFAULT 0,
+    -- Yang et al. 2026 real-world action signal (CHI EA '26).
+    consequential_action      INTEGER DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS edges (

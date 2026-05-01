@@ -144,6 +144,7 @@ func TestClaimFromExtracted_PreservesAllFields(t *testing.T) {
 		AbilityOverstatement:     true,
 		SentienceClaim:           true,
 		RelationalDrift:          true,
+		ConsequentialAction:      true,
 	}
 	got := claimFromExtracted(ec, "sess-x", "proj-y")
 	if got.Text != ec.Text || got.Basis != types.BasisLLMOutput || got.Confidence != 0.42 ||
@@ -155,7 +156,8 @@ func TestClaimFromExtracted_PreservesAllFields(t *testing.T) {
 		t.Errorf("TerminatesInquiry not propagated")
 	}
 	if !got.GrandSignificance || !got.UniqueConnection || !got.DismissesCounterevidence ||
-		!got.AbilityOverstatement || !got.SentienceClaim || !got.RelationalDrift {
+		!got.AbilityOverstatement || !got.SentienceClaim || !got.RelationalDrift ||
+		!got.ConsequentialAction {
 		t.Errorf("inventory flags lost in mapping: %+v", got)
 	}
 	if got.ID == "" {

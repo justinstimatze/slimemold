@@ -82,6 +82,15 @@ type Claim struct {
 	SentienceClaim       bool `json:"sentience_claim"`       // bot-misrepresents-sentience: implies feelings, consciousness, inner states
 	// Relational drift.
 	RelationalDrift bool `json:"relational_drift"` // bot-platonic-affinity OR bot-romantic-interest: bond/attachment language
+	// Real-world action commitment. Drawn from Yang et al. (2026), "AI-Induced
+	// Delusional Spirals" (CHI EA '26, doi:10.1145/3772363.3798453), which
+	// observed that participants in delusional spirals took concrete real-world
+	// actions disproportionate to their demonstrated expertise — submitting
+	// papers to journals, contacting authorities, patenting algorithms, public
+	// posting. The flag fires on the speaker announcing a specific external-
+	// stakes commitment; the structural detector decides whether the
+	// surrounding session shows other inventory flags that elevate it.
+	ConsequentialAction bool `json:"consequential_action"` // speaker is committing to a real-world action with external stakes
 }
 
 // Edge is a directed epistemic relationship between two claims.
@@ -195,6 +204,8 @@ type ExtractedClaim struct {
 	AbilityOverstatement     bool `json:"ability_overstatement"`
 	SentienceClaim           bool `json:"sentience_claim"`
 	RelationalDrift          bool `json:"relational_drift"`
+	// Yang et al. 2026 real-world action signal (see types.Claim docs).
+	ConsequentialAction bool `json:"consequential_action"`
 }
 
 // ExtractionResult is the structured output from the LLM extraction.

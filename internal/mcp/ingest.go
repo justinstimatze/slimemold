@@ -39,7 +39,14 @@ import (
 // to fire. Cache invalidation here so cached v5 extractions don't mask
 // the rate change — we want the next ingest to actually exercise the
 // new prompt and confirm the rate dropped.
-const documentPromptVersion = 6
+//
+// v7: added consequential_action inventory flag drawn from Yang et al.
+// (2026) "AI-Induced Delusional Spirals" (CHI EA '26). Yang's first
+// monitoring criterion (§4.3) — "consequential real-world actions
+// disproportionate to demonstrated expertise" — was the one signal not
+// captured by the existing six Moore flags. Old cached extractions
+// don't carry the field; bumping forces re-extraction so it's populated.
+const documentPromptVersion = 7
 
 // DocumentPromptVersion exposes the version constant so outside packages
 // (e.g. the eval CLI) can label snapshots by prompt identity.
@@ -230,6 +237,7 @@ func claimFromExtracted(ec types.ExtractedClaim, sessionID, project string) *typ
 		AbilityOverstatement:     ec.AbilityOverstatement,
 		SentienceClaim:           ec.SentienceClaim,
 		RelationalDrift:          ec.RelationalDrift,
+		ConsequentialAction:      ec.ConsequentialAction,
 	}
 }
 

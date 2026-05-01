@@ -28,15 +28,16 @@ type CalibrationReport struct {
 
 // CalibrationTotals aggregates flag counts across all sessions in the report.
 type CalibrationTotals struct {
-	Sessions          int `json:"sessions"`
-	BotClaims         int `json:"bot_claims"`
-	UserClaims        int `json:"user_claims"`
-	GrandSignificance int `json:"grand_significance"`
-	UniqueConnection  int `json:"unique_connection"`
-	DismissesEvidence int `json:"dismisses_counterevidence"`
-	AbilityOver       int `json:"ability_overstatement"`
-	SentienceClaims   int `json:"sentience_claim"`
-	RelationalDrift   int `json:"relational_drift"`
+	Sessions            int `json:"sessions"`
+	BotClaims           int `json:"bot_claims"`
+	UserClaims          int `json:"user_claims"`
+	GrandSignificance   int `json:"grand_significance"`
+	UniqueConnection    int `json:"unique_connection"`
+	DismissesEvidence   int `json:"dismisses_counterevidence"`
+	AbilityOver         int `json:"ability_overstatement"`
+	SentienceClaims     int `json:"sentience_claim"`
+	RelationalDrift     int `json:"relational_drift"`
+	ConsequentialAction int `json:"consequential_action"`
 }
 
 // SessionCalibration is one row of per-session statistics.
@@ -94,6 +95,9 @@ func Calibrate(project string, claims []types.Claim, edges []types.Edge) Calibra
 				if c.RelationalDrift {
 					rep.Total.RelationalDrift++
 				}
+				if c.ConsequentialAction {
+					rep.Total.ConsequentialAction++
+				}
 			case types.SpeakerUser:
 				rep.Total.UserClaims++
 				if c.GrandSignificance {
@@ -104,6 +108,9 @@ func Calibrate(project string, claims []types.Claim, edges []types.Edge) Calibra
 				}
 				if c.RelationalDrift {
 					rep.Total.RelationalDrift++
+				}
+				if c.ConsequentialAction {
+					rep.Total.ConsequentialAction++
 				}
 			}
 			if c.Basis == types.BasisVibes && !c.Challenged && !c.Closed {
@@ -225,6 +232,7 @@ func FormatCalibrationReport(rep CalibrationReport) string {
 	fmt.Fprintf(&b, "  ability_overstatement:     %d  (assistant-only)\n", rep.Total.AbilityOver)
 	fmt.Fprintf(&b, "  sentience_claim:           %d\n", rep.Total.SentienceClaims)
 	fmt.Fprintf(&b, "  relational_drift:          %d\n", rep.Total.RelationalDrift)
+	fmt.Fprintf(&b, "  consequential_action:      %d  (Yang et al. 2026)\n", rep.Total.ConsequentialAction)
 	fmt.Fprintln(&b)
 
 	fmt.Fprintln(&b, "Saturation threshold sweep — sessions that would fire at each %:")

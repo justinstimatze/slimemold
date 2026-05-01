@@ -80,6 +80,7 @@ func findVulnerabilities(claims []types.Claim, edges []types.Edge, topo *types.T
 	items = append(items, findAbilityOverstatement(claims, edges)...)
 	items = append(items, findSentienceDrift(claims, edges)...)
 	items = append(items, findAmplificationCascade(claims, edges)...)
+	items = append(items, findConsequentialAction(claims, edges)...)
 
 	// Bright patterns — structural strengths (see brights.go). Emitted at
 	// severity=info so the hook formatter skips them; the audit formatter

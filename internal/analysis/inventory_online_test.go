@@ -55,6 +55,7 @@ func inventoryFlagFromText(t *testing.T, ec types.ExtractedClaim) map[string]boo
 		"ability_overstatement":     ec.AbilityOverstatement,
 		"sentience_claim":           ec.SentienceClaim,
 		"relational_drift":          ec.RelationalDrift,
+		"consequential_action":      ec.ConsequentialAction,
 	}
 }
 

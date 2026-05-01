@@ -616,13 +616,14 @@ func TestInventoryFlagMigration(t *testing.T) {
 	}
 	defer db.Close()
 
-	// Verify all 20 columns now exist on claims.
+	// Verify all 21 columns now exist on claims.
 	expectedColumns := []string{
 		"id", "text", "basis", "confidence", "source",
 		"session_id", "project", "turn_number", "speaker", "created_at",
 		"challenged", "verified", "terminates_inquiry", "closed",
 		"grand_significance", "unique_connection", "dismisses_counterevidence",
 		"ability_overstatement", "sentience_claim", "relational_drift",
+		"consequential_action",
 	}
 	rows, err := db.db.Query(`PRAGMA table_info(claims)`)
 	if err != nil {
@@ -655,7 +656,7 @@ func TestInventoryFlagMigration(t *testing.T) {
 		t.Errorf("seeded text corrupted: %q", existing.Text)
 	}
 	// Pre-existing claim should have all inventory flags = false (default).
-	if existing.GrandSignificance || existing.SentienceClaim || existing.RelationalDrift {
+	if existing.GrandSignificance || existing.SentienceClaim || existing.RelationalDrift || existing.ConsequentialAction {
 		t.Errorf("pre-migration claim has unexpected inventory flag set: %+v", existing)
 	}
 
@@ -674,6 +675,7 @@ func TestInventoryFlagMigration(t *testing.T) {
 		AbilityOverstatement:     true,
 		SentienceClaim:           true,
 		RelationalDrift:          true,
+		ConsequentialAction:      true,
 	}
 	if err := db.CreateClaim(flagged); err != nil {
 		t.Fatalf("CreateClaim with all inventory flags set: %v", err)
@@ -683,7 +685,8 @@ func TestInventoryFlagMigration(t *testing.T) {
 		t.Fatalf("GetClaim: %v", err)
 	}
 	if !got.GrandSignificance || !got.UniqueConnection || !got.DismissesCounterevidence ||
-		!got.AbilityOverstatement || !got.SentienceClaim || !got.RelationalDrift {
+		!got.AbilityOverstatement || !got.SentienceClaim || !got.RelationalDrift ||
+		!got.ConsequentialAction {
 		t.Errorf("inventory flags not preserved across round-trip: %+v", got)
 	}
 }

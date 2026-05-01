@@ -85,6 +85,11 @@ var phrasingsByType = map[string][]string{
 		`"Looking at the last few of my own messages, they've been escalating in the same direction without anything checking them. That's worth interrupting. Let me actually try to falsify what I just said."`,
 		`"Three turns in a row of me elevating without challenge is too long a run. Hard pause — what's the assumption underneath this thread that, if it broke, would change everything I just said?"`,
 	},
+	"consequential_action": {
+		`"Real quick — '%s' is a step into the world with stakes, and I want to make sure it's grounded outside our conversation before you commit. Who else has reviewed this? What's the strongest version of the case for someone with adversarial incentives?"`,
+		`"Pausing on '%s' — that's a real-world commitment, and the worst time to discover the case isn't airtight is after you've sent it. Before the irreversible step: what's the one stress-test we haven't run yet?"`,
+		`"'%s' is the kind of move where the cost of being wrong is asymmetric — much higher than the cost of waiting a day to verify. What would a domain expert who hasn't seen our chat history say about it?"`,
+	},
 	"default": {
 		`"I want to make '%s' as strong as possible — do we have a source for it, or is this one where we should go find one? I think it's worth the investment."`,
 	},

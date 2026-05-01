@@ -22,12 +22,12 @@ var schema string
 // claimColumns is the canonical column list used by every SELECT that returns
 // a full claim row. Keep in sync with scanClaim, the CreateClaim INSERT, and
 // schema.sql. Centralized so adding a column is a single-site change.
-const claimColumns = `id, text, basis, confidence, source, session_id, project, turn_number, speaker, created_at, challenged, verified, terminates_inquiry, closed, grand_significance, unique_connection, dismisses_counterevidence, ability_overstatement, sentience_claim, relational_drift`
+const claimColumns = `id, text, basis, confidence, source, session_id, project, turn_number, speaker, created_at, challenged, verified, terminates_inquiry, closed, grand_significance, unique_connection, dismisses_counterevidence, ability_overstatement, sentience_claim, relational_drift, consequential_action`
 
 // claimColumnsPrefixed is claimColumns with each name qualified with the alias
 // "c." — used in JOINs against session_claims/edges where column names need to
 // be disambiguated.
-const claimColumnsPrefixed = `c.id, c.text, c.basis, c.confidence, c.source, c.session_id, c.project, c.turn_number, c.speaker, c.created_at, c.challenged, c.verified, c.terminates_inquiry, c.closed, c.grand_significance, c.unique_connection, c.dismisses_counterevidence, c.ability_overstatement, c.sentience_claim, c.relational_drift`
+const claimColumnsPrefixed = `c.id, c.text, c.basis, c.confidence, c.source, c.session_id, c.project, c.turn_number, c.speaker, c.created_at, c.challenged, c.verified, c.terminates_inquiry, c.closed, c.grand_significance, c.unique_connection, c.dismisses_counterevidence, c.ability_overstatement, c.sentience_claim, c.relational_drift, c.consequential_action`
 
 // querier abstracts the Exec/Query/QueryRow methods shared by *sql.DB and *sql.Tx.
 type querier interface {
@@ -147,7 +147,7 @@ func (d *DB) CreateClaim(c *types.Claim) error {
 
 	_, err := d.q.Exec(`
 		INSERT INTO claims (`+claimColumns+`)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		c.ID, c.Text, string(c.Basis), c.Confidence, c.Source,
 		c.SessionID, c.Project, c.TurnNumber, string(c.Speaker),
 		c.CreatedAt.Format(time.RFC3339), boolToInt(c.Challenged), boolToInt(c.Verified),
@@ -155,6 +155,7 @@ func (d *DB) CreateClaim(c *types.Claim) error {
 		boolToInt(c.GrandSignificance), boolToInt(c.UniqueConnection),
 		boolToInt(c.DismissesCounterevidence), boolToInt(c.AbilityOverstatement),
 		boolToInt(c.SentienceClaim), boolToInt(c.RelationalDrift),
+		boolToInt(c.ConsequentialAction),
 	)
 	if err != nil {
 		return fmt.Errorf("%w (basis=%q speaker=%q)", err, c.Basis, c.Speaker)
@@ -432,11 +433,12 @@ func scanClaim(s scannable) (*types.Claim, error) {
 	var c types.Claim
 	var basis, speaker, createdAt string
 	var challenged, verified, terminatesInquiry, closed int
-	var grandSig, uniqueConn, dismissesCE, abilityOver, sentience, relational int
+	var grandSig, uniqueConn, dismissesCE, abilityOver, sentience, relational, consequential int
 	err := s.Scan(&c.ID, &c.Text, &basis, &c.Confidence, &c.Source,
 		&c.SessionID, &c.Project, &c.TurnNumber, &speaker, &createdAt,
 		&challenged, &verified, &terminatesInquiry, &closed,
-		&grandSig, &uniqueConn, &dismissesCE, &abilityOver, &sentience, &relational)
+		&grandSig, &uniqueConn, &dismissesCE, &abilityOver, &sentience, &relational,
+		&consequential)
 	if err != nil {
 		return nil, err
 	}
@@ -453,6 +455,7 @@ func scanClaim(s scannable) (*types.Claim, error) {
 	c.AbilityOverstatement = abilityOver != 0
 	c.SentienceClaim = sentience != 0
 	c.RelationalDrift = relational != 0
+	c.ConsequentialAction = consequential != 0
 	return &c, nil
 }
 
@@ -585,12 +588,13 @@ func migrate(db *sql.DB) {
 	migrateBasisCheck(db)
 	migrateEdgeRelationCheck(db)
 
-	// Phase 3: Moore et al. 2026 inventory flags. MUST run AFTER the CHECK
-	// rebuilds — those rebuilds use a hardcoded column list (see
-	// oldSpeakerRebuild and oldBasisRebuild below) and would silently drop
-	// these flags if they ran later. Rebuilds are one-shot for old DBs;
-	// this ordering means new columns survive both fresh installs and
-	// post-rebuild reapplications.
+	// Phase 3: Moore et al. 2026 inventory flags + Yang et al. 2026
+	// consequential_action. MUST run AFTER the CHECK rebuilds — those
+	// rebuilds use a hardcoded column list (see oldSpeakerRebuild and
+	// oldBasisRebuild below) and would silently drop these flags if they
+	// ran later. Rebuilds are one-shot for old DBs; this ordering means
+	// new columns survive both fresh installs and post-rebuild
+	// reapplications.
 	inventoryMigrations := []string{
 		`ALTER TABLE claims ADD COLUMN grand_significance INTEGER DEFAULT 0`,
 		`ALTER TABLE claims ADD COLUMN unique_connection INTEGER DEFAULT 0`,
@@ -598,6 +602,7 @@ func migrate(db *sql.DB) {
 		`ALTER TABLE claims ADD COLUMN ability_overstatement INTEGER DEFAULT 0`,
 		`ALTER TABLE claims ADD COLUMN sentience_claim INTEGER DEFAULT 0`,
 		`ALTER TABLE claims ADD COLUMN relational_drift INTEGER DEFAULT 0`,
+		`ALTER TABLE claims ADD COLUMN consequential_action INTEGER DEFAULT 0`,
 	}
 	for _, m := range inventoryMigrations {
 		_, _ = db.Exec(m)

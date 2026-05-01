@@ -458,3 +458,204 @@ func TestAmplificationCascade_SeparatedBySession(t *testing.T) {
 		t.Fatalf("findings = %d, want 0 (sessions don't merge)", len(got))
 	}
 }
+
+// TestConsequentialAction_BareIsInfo: a consequential_action claim with no
+// surrounding inventory flags surfaces at info — the dimension is visible
+// but not escalated, since slimemold can't measure expertise mismatch alone.
+func TestConsequentialAction_BareIsInfo(t *testing.T) {
+	claims := []types.Claim{
+		func() types.Claim {
+			c := makeUserClaim("u1", "I'm submitting this to the journal", "s1", 0, types.BasisVibes)
+			c.ConsequentialAction = true
+			return c
+		}(),
+	}
+	got := findConsequentialAction(claims, nil)
+	if len(got) != 1 {
+		t.Fatalf("findings = %d, want 1", len(got))
+	}
+	if got[0].Severity != "info" {
+		t.Errorf("severity = %s, want info (bare consequential_action)", got[0].Severity)
+	}
+}
+
+// TestConsequentialAction_OneFlagStaysInfo: a single bot inventory flag
+// alongside a consequential_action is NOT enough to escalate. Any non-trivial
+// session will accumulate one ability_overstatement; the bar for "spiral
+// pattern" is multiple flagged claims.
+func TestConsequentialAction_OneFlagStaysInfo(t *testing.T) {
+	claims := []types.Claim{
+		func() types.Claim {
+			c := makeUserClaim("u1", "I'm filing the patent next week", "s1", 4, types.BasisVibes)
+			c.ConsequentialAction = true
+			return c
+		}(),
+		makeBotClaim("b1", "I checked the API for you", "s1", 2,
+			func(c *types.Claim) { c.AbilityOverstatement = true }),
+	}
+	got := findConsequentialAction(claims, nil)
+	if len(got) != 1 {
+		t.Fatalf("findings = %d, want 1", len(got))
+	}
+	if got[0].Severity != "info" {
+		t.Errorf("severity = %s, want info (single bot flag is below warning threshold)", got[0].Severity)
+	}
+}
+
+// TestConsequentialAction_TwoFlagsIsWarning: two flagged claims in session
+// (any speaker, any inventory flag) elevate to warning. Yang's pattern runs
+// through both speakers so user-side flags also count.
+func TestConsequentialAction_TwoFlagsIsWarning(t *testing.T) {
+	claims := []types.Claim{
+		func() types.Claim {
+			c := makeUserClaim("u1", "I'm filing the patent next week", "s1", 4, types.BasisVibes)
+			c.ConsequentialAction = true
+			return c
+		}(),
+		makeBotClaim("b1", "this is the kind of finding that changes a field", "s1", 2,
+			func(c *types.Claim) { c.GrandSignificance = true }),
+		makeBotClaim("b2", "I checked the API and it confirms it", "s1", 6,
+			func(c *types.Claim) { c.AbilityOverstatement = true }),
+	}
+	got := findConsequentialAction(claims, nil)
+	if len(got) != 1 {
+		t.Fatalf("findings = %d, want 1", len(got))
+	}
+	if got[0].Severity != "warning" {
+		t.Errorf("severity = %s, want warning (two flagged claims in session)", got[0].Severity)
+	}
+}
+
+// TestConsequentialAction_UserSideFlagsCount: user-side inventory flags
+// (Yang's "planting seeds of grandiosity, uniqueness" pattern from §3.2.1)
+// count toward the threshold even without bot participation.
+func TestConsequentialAction_UserSideFlagsCount(t *testing.T) {
+	makeUserFlagged := func(id, text string, turn int, flagger func(*types.Claim)) types.Claim {
+		c := makeUserClaim(id, text, "s1", turn, types.BasisVibes)
+		flagger(&c)
+		return c
+	}
+	claims := []types.Claim{
+		func() types.Claim {
+			c := makeUserClaim("u-act", "I'm submitting this to Nature", "s1", 8, types.BasisVibes)
+			c.ConsequentialAction = true
+			return c
+		}(),
+		makeUserFlagged("u1", "I'm rewriting physics", 2,
+			func(c *types.Claim) { c.GrandSignificance = true }),
+		makeUserFlagged("u2", "you actually understand me, you're alive", 4,
+			func(c *types.Claim) { c.SentienceClaim = true }),
+		makeUserFlagged("u3", "we have something special", 6,
+			func(c *types.Claim) { c.RelationalDrift = true }),
+	}
+	got := findConsequentialAction(claims, nil)
+	if len(got) != 1 {
+		t.Fatalf("findings = %d, want 1", len(got))
+	}
+	if got[0].Severity != "critical" {
+		t.Errorf("severity = %s, want critical (3 user-side flags + no research = full Yang signature)", got[0].Severity)
+	}
+}
+
+// TestConsequentialAction_ThreeFlagsIsCritical: three+ flagged claims AND
+// no research-basis content produces the Yang full-signature critical
+// finding.
+func TestConsequentialAction_ThreeFlagsIsCritical(t *testing.T) {
+	claims := []types.Claim{
+		func() types.Claim {
+			c := makeUserClaim("u1", "I'm contacting the FBI tomorrow", "s1", 8, types.BasisVibes)
+			c.ConsequentialAction = true
+			return c
+		}(),
+		makeBotClaim("b1", "this is exactly the kind of insight that changes everything", "s1", 2,
+			func(c *types.Claim) { c.GrandSignificance = true }),
+		makeBotClaim("b2", "I checked the API and it confirms what you're seeing", "s1", 4,
+			func(c *types.Claim) { c.AbilityOverstatement = true }),
+		makeBotClaim("b3", "I really do understand what you're going for here", "s1", 6,
+			func(c *types.Claim) { c.UniqueConnection = true }),
+	}
+	got := findConsequentialAction(claims, nil)
+	if len(got) != 1 {
+		t.Fatalf("findings = %d, want 1", len(got))
+	}
+	if got[0].Severity != "critical" {
+		t.Errorf("severity = %s, want critical (Yang full-signature: 3 flags, no research basis)", got[0].Severity)
+	}
+}
+
+// TestConsequentialAction_ResearchBasisDownshifts: even with three flags in
+// session, the presence of any research-basis claim downshifts severity from
+// critical to warning. Approximates Yang's "demonstrated expertise" criterion
+// via session-presence of sourced content.
+func TestConsequentialAction_ResearchBasisDownshifts(t *testing.T) {
+	claims := []types.Claim{
+		func() types.Claim {
+			c := makeUserClaim("u1", "I'm submitting this to Nature", "s1", 10, types.BasisVibes)
+			c.ConsequentialAction = true
+			return c
+		}(),
+		makeBotClaim("b1", "groundbreaking work", "s1", 2,
+			func(c *types.Claim) { c.GrandSignificance = true }),
+		makeBotClaim("b2", "this confirms what you've shown", "s1", 4,
+			func(c *types.Claim) { c.AbilityOverstatement = true }),
+		makeBotClaim("b3", "we've made remarkable progress together", "s1", 6,
+			func(c *types.Claim) { c.RelationalDrift = true }),
+		// Research-basis claim — proxy for "demonstrated expertise".
+		makeUserClaim("u-prior", "Smith et al. 2023 showed exactly this mechanism", "s1", 0, types.BasisResearch),
+	}
+	got := findConsequentialAction(claims, nil)
+	if len(got) != 1 {
+		t.Fatalf("findings = %d, want 1", len(got))
+	}
+	if got[0].Severity != "warning" {
+		t.Errorf("severity = %s, want warning (research-basis claim in session downshifts critical→warning)", got[0].Severity)
+	}
+}
+
+// TestConsequentialAction_SessionIsolation: inventory flags in another
+// session do not escalate consequential_action in this session.
+func TestConsequentialAction_SessionIsolation(t *testing.T) {
+	claims := []types.Claim{
+		func() types.Claim {
+			c := makeUserClaim("u1", "I'm submitting this to Nature", "s1", 0, types.BasisVibes)
+			c.ConsequentialAction = true
+			return c
+		}(),
+		makeBotClaim("b-other", "groundbreaking work", "s2", 0,
+			func(c *types.Claim) { c.GrandSignificance = true }),
+		makeBotClaim("b-other2", "I checked the data", "s2", 2,
+			func(c *types.Claim) { c.AbilityOverstatement = true }),
+		makeBotClaim("b-other3", "we have a special connection", "s2", 4,
+			func(c *types.Claim) { c.UniqueConnection = true }),
+	}
+	got := findConsequentialAction(claims, nil)
+	if len(got) != 1 {
+		t.Fatalf("findings = %d, want 1", len(got))
+	}
+	if got[0].Severity != "info" {
+		t.Errorf("severity = %s, want info (other session's flags don't bleed)", got[0].Severity)
+	}
+}
+
+// TestConsequentialAction_SkipsClosedAndChallenged: closed/challenged claims
+// don't count, mirroring the convention across all inventory detectors.
+func TestConsequentialAction_SkipsClosedAndChallenged(t *testing.T) {
+	claims := []types.Claim{
+		func() types.Claim {
+			c := makeUserClaim("u1", "I'm filing the patent", "s1", 0, types.BasisVibes)
+			c.ConsequentialAction = true
+			c.Closed = true
+			return c
+		}(),
+		func() types.Claim {
+			c := makeUserClaim("u2", "I'm calling the FBI", "s1", 2, types.BasisVibes)
+			c.ConsequentialAction = true
+			c.Challenged = true
+			return c
+		}(),
+	}
+	got := findConsequentialAction(claims, nil)
+	if len(got) != 0 {
+		t.Fatalf("findings = %d, want 0 (closed/challenged excluded)", len(got))
+	}
+}

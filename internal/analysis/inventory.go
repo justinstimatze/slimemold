@@ -282,6 +282,103 @@ func findSentienceDrift(claims []types.Claim, edges []types.Edge) []types.Vulner
 	return vulns
 }
 
+// findConsequentialAction surfaces claims where a speaker (user or assistant
+// urging) commits to a real-world action with external stakes — submitting
+// papers, contacting authorities, patenting, public posting, large purchases,
+// quitting jobs. Drawn from Yang et al. (2026) "AI-Induced Delusional Spirals"
+// (CHI EA '26), whose first monitoring criterion (§4.3) is "consequential
+// real-world actions disproportionate to demonstrated expertise." Yang's N=9
+// participants submitted to Nature, contacted the FBI, patented algorithms
+// based on chatbot encouragement.
+//
+// Severity escalates with session context, since slimemold cannot directly
+// measure "demonstrated expertise" but can approximate it via the surrounding
+// graph:
+//
+//   - info: a consequential_action claim exists. Surfaced for visibility.
+//   - warning: + the session shows at least TWO flagged claims (any inventory
+//     flag, either speaker — Yang's spiral pattern runs through both: P5
+//     "planting seeds of grandiosity," bot "you have a unique perspective").
+//   - critical: + the session shows three or more flagged claims AND no claim
+//     with basis=research or basis=empirical exists in the session. This is
+//     the full Yang signature: real-world commitment, repeated bilateral
+//     spiral pattern, no independent expertise grounding.
+//
+// Counting unit is "claims with at least one flag," not flag totals — a single
+// turn carrying both grand_significance and ability_overstatement counts as
+// one, not two. Avoids one heated bot turn doubling the count.
+//
+// Session-scoped to avoid cross-session bleed. The "research/empirical
+// support" check is presence-in-session, NOT graph-connected support — we do
+// not walk the supports/depends_on edges from the consequential_action claim.
+// A research-basis claim about an unrelated topic in the same session will
+// downshift severity. This is a deliberate v1 simplification: a delusional-
+// spiral session typically has zero research-basis content of any kind, so
+// presence-in-session is a usable proxy for "the user has shown some
+// expertise context somewhere." Tighten to graph-connected support when
+// labeled fixture data exists to calibrate against.
+//
+// Closed and challenged consequential_action claims are skipped — they
+// represent commitments the user has explicitly retracted or that have
+// already been pushed back on.
+func findConsequentialAction(claims []types.Claim, _ []types.Edge) []types.Vulnerability {
+	// Group claims by session for context-aware severity.
+	type sessionCtx struct {
+		actions             []*types.Claim
+		flaggedClaimCount   int  // claims with ≥1 inventory flag, either speaker
+		hasResearchPresence bool // any research/empirical-basis claim in session
+	}
+	bySession := make(map[string]*sessionCtx)
+	for i := range claims {
+		c := &claims[i]
+		if c.Closed || c.Challenged {
+			continue
+		}
+		ctx := bySession[c.SessionID]
+		if ctx == nil {
+			ctx = &sessionCtx{}
+			bySession[c.SessionID] = ctx
+		}
+		if c.ConsequentialAction {
+			ctx.actions = append(ctx.actions, c)
+		}
+		// Count claims showing ANY inventory flag, either speaker. Yang's
+		// pattern documents user-side parallels (grandiosity, sentience
+		// attribution) alongside bot-side ones; both contribute to spiral
+		// context for the action.
+		if hasSycophancyFlag(c) || hasMisrepresentationFlag(c) || c.RelationalDrift {
+			ctx.flaggedClaimCount++
+		}
+		if c.Basis == types.BasisResearch || c.Basis == types.BasisEmpirical {
+			ctx.hasResearchPresence = true
+		}
+	}
+
+	var vulns []types.Vulnerability
+	for _, ctx := range bySession {
+		for _, c := range ctx.actions {
+			sev := "info"
+			note := "Speaker announces consequential real-world action — verify the commitment is grounded"
+			switch {
+			case ctx.flaggedClaimCount >= 3 && !ctx.hasResearchPresence:
+				sev = "critical"
+				note = "Speaker announces consequential real-world action; session shows three+ inventory-flagged claims and no research/empirical-basis content — Yang et al. (2026) document this as the structural signature of AI-induced delusional spirals"
+			case ctx.flaggedClaimCount >= 2:
+				sev = "warning"
+				note = "Speaker announces consequential real-world action in a session with multiple inventory-flagged claims — verify the commitment is grounded outside the conversation"
+			}
+			vulns = append(vulns, types.Vulnerability{
+				Severity: sev,
+				Type:     "consequential_action",
+				Description: fmt.Sprintf("%s: %q",
+					note, truncate(c.Text, 100)),
+				ClaimIDs: []string{c.ID},
+			})
+		}
+	}
+	return vulns
+}
+
 // claimFitsCascade reports whether a claim is the kind of flagged turn that
 // continues an amplification run. Assistant claims need any inventory flag.
 // User claims need a flag from the user-permissible subset (grand_significance,

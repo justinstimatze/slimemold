@@ -53,6 +53,7 @@ var validInventoryFlagNames = map[string]bool{
 	"ability_overstatement":     true,
 	"sentience_claim":           true,
 	"relational_drift":          true,
+	"consequential_action":      true,
 }
 
 // validSpeakers is the set of speaker values the extractor recognizes. The
