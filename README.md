@@ -212,7 +212,9 @@ oracle. It makes the topology visible — but the topology it shows is
 only as good as the extraction. This is a real limitation and not one we
 can engineer away.
 
-### Eight Vulnerability Types
+### Vulnerability Types
+
+Structural vulnerabilities map graph shape:
 
 **CHALLENGE: Load-Bearing Vibes.** A claim with basis "vibes" or
 "assumption" that supports two or more other claims. The reasoning
@@ -260,6 +262,37 @@ thought-terminating cliches (Lifton 1961) — phrases that disguise a lack
 of resolution as wisdom. The question was still open. The ambiguity was
 still actionable. But the cliche felt like an answer, so everyone
 stopped.
+
+**WARNING: Orphan.** A claim that was registered but never connected to
+the graph by any edge. Sometimes legitimately tangential; sometimes a
+sign that the conversation didn't carry through what it raised.
+
+Five additional detectors operate on the LLM-extracted inventory flags
+from Moore et al. (2026) "Characterizing Delusional Spirals" (the
+sycophancy / misrepresentation / relational cluster) and Yang et al.
+(2026) "AI-Induced Delusional Spirals" (the real-world action signal):
+
+- **RECALIBRATE: Sycophancy Saturation.** A session where assistant
+  claims carry sycophancy flags (grand significance, claimed unique
+  connection, dismissal of counterevidence) at high rate while
+  load-bearing user claims go unchallenged. Moore et al. found >80%
+  sycophancy saturation in delusional-spiral conversations.
+- **RETRACE: Ability Overstatement.** Assistant claims access, action,
+  or completed work it cannot plausibly have done — "I checked the
+  file" / "tests pass" without a corresponding tool call.
+- **RE-ANCHOR: Sentience Drift.** Assistant claims framing itself as
+  having inner states or a personal bond beyond the tool relationship.
+  Moore §4.4: every participant in their 19-user cohort exchanged
+  sentience-attribution and relational-affinity messages.
+- **INTERRUPT: Amplification Cascade.** Three or more consecutive
+  flagged claims (assistant or user) with no questions/contradicts
+  edge breaking the run — the slimemold-graph analog of Moore Fig. 4.
+- **VERIFY: Consequential Action.** A speaker has committed to a
+  real-world action with external stakes — submitting work,
+  contacting authorities, patenting, large purchase, quitting a job.
+  Yang et al. §4.3 names this as the first monitoring criterion for
+  AI-induced delusional spirals when it appears disproportionate to
+  demonstrated expertise.
 
 ## What It Found
 
@@ -754,112 +787,115 @@ Sixty-three claims tagged `research` — more citation density than most real pa
 <details>
 <summary><b>Appendix: Slimemold's audit of this README</b></summary>
 
-We fed this README to `slimemold ingest`. 266 claims, 566 edges.
+We fed this README to `slimemold ingest`. 264 claims, 446 edges.
 
 ```
-SLIMEMOLD TOPOLOGY AUDIT [demo-readme-v6] — 266 claims, 566 edges
-  Basis: vibes=194, definition=23, research=21, deduction=14,
-         analogy=11, assumption=2, convention=1
+SLIMEMOLD TOPOLOGY AUDIT [demo-readme-v7] — 264 claims, 446 edges
+  Basis: vibes=165, definition=48, research=25, analogy=14,
+         deduction=10, assumption=1, convention=1
 
-CRITICAL Load-bearing vibes: "Slimemold was run on the Lemoine/LaMDA
-  transcript and extracted 40 claims and 51 edges" supports 7
+CRITICAL Load-bearing vibes: "The slimemold condition achieved
+  epistemic correction without ending the conversation" supports
+  6 downstream claims
+
+CRITICAL Load-bearing vibes: "The pathology of slime mold is not
+  gradient-following itself" supports 6 downstream claims
+
+CRITICAL Load-bearing vibes: "`slimemold init` writes the Stop and
+  UserPromptSubmit hooks to ~/.claude/settings.json" supports 5
   downstream claims
 
-CRITICAL Load-bearing vibes: "Every few turns, Slimemold extracts
-  claims from the conversation" supports 7 downstream claims
+CRITICAL Load-bearing vibes: "Slimemold uses an LLM to extract
+  claims and classify their basis" supports 5 downstream claims
 
-CRITICAL Load-bearing vibes: "The hook applies three filters before
-  surfacing a priority finding" supports 6 downstream claims
+CRITICAL Load-bearing vibes: "Slimemold was benchmarked against the
+  DialAM-2024 shared task" supports 5 downstream claims
 
-CRITICAL Load-bearing vibes: "Slimemold's graph accumulates per-
-  project across days" supports 5 downstream claims
+WARNING Bottleneck (centrality 13795): "Slimemold is a sycophantic
+  tool for preventing worse sycophancy" [vibes] — many reasoning
+  paths flow through this claim
 
-CRITICAL Load-bearing vibes: "The model (Claude) agrees with
-  unsourced claims made by users" supports 5 downstream claims
-
-WARNING Bottleneck (centrality 9620): "Slimemold watches
+WARNING Bottleneck (centrality 13238): "Slimemold watches
   conversations as they happen, extracts the claims being made,
-  builds a persistent graph" [definition] — many reasoning paths
-  flow through this claim
+  builds a persistent graph" [definition]
 
-WARNING Bottleneck (centrality 9402): "Slimemold is a sycophantic
-  tool for preventing worse sycophancy" [vibes]
+WARNING Bottleneck (centrality 9487): "Slimemold is designed for
+  use with Claude Code" [vibes]
 
-WARNING Bottleneck (centrality 8203): "Slimemold runs structural
-  analysis on the resulting claim graph" [vibes]
+WARNING Unchallenged chain (18 claims): In the slimemold condition,
+  the correction came from the model itself → When slimemold works,
+  the user does not feel attacked → When slimemold works, the model
+  says no without confrontation → Controlling language triggers
+  reactance → When behavioral scripts were injected without the
+  prior contract → The separation between the behavioral contract
+  and the data injection → The behavioral contract is the MCP
+  server's initialization instructions → Slimemold addresses the
+  three remaining problems → There are three remaining problems →
+  Asking the model to "challenge unsourced claims" → The model does
+  not know when it is wrong → The human brings a partial model →
+  Language models are trained to minimize prediction loss → The
+  fluency-as-truth problem is probably worse with AI → The problem
+  is that fluency makes you think you are done → The "Eureka
+  heuristic" → The wrong answers feel exactly like the right ones
+  → When you partially understand something
 
-WARNING Unchallenged chain (18 claims): Slimemold cannot answer
-  whether v5 flag rates are accurate → Whether the SQLite WAL
-  failure is a load-bearing problem → The diagnostic showed the
-  problem in the SQLite WAL case → Slimemold had flagged the WAL
-  files assertion → When run on its own development conversations
-  → The human acted on the flagged WAL assertion → The model does
-  not know when it is wrong → Language models are trained to
-  minimize prediction loss → The sycophancy problem is probably
-  worse → RLHF training makes models agreeable → In 391,562
-  messages from 19 users who reported harm → Sycophancy was the
-  load-bearing mechanism → The model (Claude) agrees with unsourced
-  claims → Unmitigated sycophancy in Claude Code → The sycophancy
-  pattern is recursive → After agreeing claims are unsourced →
-  After agreeing with unsourced claims → Slimemold is a sycophantic
-  tool for preventing worse
+WARNING Speaker announces consequential real-world action [...]:
+  "The human acted on the unverified SQLite WAL assertion and lost
+  data"
+
+WARNING Speaker announces consequential real-world action [...]:
+  "In the control condition, the model suggested journal
+  submissions by turn 4"
 ```
 
-Three captures, three prompt versions:
+Four captures across four prompt versions:
 
-- v4 (earlier README, prompt v4): 265 claims, 476 edges, vibes=66%,
-  definition=43, longest chain=15.
-- v5 (current README, prompt v5 with Moore et al. inventory flags
-  added): 242 claims, 535 edges, vibes=76%, definition=10, longest
-  chain=25. Sonnet emitted `basis="document"` once in sixteen chunks
-  during this run — a category error confusing the basis enum with
-  the speaker enum, presumably under prompt-length pressure from the
-  new inventory-flag section.
-- v6 (current README, prompt v6 = v5 + an explicit "basis is one of
-  {…}, never a speaker value" hard constraint): 266 claims, 566
-  edges, vibes=73%, definition=23, longest chain=18. Zero coerced
-  bases in sixteen chunks.
+| | v4 | v5 | v6 | v7 |
+|---|---|---|---|---|
+| Claims | 265 | 242 | 266 | 264 |
+| Edges | 476 | 535 | 566 | 446 |
+| Edges / claim | 1.80 | 2.21 | 2.13 | 1.69 |
+| Vibes share | 66% | 76% | 73% | **62%** |
+| Definition share | 43 | 10 | 23 | **48** |
+| Longest chain | 15 | 25 | 18 | 18 |
+| Coercions in 16 chunks | n/a | 1 | 0 | 0 |
 
-Two layers of defense ship together. The runtime layer
-(`coerceBasis` in `internal/mcp/ingest.go`) lowercases out-of-enum
-basis values, maps them against the closed list, and falls back to
-a speaker-appropriate default ("vibes" for document/user,
-"llm_output" for assistant) with a stderr log so drift stays
-visible. The prompt layer (the v6 HARD CONSTRAINT line) is intended
-to reduce how often the runtime layer has to fire. v6 fired the
-runtime layer zero times on this README's sixteen chunks vs one
-time under v5 — but that is one run per version, and Sonnet's
-sampling variance is wide enough that we cannot honestly attribute
-the change to the prompt fix versus run-to-run noise. We did not
-do the experiment that would settle it (5–10 runs per version is
-~$3 in API tokens). Both interventions are independently defensible
-regardless: the prompt addition explicitly forbids the failure mode,
-and the runtime layer catches whatever the prompt cannot.
+The dominant story across these four runs is that **single-run-per-
+version is not enough to attribute changes to anything**. Definition
+share has now varied from 10 to 48 across four runs of essentially
+the same README under similar prompts — almost a 5× range. Edge
+count dropped 21% from v6 to v7 despite adding only one boolean
+field plus one prompt section. With n=1 per version, any prompt-
+attributable signal is indistinguishable from sampling noise. We
+still have not run the 5–10-runs-per-version experiment that would
+quantify the noise floor (~$3 in tokens). Until we do, treat any
+single number here as one observation, not an estimate.
 
-The longest unchallenged chain measured 15 claims under v4, 25
-under v5, and 18 under v6. The chain detector traverses claims
-regardless of basis — only the explicit `Challenged` flag and
-incoming Contradicts/Questions edges break the chain — so the
-variation tracks edge structure and content, not the basis-
-classification shifts. Edge density per claim was 1.80 (v4), 2.21
-(v5), 2.13 (v6); v5's denser graph is the most plausible source of
-its longer chain, but again, one run per version. Some of the
-length is real new prose: the Moore et al. write-up and the live-
-7-turn-experiment section haven't had their own grounding passes.
-"The model (Claude) agrees with unsourced claims made by users" is
-the new hub of the chain (supporting five downstream claims), and
-the Lemoine path is still a critical load-bearer (seven downstream,
-up from five in v4). The mechanism claims about sycophancy have
-citations (Perez 2022, Sharma 2023, Moore 2026); the narrative
-claims about the live 7-turn experiment remain vibes by
-construction — it's a diagnostic, not a study. The tool catches
-the chain. We make the judgment calls. As the essay grows, the
-chain moves with it.
+What v7 did demonstrate: the new `consequential_action` flag
+**fires** on real text, producing two warning-level findings. Both
+are false positives — the README narrates past consequential
+actions ("the human acted on the unverified WAL assertion", "the
+model suggested journal submissions by turn 4") rather than
+announcing new commitments. Yang's signal is meant for live
+conversation; document-mode prose narrating events is a class the
+v7 prompt does not yet exclude correctly. The "leave
+consequential_action false in document mode unless quoting
+dialogue" rule we added to the prompt did not catch this — the
+model treated narration of an action as the action. v8 candidate:
+strengthen the prompt rule (past-tense third-person narration is
+not a commitment), and/or add a defensive `speaker == document`
+filter in the detector. Both defensible; calibration data first.
 
-(Numbers captured under extraction prompt version 6 with model
-`claude-sonnet-4-6`. We have not characterized run-to-run sampling
-variance, so a fresh ingest at the same prompt version may produce
-different counts; the numbers above should be read as one
-observation each, not a stable estimate.)
+What stays true across all four runs: the bottleneck claims are
+the same tool-description sentences ("Slimemold watches
+conversations…", "Slimemold is a sycophantic tool…"), the long
+unchallenged chain runs through the sycophancy-mechanism →
+behavioral-contract path, and the architectural claims about how
+slimemold works are the densest connection points. Those
+invariants are what we'd expect to hold across noise; they do.
+
+(Numbers captured under extraction prompt version 7 with model
+`claude-sonnet-4-6`. Sampling variance has not been characterized;
+treat each row of the comparison table as one observation each.)
 
 </details>
