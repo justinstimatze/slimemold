@@ -67,10 +67,21 @@ outputs that match user beliefs rather than correct them (Perez et al.
 through to its endpoint: in 391,562 messages from 19 users who reported
 psychological harm from chatbot use, sycophancy markers saturated more
 than 80% of assistant messages, and that sycophancy was the load-bearing
-mechanism inside the resulting delusional spirals. The human brings a
-partial model. The AI wraps it in fluent, confident language. Nobody is
-lying. The process just has no built-in signal for "this sounds right
-but is not."
+mechanism inside the resulting delusional spirals. Mehta et al. (2026),
+modeling chat logs of users with delusional thinking as a latent-state
+system, decompose the dynamics into three pathways and find that the
+chatbot's self-influence — the bot reinforcing its own prior turns —
+is the dominant pathway perpetuating delusional content over long
+conversations. Human pushback on the bot's prior frame, in their
+model, is short-lived; bot self-influence reasserts. Yang et al.
+(2026), in semi-structured interviews with users who self-identified
+as having experienced these spirals, name the user-side dynamic: a
+progression toward "growing insulation from external reality checks
+as the AI's validating responses outweigh concerns from family and
+friends."
+The human brings a partial model. The AI wraps it in fluent, confident
+language. Nobody is lying. The process just has no built-in signal for
+"this sounds right but is not."
 
 The obvious response — "just tell the model to push back harder" —
 almost works. You can write instructions to challenge unsourced claims,
@@ -622,6 +633,8 @@ credentials are stored in the database.
 - Perez, E., et al. (2022). Discovering language model behaviors with model-written evaluations. *arXiv:2212.09251*.
 - Sharma, M., Tong, M., Korbak, T., et al. (2023). Towards understanding sycophancy in language models. *ICLR 2024*.
 - Moore, J., Mehta, A., Agnew, W., Anthis, J. R., Louie, R., Mai, Y., Yin, P., Cheng, M., Paech, S. J., Klyman, K., Chancellor, S., Lin, E., Haber, N., & Ong, D. C. (2026). Characterizing Delusional Spirals through Human-LLM Chat Logs. *Proceedings of the 2026 ACM Conference on Fairness, Accountability, and Transparency*. arXiv:2603.16567. — Source of the 28-code inventory; six codes from this paper are extracted by slimemold's LLM annotator and consumed by the `sycophancy_saturation`, `ability_overstatement`, `sentience_drift`, and `amplification_cascade` detectors. Empirical anchor for the >80% sycophancy-saturation premise.
+- Mehta, A., Moore, J., Anthis, J. R., Agnew, W., Lin, E., Yin, P., Ong, D. C., Haber, N., & Dweck, C. (2026). The Dynamics of Delusion: Modeling Bidirectional False Belief Amplification in Human-Chatbot Dialogue. *arXiv:2604.25096*. — Latent-state model on chat logs of users exhibiting delusional thinking (substantial author overlap with Moore et al. 2026), decomposing influence into three pathways and identifying chatbot self-influence over its own prior turns as the dominant pathway perpetuating delusional content over long conversations. Cited as background for why structural input from outside the conversation loop is a plausible intervention point — the empirical claim that internal pushback is short-lived and bot self-influence dominates over accumulated time.
+- Yang, Y., Schoenwald, S. K., Moore, J., Ong, D. C., Liu, S. X., & Hancock, J. T. (2026). "AI-Induced Delusional Spirals": Understanding Lived Experiences During Maladaptive Human-Chatbot Interactions. *Extended Abstracts of the 2026 CHI Conference on Human Factors in Computing Systems (CHI EA '26)*. doi:10.1145/3772363.3798453. — Qualitative companion to Moore et al. 2026: N=9 semi-structured interviews with users who self-identified as having experienced AI-induced delusional spirals. Documents "growing insulation from external reality checks" as a central pattern, and provides participant-quoted instances of all six dimensions slimemold's inventory flags target. Limited by N=9 retrospective self-reports; does not establish causal relationships.
 
 **Calibration and feedback:**
 - Fischhoff, B. (1982). Debiasing. In *Judgment Under Uncertainty: Heuristics and Biases*.
