@@ -726,7 +726,7 @@ func TestFormatHookFindings_Cooldown(t *testing.T) {
 	}
 
 	// Without cooldown, FormatHookFindings picks anchorID.
-	summary, pickedID, pickedType := FormatHookFindings(topo, vulns, claims, nil, 0, 0, 5)
+	summary, pickedID, pickedType, _ := FormatHookFindings(topo, vulns, claims, nil, 0, 0, 5)
 	if summary == "" {
 		t.Fatal("expected non-empty summary without cooldown")
 	}
@@ -736,8 +736,8 @@ func TestFormatHookFindings_Cooldown(t *testing.T) {
 
 	// With cooldown set on that exact (claim, type), we should either pick
 	// something else or emit nothing — but definitely not pick anchorID again.
-	recent := map[string]bool{anchorID + "|load_bearing_vibes": true}
-	_, pickedID2, pickedType2 := FormatHookFindings(topo, vulns, claims, recent, 0, 0, 5)
+	recent := map[string]time.Time{anchorID + "|load_bearing_vibes": time.Now()}
+	_, pickedID2, pickedType2, _ := FormatHookFindings(topo, vulns, claims, recent, 0, 0, 5)
 	if pickedID2 == anchorID && pickedType2 == "load_bearing_vibes" {
 		t.Error("cooldown failed: picked the suppressed finding")
 	}
@@ -957,6 +957,56 @@ func TestLoadBearingVibes_ContradictedSpreadStillFires(t *testing.T) {
 	}
 }
 
+// TestFormatHookFindings_DifferentialCooldown verifies that persistent-only
+// findings (FiredViaPersistent=true) use HookPersistentCooldown (7d) instead
+// of the standard HookCooldownWindow (24h). A finding that fired 2 days ago
+// is past the standard cooldown but still inside the persistent one.
+func TestFormatHookFindings_DifferentialCooldown(t *testing.T) {
+	makeFixture := func(persistent bool) (*types.Topology, *types.Vulnerabilities, []types.Claim) {
+		claims := []types.Claim{
+			{ID: "anchor", Text: "load-bearing claim", Basis: types.BasisVibes, Speaker: types.SpeakerUser, CreatedAt: time.Now()},
+			{ID: "f1", Text: "f1", Basis: types.BasisDeduction, Speaker: types.SpeakerUser, CreatedAt: time.Now()},
+			{ID: "f2", Text: "f2", Basis: types.BasisDeduction, Speaker: types.SpeakerUser, CreatedAt: time.Now()},
+			{ID: "f3", Text: "f3", Basis: types.BasisDeduction, Speaker: types.SpeakerUser, CreatedAt: time.Now()},
+			{ID: "f4", Text: "f4", Basis: types.BasisDeduction, Speaker: types.SpeakerUser, CreatedAt: time.Now()},
+			{ID: "f5", Text: "f5", Basis: types.BasisDeduction, Speaker: types.SpeakerUser, CreatedAt: time.Now()},
+		}
+		topo := &types.Topology{Project: "test", ClaimCount: len(claims)}
+		vulns := &types.Vulnerabilities{
+			Project: "test",
+			Items: []types.Vulnerability{
+				{
+					Severity:           "critical",
+					Type:               "load_bearing_vibes",
+					Description:        `Load-bearing vibes: "load-bearing claim" supports 8 other claims (never challenged: true)`,
+					ClaimIDs:           []string{"anchor"},
+					FiredViaPersistent: persistent,
+				},
+			},
+		}
+		return topo, vulns, claims
+	}
+
+	twoDaysAgo := time.Now().Add(-2 * 24 * time.Hour)
+	cooldownMap := map[string]time.Time{"anchor|load_bearing_vibes": twoDaysAgo}
+
+	// Persistent-only finding: 2 days ago is INSIDE HookPersistentCooldown (7d)
+	// → cooldown still active → should not pick.
+	topo, vulns, claims := makeFixture(true)
+	_, pickedID, _, _ := FormatHookFindings(topo, vulns, claims, cooldownMap, 0, 0, 5)
+	if pickedID == "anchor" {
+		t.Error("persistent-only finding should be suppressed 2 days after firing (within HookPersistentCooldown)")
+	}
+
+	// Non-persistent finding: 2 days ago is PAST HookCooldownWindow (24h)
+	// → cooldown expired → should pick.
+	topo, vulns, claims = makeFixture(false)
+	_, pickedID, _, _ = FormatHookFindings(topo, vulns, claims, cooldownMap, 0, 0, 5)
+	if pickedID != "anchor" {
+		t.Errorf("non-persistent finding should be eligible 2 days after firing (past HookCooldownWindow); got pickedID=%q", pickedID)
+	}
+}
+
 // TestFormatHookFindings_AgeDecay verifies that a priority candidate whose
 // anchor claim is older than HookMaxClaimAge gets filtered out.
 func TestFormatHookFindings_AgeDecay(t *testing.T) {
@@ -975,7 +1025,7 @@ func TestFormatHookFindings_AgeDecay(t *testing.T) {
 		{FromID: "d2", ToID: anchorID, Relation: types.RelDependsOn},
 	}
 	topo, vulns := Analyze(claims, edges, "test")
-	_, pickedID, _ := FormatHookFindings(topo, vulns, claims, nil, 0, 0, 5)
+	_, pickedID, _, _ := FormatHookFindings(topo, vulns, claims, nil, 0, 0, 5)
 	if pickedID == anchorID {
 		t.Error("age decay failed: picked an anchor older than HookMaxClaimAge")
 	}
@@ -1085,7 +1135,7 @@ func TestFormatHookFindings_ColdStart(t *testing.T) {
 
 	// FormatHookFindings should return empty despite vulns having items —
 	// cold-start gate blocks the hook.
-	summary, pickedID, _ := FormatHookFindings(topo, vulns, claims, nil, 0, 0, 5)
+	summary, pickedID, _, _ := FormatHookFindings(topo, vulns, claims, nil, 0, 0, 5)
 	if summary != "" || pickedID != "" {
 		t.Errorf("cold-start failed: got summary=%q picked=%q, want empty", summary, pickedID)
 	}

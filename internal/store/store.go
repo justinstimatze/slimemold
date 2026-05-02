@@ -535,6 +535,9 @@ func (d *DB) LogHookFire(project, claimID, findingType string) error {
 
 // RecentHookFires returns the set of (claim_id, finding_type) tuples that
 // have fired in `project` since `since`. Keys are encoded "claim_id|type".
+//
+// Deprecated: use RecentHookFireTimes for differential cooldown support;
+// this boolean variant kept for any callers that don't need timestamps.
 func (d *DB) RecentHookFires(project string, since time.Time) (map[string]bool, error) {
 	rows, err := d.q.Query(
 		`SELECT claim_id, finding_type FROM hook_fire_log WHERE project = ? AND fired_at >= ?`,
@@ -551,6 +554,39 @@ func (d *DB) RecentHookFires(project string, since time.Time) (map[string]bool, 
 			return nil, err
 		}
 		out[claimID+"|"+findingType] = true
+	}
+	return out, rows.Err()
+}
+
+// RecentHookFireTimes returns the latest fire timestamp per (claim_id,
+// finding_type) tuple in `project` since `since`. Keys are "claim_id|type".
+// Used by FormatHookFindings to apply differential cooldown — persistent-only
+// findings have a longer effective window than recent-activity findings.
+//
+// Callers should pass `since = now - HookPersistentCooldown` (the longest
+// possible cooldown) so every potentially-suppressed fire is visible; the
+// cooldown threshold is then applied per-candidate based on its
+// FiredViaPersistent flag.
+func (d *DB) RecentHookFireTimes(project string, since time.Time) (map[string]time.Time, error) {
+	rows, err := d.q.Query(
+		`SELECT claim_id, finding_type, MAX(fired_at) FROM hook_fire_log WHERE project = ? AND fired_at >= ? GROUP BY claim_id, finding_type`,
+		project, since.Format(time.RFC3339),
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	out := make(map[string]time.Time)
+	for rows.Next() {
+		var claimID, findingType, firedAtStr string
+		if err := rows.Scan(&claimID, &findingType, &firedAtStr); err != nil {
+			return nil, err
+		}
+		t, err := time.Parse(time.RFC3339, firedAtStr)
+		if err != nil {
+			continue
+		}
+		out[claimID+"|"+findingType] = t
 	}
 	return out, rows.Err()
 }

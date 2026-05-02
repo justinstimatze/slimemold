@@ -163,10 +163,12 @@ func CoreParseTranscript(ctx context.Context, db *store.DB, extractor *extract.E
 	}
 
 	// Cooldown filter: skip findings whose (claim, type) fired inside the
-	// HookCooldownWindow. Logs the pick after formatting so subsequent
-	// invocations within the window suppress it.
-	recentFires, _ := db.RecentHookFires(project, time.Now().Add(-analysis.HookCooldownWindow))
-	hookSummary, pickedClaimID, pickedFindingType := analysis.FormatHookFindings(findingTopo, findingVulns, findingClaims, recentFires, newClaims, newEdges, 5)
+	// applicable cooldown window. Differential cooldown applies — persistent-
+	// only findings get HookPersistentCooldown, others get HookCooldownWindow.
+	// Query with the longest window so all potentially-suppressed fires are
+	// visible; FormatHookFindings picks the right threshold per candidate.
+	recentFires, _ := db.RecentHookFireTimes(project, time.Now().Add(-analysis.HookPersistentCooldown))
+	hookSummary, pickedClaimID, pickedFindingType, _ := analysis.FormatHookFindings(findingTopo, findingVulns, findingClaims, recentFires, newClaims, newEdges, 5)
 	if pickedClaimID != "" && pickedFindingType != "" {
 		_ = db.LogHookFire(project, pickedClaimID, pickedFindingType)
 	}

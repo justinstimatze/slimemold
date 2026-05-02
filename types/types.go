@@ -121,6 +121,15 @@ type Vulnerability struct {
 	Type        string   `json:"type"`     // load_bearing_vibes, bottleneck, orphan, unchallenged_chain
 	Description string   `json:"description"`
 	ClaimIDs    []string `json:"claim_ids"`
+
+	// FiredViaPersistent indicates the finding qualified only via the
+	// persistent-weight branch (8+ total dependents) without recent activity
+	// — i.e., this is a "we said it a while ago and it's still underpinning
+	// stuff" callback, not a "currently being built on" finding. Used at the
+	// cooldown layer to differentiate: persistent-only findings get a longer
+	// cooldown so they surface as occasional reminders rather than daily
+	// noise; recent-activity findings keep the standard 24h cooldown.
+	FiredViaPersistent bool `json:"fired_via_persistent,omitempty"`
 }
 
 // ClusterInfo describes a connected group of claims.

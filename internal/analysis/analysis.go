@@ -306,6 +306,7 @@ func findLoadBearingVibes(claims []types.Claim, edges []types.Edge) []types.Vuln
 	// distinct sessions, no contradicts) — the conversation has implicitly
 	// accepted them through repeated use across contexts.
 	dependents := make(map[string]int)
+	firedViaPersistent := make(map[string]bool)
 	for id, total := range totalDeps {
 		recent := recentDeps[id]
 		switch {
@@ -316,6 +317,7 @@ func findLoadBearingVibes(claims []types.Claim, edges []types.Edge) []types.Vuln
 				continue // stress-tested through use, suppress
 			}
 			dependents[id] = total
+			firedViaPersistent[id] = true
 		}
 	}
 
@@ -329,10 +331,11 @@ func findLoadBearingVibes(claims []types.Claim, edges []types.Edge) []types.Vuln
 			continue
 		}
 		vulns = append(vulns, types.Vulnerability{
-			Severity:    "critical",
-			Type:        "load_bearing_vibes",
-			Description: fmt.Sprintf("Load-bearing %s: %q supports %d other claims (never challenged: %v)", c.Basis, truncate(c.Text, 60), deg, !c.Challenged),
-			ClaimIDs:    []string{c.ID},
+			Severity:           "critical",
+			Type:               "load_bearing_vibes",
+			Description:        fmt.Sprintf("Load-bearing %s: %q supports %d other claims (never challenged: %v)", c.Basis, truncate(c.Text, 60), deg, !c.Challenged),
+			ClaimIDs:           []string{c.ID},
+			FiredViaPersistent: firedViaPersistent[id],
 		})
 	}
 	return vulns
@@ -682,6 +685,7 @@ func findFluencyTraps(claims []types.Claim, edges []types.Edge) []types.Vulnerab
 		}
 	}
 	hasDependents := make(map[string]bool)
+	firedViaPersistent := make(map[string]bool)
 	for id, total := range totalDeps {
 		switch {
 		case recentDeps[id] >= FluencyTrapRecentThreshold:
@@ -692,6 +696,7 @@ func findFluencyTraps(claims []types.Claim, edges []types.Edge) []types.Vulnerab
 				continue
 			}
 			hasDependents[id] = true
+			firedViaPersistent[id] = true
 		}
 	}
 
@@ -706,10 +711,11 @@ func findFluencyTraps(claims []types.Claim, edges []types.Edge) []types.Vulnerab
 		}
 		if c.Confidence > ceiling {
 			vulns = append(vulns, types.Vulnerability{
-				Severity:    "critical",
-				Type:        "fluency_trap",
-				Description: fmt.Sprintf("Fluency trap: %q stated at confidence %.1f but basis is %s — processing fluency may masquerade as truth", truncate(c.Text, 60), c.Confidence, c.Basis),
-				ClaimIDs:    []string{c.ID},
+				Severity:           "critical",
+				Type:               "fluency_trap",
+				Description:        fmt.Sprintf("Fluency trap: %q stated at confidence %.1f but basis is %s — processing fluency may masquerade as truth", truncate(c.Text, 60), c.Confidence, c.Basis),
+				ClaimIDs:           []string{c.ID},
+				FiredViaPersistent: firedViaPersistent[c.ID],
 			})
 		}
 	}
@@ -1106,7 +1112,16 @@ func clusterClaimIDs(cl types.ClusterInfo) []string {
 // dependent thresholds — three claims in a chain look load-bearing but
 // it's just small-N artifact. Imported from buddy's COLD_START_MIN_CLAIMS.
 const (
-	HookCooldownWindow     = 24 * time.Hour
+	HookCooldownWindow = 24 * time.Hour
+
+	// HookPersistentCooldown applies to findings that fired only via the
+	// persistent-weight branch (Vulnerability.FiredViaPersistent=true). These
+	// are "still underpinning stuff but no fresh activity" callbacks rather
+	// than "currently being built on" findings. Surfacing them daily would
+	// be the noise the user explicitly named — they should arrive as
+	// occasional reminders, not standing repeats.
+	HookPersistentCooldown = 7 * 24 * time.Hour
+
 	HookMaxClaimAge        = 7 * 24 * time.Hour
 	HookColdStartMinClaims = 6
 
@@ -1136,8 +1151,9 @@ const (
 	// threshold is calibrated against the actual graph distribution: top ~15
 	// claims by dependent count meet 8+, so this branch surfaces only truly
 	// foundational unverified claims, not every old claim with a few stale
-	// supports. Differential cooldown (TODO) should ensure persistent-only
-	// firings don't recur daily — they're meant as occasional reminders.
+	// supports. Persistent-only firings carry FiredViaPersistent=true so
+	// FormatHookFindings can apply HookPersistentCooldown (longer cooldown)
+	// rather than the standard 24h — they surface as occasional reminders.
 	LoadBearingRecentThreshold     = 2
 	LoadBearingPersistentThreshold = 8
 
@@ -1170,25 +1186,34 @@ const (
 // FormatHookFindings produces a terse, directive summary for hook injection.
 // Prioritizes: criticals → unchallenged chains → top bottleneck. Caps at maxFindings.
 // Skips already-challenged claims, claims older than HookMaxClaimAge, and any
-// (claim_id, finding_type) present in recentFires (cooldown set).
+// (claim_id, finding_type) whose last fire is still inside the appropriate
+// cooldown window (HookCooldownWindow for normal findings, HookPersistentCooldown
+// for findings that fired only via the persistent-weight branch).
 //
-// Returns (summary, pickedClaimID, pickedFindingType). Callers should call
-// db.LogHookFire(project, pickedClaimID, pickedFindingType) to record the
-// fire, so subsequent invocations within the cooldown window skip it.
+// recentFires maps (claim_id|finding_type) → last fire timestamp. Callers
+// should query the DB with the longer window (HookPersistentCooldown) so
+// every potentially-suppressed fire is visible; differential cooldown is
+// applied here based on the candidate's FiredViaPersistent flag.
+//
+// Returns (summary, pickedClaimID, pickedFindingType, pickedFiredViaPersistent).
+// Callers should call db.LogHookFire(...) to record the fire so subsequent
+// invocations within the cooldown window skip it; the persistent-flag is
+// passed back so the caller can decide whether to use a longer cooldown
+// when logging.
 //
 // Discipline: **never fabricate a finding to fill silence.** If no detector
 // fires, no finding passes the cooldown/age filters, or the graph is below
 // HookColdStartMinClaims, return "". The hook is allowed to produce a
 // finding or be silent — it is not allowed to manufacture one because the
 // slot exists.
-func FormatHookFindings(topo *types.Topology, vulns *types.Vulnerabilities, claims []types.Claim, recentFires map[string]bool, newClaims, newEdges, maxFindings int) (string, string, string) {
+func FormatHookFindings(topo *types.Topology, vulns *types.Vulnerabilities, claims []types.Claim, recentFires map[string]time.Time, newClaims, newEdges, maxFindings int) (string, string, string, bool) {
 	// Cold-start gate: below a minimum graph size, load-bearing analysis is
 	// dominated by small-sample artifacts. Suppress the hook entirely.
 	if len(claims) < HookColdStartMinClaims {
-		return "", "", ""
+		return "", "", "", false
 	}
 	if len(vulns.Items) == 0 {
-		return "", "", ""
+		return "", "", "", false
 	}
 
 	// Index claims by ID for age lookups.
@@ -1235,7 +1260,7 @@ func FormatHookFindings(topo *types.Topology, vulns *types.Vulnerabilities, clai
 	}
 
 	if len(findings) == 0 {
-		return "", "", ""
+		return "", "", "", false
 	}
 
 	sort.SliceStable(findings, func(i, j int) bool {
@@ -1273,20 +1298,30 @@ func FormatHookFindings(topo *types.Topology, vulns *types.Vulnerabilities, clai
 		}
 	}
 
-	return strings.TrimRight(b.String(), "\n"), pickedClaimID, pickedFindingType
+	return strings.TrimRight(b.String(), "\n"), pickedClaimID, pickedFindingType, top.FiredViaPersistent
 }
 
 // skipAnchor reports whether a vulnerability should be filtered from the
 // priority pool because its anchor claim has fired this finding type
 // recently (cooldown) or is too old to be worth surfacing (age decay).
 // Findings with no ClaimIDs (e.g. coverage_imbalance) never skip.
-func skipAnchor(v types.Vulnerability, claimByID map[string]*types.Claim, recentFires map[string]bool, now time.Time) bool {
+//
+// Differential cooldown: persistent-only findings (FiredViaPersistent=true)
+// use HookPersistentCooldown so they surface as occasional reminders rather
+// than daily noise; everything else uses HookCooldownWindow.
+func skipAnchor(v types.Vulnerability, claimByID map[string]*types.Claim, recentFires map[string]time.Time, now time.Time) bool {
 	if len(v.ClaimIDs) == 0 {
 		return false
 	}
 	anchor := v.ClaimIDs[0]
-	if recentFires[anchor+"|"+v.Type] {
-		return true
+	if firedAt, ok := recentFires[anchor+"|"+v.Type]; ok {
+		cooldown := HookCooldownWindow
+		if v.FiredViaPersistent {
+			cooldown = HookPersistentCooldown
+		}
+		if now.Sub(firedAt) < cooldown {
+			return true
+		}
 	}
 	if c, ok := claimByID[anchor]; ok {
 		if !c.CreatedAt.IsZero() && now.Sub(c.CreatedAt) > HookMaxClaimAge {
