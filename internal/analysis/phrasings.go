@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"strings"
+	"unicode"
 )
 
 // Multiple phrasings per finding type. FormatHookFindings picks one
@@ -130,12 +131,28 @@ func phrasingKey(findingType, description string) string {
 func renderPhrasing(findingType, description, claimText string) string {
 	key := phrasingKey(findingType, description)
 	tmpl := pickPhrasing(key, claimText)
-	short := claimText
-	if len(short) > 80 {
-		short = short[:80] + "..."
-	}
+	short := truncateClaim(claimText, 200)
 	if strings.Contains(tmpl, "%s") {
 		return fmt.Sprintf(tmpl, short)
 	}
 	return tmpl
+}
+
+// truncateClaim shortens claim text for inclusion in hook output. Cuts at the
+// last whitespace boundary at or before maxRunes so a meaning-reversing clause
+// ("X — but actually Y") isn't hidden mid-word and the reader can tell whether
+// the surfaced fragment is the whole claim or only its setup.
+func truncateClaim(s string, maxRunes int) string {
+	runes := []rune(s)
+	if len(runes) <= maxRunes {
+		return s
+	}
+	cut := maxRunes
+	for cut > 0 && !unicode.IsSpace(runes[cut]) {
+		cut--
+	}
+	if cut == 0 {
+		cut = maxRunes
+	}
+	return strings.TrimRightFunc(string(runes[:cut]), unicode.IsSpace) + "..."
 }
