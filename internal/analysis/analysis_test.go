@@ -243,6 +243,64 @@ func TestBottleneckDetection(t *testing.T) {
 	}
 }
 
+// TestBottlenecks_NoFixedNCap verifies that all claims above the (mean +
+// 2*stddev) centrality threshold are returned, not just the top 5. The
+// previous implementation had a hardcoded `maxBottlenecks = 5` cap that
+// double-filtered against the threshold, making bottleneck count
+// uninformative on graphs with many high-centrality claims.
+//
+// Topology: chain of 6 hub nodes, each with 3 leaves. Interior hubs are
+// on shortest paths between many leaves on both sides → high centrality.
+// All 6 hubs should be well above threshold; pre-fix would cap at 5.
+func TestBottlenecks_NoFixedNCap(t *testing.T) {
+	claims := []types.Claim{}
+	edges := []types.Edge{}
+	// Constellation topology: 6 stars connected in a ring. Each star
+	// center has 6 leaves; centers are connected to adjacent centers.
+	// Star centers are clear centrality outliers (paths between leaves
+	// of different stars must go through them); leaves drag the mean down.
+	// Six clear outliers should all surface when no fixed-N cap applies.
+	hubCount := 6
+	leavesPerHub := 6
+	for i := 0; i < hubCount; i++ {
+		h := fmt.Sprintf("h%d", i)
+		claims = append(claims, makeClaim(h, "hub "+h, types.BasisVibes))
+	}
+	// Ring of hubs
+	for i := 0; i < hubCount; i++ {
+		next := (i + 1) % hubCount
+		edges = append(edges, makeEdge(fmt.Sprintf("h%d", i), fmt.Sprintf("h%d", next), types.RelSupports))
+	}
+	// Leaves attached to each hub
+	for i := 0; i < hubCount; i++ {
+		for j := 0; j < leavesPerHub; j++ {
+			leaf := fmt.Sprintf("leaf-%d-%d", i, j)
+			claims = append(claims, makeClaim(leaf, "leaf", types.BasisResearch))
+			if j%2 == 0 {
+				edges = append(edges, makeEdge(leaf, fmt.Sprintf("h%d", i), types.RelSupports))
+			} else {
+				edges = append(edges, makeEdge(fmt.Sprintf("h%d", i), leaf, types.RelSupports))
+			}
+		}
+	}
+
+	_, vulns := Analyze(claims, edges, "test")
+
+	bottleneckCount := 0
+	for _, v := range vulns.Items {
+		if v.Type == "bottleneck" {
+			bottleneckCount++
+		}
+	}
+	// With the cap removed, more than 5 hubs can fire if they're all above
+	// threshold. This topology is engineered to put most hubs above
+	// threshold; exact count depends on centrality distribution but should
+	// exceed 5 (which was the pre-fix cap).
+	if bottleneckCount <= 5 {
+		t.Errorf("expected >5 bottleneck findings (cap removed); got %d. If this is failing legitimately because the topology doesn't produce enough above-threshold hubs, the test fixture needs more hubs, not the cap restored.", bottleneckCount)
+	}
+}
+
 func TestSmallGraphNoBottleneckSpam(t *testing.T) {
 	// 5 claims — below the min threshold of 8, should produce zero bottleneck findings
 	claims := []types.Claim{
