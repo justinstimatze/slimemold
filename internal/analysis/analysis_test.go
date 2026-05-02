@@ -872,6 +872,91 @@ func TestLoadBearingVibes_BelowPersistentThresholdDoesNotFire(t *testing.T) {
 	}
 }
 
+// TestLoadBearingVibes_StressTestedSuppressed verifies that a claim whose
+// dependents span StressTestedSessionThreshold+ distinct sessions (no
+// contradicts) is treated as implicitly stress-tested and does NOT fire from
+// the persistent branch. The conversation has accepted it through use across
+// distinct contexts; surfacing adds noise rather than signal.
+func TestLoadBearingVibes_StressTestedSuppressed(t *testing.T) {
+	ancient := time.Now().Add(-7 * 24 * time.Hour)
+	claims := []types.Claim{
+		{ID: "anchor", Text: "stress-tested vibes", Basis: types.BasisVibes, Speaker: types.SpeakerUser, CreatedAt: ancient},
+	}
+	edges := []types.Edge{}
+	// LoadBearingPersistentThreshold dependents, distributed across at least
+	// StressTestedSessionThreshold distinct sessions.
+	for i := 0; i < LoadBearingPersistentThreshold; i++ {
+		depID := fmt.Sprintf("dep%d", i)
+		sess := fmt.Sprintf("session-%d", i%StressTestedSessionThreshold)
+		claims = append(claims, types.Claim{ID: depID, Text: depID, Basis: types.BasisDeduction, Speaker: types.SpeakerUser, SessionID: sess, CreatedAt: ancient})
+		edges = append(edges, types.Edge{FromID: "anchor", ToID: depID, Relation: types.RelSupports, CreatedAt: ancient})
+	}
+	_, vulns := Analyze(claims, edges, "test")
+	for _, v := range vulns.Items {
+		if v.Type == "load_bearing_vibes" && len(v.ClaimIDs) > 0 && v.ClaimIDs[0] == "anchor" {
+			t.Errorf("stress-tested anchor (deps span %d+ sessions, no contradicts) should be suppressed", StressTestedSessionThreshold)
+		}
+	}
+}
+
+// TestLoadBearingVibes_BurstPatternStillFires verifies that a claim with
+// many dependents all from a single session (concentrated burst) still fires
+// from the persistent branch — that's the high-risk "everything rested on
+// this for one session and we never came back" case.
+func TestLoadBearingVibes_BurstPatternStillFires(t *testing.T) {
+	ancient := time.Now().Add(-7 * 24 * time.Hour)
+	claims := []types.Claim{
+		{ID: "anchor", Text: "burst-pattern vibes", Basis: types.BasisVibes, Speaker: types.SpeakerUser, CreatedAt: ancient},
+	}
+	edges := []types.Edge{}
+	for i := 0; i < LoadBearingPersistentThreshold; i++ {
+		depID := fmt.Sprintf("dep%d", i)
+		claims = append(claims, types.Claim{ID: depID, Text: depID, Basis: types.BasisDeduction, Speaker: types.SpeakerUser, SessionID: "single-burst-session", CreatedAt: ancient})
+		edges = append(edges, types.Edge{FromID: "anchor", ToID: depID, Relation: types.RelSupports, CreatedAt: ancient})
+	}
+	_, vulns := Analyze(claims, edges, "test")
+	var found bool
+	for _, v := range vulns.Items {
+		if v.Type == "load_bearing_vibes" && len(v.ClaimIDs) > 0 && v.ClaimIDs[0] == "anchor" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("burst-pattern anchor (deps from single session, no stress-test signal) should still fire")
+	}
+}
+
+// TestLoadBearingVibes_ContradictedSpreadStillFires verifies that even if
+// dependents span many sessions, the presence of a contradicts edge
+// disqualifies the claim from stress-tested suppression — contested claims
+// aren't implicitly accepted.
+func TestLoadBearingVibes_ContradictedSpreadStillFires(t *testing.T) {
+	ancient := time.Now().Add(-7 * 24 * time.Hour)
+	claims := []types.Claim{
+		{ID: "anchor", Text: "contested vibes", Basis: types.BasisVibes, Speaker: types.SpeakerUser, CreatedAt: ancient},
+		{ID: "objector", Text: "objection", Basis: types.BasisDeduction, Speaker: types.SpeakerUser, SessionID: "objection-session", CreatedAt: ancient},
+	}
+	edges := []types.Edge{
+		{FromID: "objector", ToID: "anchor", Relation: types.RelContradicts, CreatedAt: ancient},
+	}
+	for i := 0; i < LoadBearingPersistentThreshold; i++ {
+		depID := fmt.Sprintf("dep%d", i)
+		sess := fmt.Sprintf("session-%d", i%StressTestedSessionThreshold)
+		claims = append(claims, types.Claim{ID: depID, Text: depID, Basis: types.BasisDeduction, Speaker: types.SpeakerUser, SessionID: sess, CreatedAt: ancient})
+		edges = append(edges, types.Edge{FromID: "anchor", ToID: depID, Relation: types.RelSupports, CreatedAt: ancient})
+	}
+	_, vulns := Analyze(claims, edges, "test")
+	var found bool
+	for _, v := range vulns.Items {
+		if v.Type == "load_bearing_vibes" && len(v.ClaimIDs) > 0 && v.ClaimIDs[0] == "anchor" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("contested anchor with cross-session dependents should still fire (contradicts edge disqualifies stress-test suppression)")
+	}
+}
+
 // TestFormatHookFindings_AgeDecay verifies that a priority candidate whose
 // anchor claim is older than HookMaxClaimAge gets filtered out.
 func TestFormatHookFindings_AgeDecay(t *testing.T) {

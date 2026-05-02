@@ -258,11 +258,29 @@ func findLoadBearingVibes(claims []types.Claim, edges []types.Edge) []types.Vuln
 		}
 	}
 
-	// Track both: recent dependents (current activity) and total dependents
-	// (persistent weight). "A supports B" → A load-bearing, B dependent (to_id).
-	// "B depends_on A" → A load-bearing, B dependent (from_id).
+	// Build claim map upfront — needed both for vulnerability construction
+	// and for the dependent-session lookup in the stress-test signal.
+	claimMap := make(map[string]*types.Claim)
+	for i := range claims {
+		claimMap[claims[i].ID] = &claims[i]
+	}
+
+	// Track recent dependents (current activity), total dependents (persistent
+	// weight), distinct dependent-claim sessions (stress-test signal), and
+	// contradicts presence (contested claims aren't stress-tested even if
+	// spread out).
 	recentDeps := make(map[string]int)
 	totalDeps := make(map[string]int)
+	depSessions := make(map[string]map[string]bool)
+	hasContradicts := make(map[string]bool)
+	addDepSession := func(anchor, depID string) {
+		if dep, ok := claimMap[depID]; ok && dep.SessionID != "" {
+			if depSessions[anchor] == nil {
+				depSessions[anchor] = make(map[string]bool)
+			}
+			depSessions[anchor][dep.SessionID] = true
+		}
+	}
 	for _, e := range edges {
 		switch e.Relation {
 		case types.RelSupports:
@@ -270,17 +288,23 @@ func findLoadBearingVibes(claims []types.Claim, edges []types.Edge) []types.Vuln
 			if recentIDs[e.ToID] {
 				recentDeps[e.FromID]++
 			}
+			addDepSession(e.FromID, e.ToID)
 		case types.RelDependsOn:
 			totalDeps[e.ToID]++
 			if recentIDs[e.FromID] {
 				recentDeps[e.ToID]++
 			}
+			addDepSession(e.ToID, e.FromID)
+		case types.RelContradicts:
+			hasContradicts[e.FromID] = true
+			hasContradicts[e.ToID] = true
 		}
 	}
 
-	// Merge into a single dependents map: take whichever count triggers a fire.
-	// Description shows the larger of (recent, total-if-persistent) so the
-	// finding text reflects how the claim qualified.
+	// Merge into a single dependents map. The persistent branch is suppressed
+	// for stress-tested claims (deps span StressTestedSessionThreshold+
+	// distinct sessions, no contradicts) — the conversation has implicitly
+	// accepted them through repeated use across contexts.
 	dependents := make(map[string]int)
 	for id, total := range totalDeps {
 		recent := recentDeps[id]
@@ -288,13 +312,11 @@ func findLoadBearingVibes(claims []types.Claim, edges []types.Edge) []types.Vuln
 		case recent >= LoadBearingRecentThreshold:
 			dependents[id] = recent
 		case total >= LoadBearingPersistentThreshold:
+			if !hasContradicts[id] && len(depSessions[id]) >= StressTestedSessionThreshold {
+				continue // stress-tested through use, suppress
+			}
 			dependents[id] = total
 		}
-	}
-
-	claimMap := make(map[string]*types.Claim)
-	for i := range claims {
-		claimMap[claims[i].ID] = &claims[i]
 	}
 
 	var vulns []types.Vulnerability
@@ -624,8 +646,22 @@ func findFluencyTraps(claims []types.Claim, edges []types.Edge) []types.Vulnerab
 			recentIDs[c.ID] = true
 		}
 	}
+	claimMap := make(map[string]*types.Claim)
+	for i := range claims {
+		claimMap[claims[i].ID] = &claims[i]
+	}
 	recentDeps := make(map[string]int)
 	totalDeps := make(map[string]int)
+	depSessions := make(map[string]map[string]bool)
+	hasContradicts := make(map[string]bool)
+	addDepSession := func(anchor, depID string) {
+		if dep, ok := claimMap[depID]; ok && dep.SessionID != "" {
+			if depSessions[anchor] == nil {
+				depSessions[anchor] = make(map[string]bool)
+			}
+			depSessions[anchor][dep.SessionID] = true
+		}
+	}
 	for _, e := range edges {
 		switch e.Relation {
 		case types.RelSupports:
@@ -633,16 +669,28 @@ func findFluencyTraps(claims []types.Claim, edges []types.Edge) []types.Vulnerab
 			if recentIDs[e.ToID] {
 				recentDeps[e.FromID]++
 			}
+			addDepSession(e.FromID, e.ToID)
 		case types.RelDependsOn:
 			totalDeps[e.ToID]++
 			if recentIDs[e.FromID] {
 				recentDeps[e.ToID]++
 			}
+			addDepSession(e.ToID, e.FromID)
+		case types.RelContradicts:
+			hasContradicts[e.FromID] = true
+			hasContradicts[e.ToID] = true
 		}
 	}
 	hasDependents := make(map[string]bool)
 	for id, total := range totalDeps {
-		if recentDeps[id] >= FluencyTrapRecentThreshold || total >= FluencyTrapPersistentThreshold {
+		switch {
+		case recentDeps[id] >= FluencyTrapRecentThreshold:
+			hasDependents[id] = true
+		case total >= FluencyTrapPersistentThreshold:
+			// Stress-test suppression — same rationale as findLoadBearingVibes.
+			if !hasContradicts[id] && len(depSessions[id]) >= StressTestedSessionThreshold {
+				continue
+			}
 			hasDependents[id] = true
 		}
 	}
@@ -1099,6 +1147,24 @@ const (
 	// while requiring genuine persistence (8+) for the dormant-callback path.
 	FluencyTrapRecentThreshold     = 1
 	FluencyTrapPersistentThreshold = 8
+
+	// StressTestedSessionThreshold suppresses the persistent-weight branch for
+	// claims whose dependents span this many distinct sessions without any
+	// contradicts edges in the graph. The intuition: if the conversation has
+	// implicitly added support to a claim across multiple sessions over time
+	// without anyone pushing back, the claim has been stress-tested through
+	// use. It's still structurally load-bearing, but the conversation has
+	// effectively accepted it as a working premise — surfacing it as a finding
+	// adds noise rather than signal.
+	//
+	// Burst-pattern claims (8+ deps all from a single session) still fire
+	// from the persistent branch — those are the high-risk "everything
+	// rested on this for one session and we never came back to verify" cases.
+	//
+	// Sessions rather than calendar days are the right granularity: a single
+	// long session can span days but is one context; multiple short sessions
+	// in one day represent multiple distinct contexts.
+	StressTestedSessionThreshold = 3
 )
 
 // FormatHookFindings produces a terse, directive summary for hook injection.
