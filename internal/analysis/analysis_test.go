@@ -817,6 +817,61 @@ func TestLoadBearingVibes_MixedDependentsCountsOnlyRecent(t *testing.T) {
 	}
 }
 
+// TestLoadBearingVibes_PersistentWeightFiresWithoutRecent verifies that an
+// anchor with enough total dependents (>= LoadBearingPersistentThreshold)
+// fires even when none of those dependents are recent. The persistent-weight
+// branch surfaces genuinely foundational claims that have gone dormant —
+// "something we said two weeks ago that's still underpinning everything"
+// should keep coming up even without fresh activity.
+func TestLoadBearingVibes_PersistentWeightFiresWithoutRecent(t *testing.T) {
+	ancient := time.Now().Add(-2 * HookConversationalWindow)
+	claims := []types.Claim{
+		{ID: "anchor", Text: "persistent vibes", Basis: types.BasisVibes, Speaker: types.SpeakerUser, CreatedAt: ancient},
+	}
+	edges := []types.Edge{}
+	for i := 0; i < LoadBearingPersistentThreshold; i++ {
+		depID := fmt.Sprintf("dep%d", i)
+		claims = append(claims, types.Claim{ID: depID, Text: depID, Basis: types.BasisDeduction, Speaker: types.SpeakerUser, CreatedAt: ancient})
+		edges = append(edges, types.Edge{FromID: "anchor", ToID: depID, Relation: types.RelSupports})
+	}
+	_, vulns := Analyze(claims, edges, "test")
+	var found bool
+	for _, v := range vulns.Items {
+		if v.Type == "load_bearing_vibes" && len(v.ClaimIDs) > 0 && v.ClaimIDs[0] == "anchor" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("anchor at persistent-threshold dependent count should fire even without recent activity")
+	}
+}
+
+// TestLoadBearingVibes_BelowPersistentThresholdDoesNotFire verifies the gap
+// between the recent and persistent thresholds — a claim with several ancient
+// dependents but below the persistent threshold and zero recent dependents
+// should not fire. This is the "implicitly resolved" range: enough dependents
+// that it was used a lot, but not so many that it qualifies as truly
+// foundational, and no current activity to suggest it's still relevant.
+func TestLoadBearingVibes_BelowPersistentThresholdDoesNotFire(t *testing.T) {
+	ancient := time.Now().Add(-2 * HookConversationalWindow)
+	claims := []types.Claim{
+		{ID: "anchor", Text: "moderate-degree vibes", Basis: types.BasisVibes, Speaker: types.SpeakerUser, CreatedAt: ancient},
+	}
+	edges := []types.Edge{}
+	belowThreshold := LoadBearingPersistentThreshold - 1
+	for i := 0; i < belowThreshold; i++ {
+		depID := fmt.Sprintf("dep%d", i)
+		claims = append(claims, types.Claim{ID: depID, Text: depID, Basis: types.BasisDeduction, Speaker: types.SpeakerUser, CreatedAt: ancient})
+		edges = append(edges, types.Edge{FromID: "anchor", ToID: depID, Relation: types.RelSupports})
+	}
+	_, vulns := Analyze(claims, edges, "test")
+	for _, v := range vulns.Items {
+		if v.Type == "load_bearing_vibes" && len(v.ClaimIDs) > 0 && v.ClaimIDs[0] == "anchor" {
+			t.Errorf("anchor below persistent threshold (%d ancient deps, 0 recent) should not fire", belowThreshold)
+		}
+	}
+}
+
 // TestFormatHookFindings_AgeDecay verifies that a priority candidate whose
 // anchor claim is older than HookMaxClaimAge gets filtered out.
 func TestFormatHookFindings_AgeDecay(t *testing.T) {

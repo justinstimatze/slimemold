@@ -242,10 +242,14 @@ func findLoadBearingVibes(claims []types.Claim, edges []types.Edge) []types.Vuln
 		types.BasisAssumption: true,
 	}
 
-	// Conversationally load-bearing: count only dependents created within the
-	// recent window. An anchor claim that supports 10 ancient claims isn't
-	// load-bearing for what's happening right now; one that supports 3 recent
-	// claims is. Zero CreatedAt is treated as recent (legacy/test data).
+	// Hybrid load-bearing: a claim fires if EITHER it has recent activity
+	// (LoadBearingRecentThreshold dependents within HookConversationalWindow)
+	// OR persistent weight (LoadBearingPersistentThreshold total dependents
+	// across all time). The recent-activity branch captures "what's currently
+	// being built on"; the persistent-weight branch ensures genuinely
+	// foundational claims keep surfacing even during dormant stretches when
+	// they aren't getting fresh dependents but the rest of the graph still
+	// rests on them.
 	now := time.Now()
 	recentIDs := make(map[string]bool, len(claims))
 	for _, c := range claims {
@@ -254,20 +258,37 @@ func findLoadBearingVibes(claims []types.Claim, edges []types.Edge) []types.Vuln
 		}
 	}
 
-	// Count how many recent claims depend on each claim.
-	// "A supports B" means A is load-bearing (from_id=A); B (to_id) is the dependent.
-	// "B depends_on A" means A is load-bearing (to_id=A); B (from_id) is the dependent.
-	dependents := make(map[string]int)
+	// Track both: recent dependents (current activity) and total dependents
+	// (persistent weight). "A supports B" → A load-bearing, B dependent (to_id).
+	// "B depends_on A" → A load-bearing, B dependent (from_id).
+	recentDeps := make(map[string]int)
+	totalDeps := make(map[string]int)
 	for _, e := range edges {
 		switch e.Relation {
 		case types.RelSupports:
+			totalDeps[e.FromID]++
 			if recentIDs[e.ToID] {
-				dependents[e.FromID]++
+				recentDeps[e.FromID]++
 			}
 		case types.RelDependsOn:
+			totalDeps[e.ToID]++
 			if recentIDs[e.FromID] {
-				dependents[e.ToID]++
+				recentDeps[e.ToID]++
 			}
+		}
+	}
+
+	// Merge into a single dependents map: take whichever count triggers a fire.
+	// Description shows the larger of (recent, total-if-persistent) so the
+	// finding text reflects how the claim qualified.
+	dependents := make(map[string]int)
+	for id, total := range totalDeps {
+		recent := recentDeps[id]
+		switch {
+		case recent >= LoadBearingRecentThreshold:
+			dependents[id] = recent
+		case total >= LoadBearingPersistentThreshold:
+			dependents[id] = total
 		}
 	}
 
@@ -278,9 +299,6 @@ func findLoadBearingVibes(claims []types.Claim, edges []types.Edge) []types.Vuln
 
 	var vulns []types.Vulnerability
 	for id, deg := range dependents {
-		if deg < 2 {
-			continue
-		}
 		c, ok := claimMap[id]
 		if !ok {
 			continue
@@ -593,14 +611,39 @@ func findFluencyTraps(claims []types.Claim, edges []types.Edge) []types.Vulnerab
 		types.BasisAssumption: 0.5,
 	}
 
-	// Only flag claims that other claims depend on (structural importance)
-	hasDependents := make(map[string]bool)
+	// Hybrid structural importance, same as findLoadBearingVibes: a claim has
+	// "current" structural importance if FluencyTrapRecentThreshold or more
+	// recent claims depend on it, OR FluencyTrapPersistentThreshold or more
+	// total claims depend on it across all time. Recent activity catches
+	// what's currently being built; persistent weight catches genuinely
+	// foundational claims that have gone dormant but still underpin a lot.
+	now := time.Now()
+	recentIDs := make(map[string]bool, len(claims))
+	for _, c := range claims {
+		if c.CreatedAt.IsZero() || now.Sub(c.CreatedAt) <= HookConversationalWindow {
+			recentIDs[c.ID] = true
+		}
+	}
+	recentDeps := make(map[string]int)
+	totalDeps := make(map[string]int)
 	for _, e := range edges {
 		switch e.Relation {
 		case types.RelSupports:
-			hasDependents[e.FromID] = true
+			totalDeps[e.FromID]++
+			if recentIDs[e.ToID] {
+				recentDeps[e.FromID]++
+			}
 		case types.RelDependsOn:
-			hasDependents[e.ToID] = true
+			totalDeps[e.ToID]++
+			if recentIDs[e.FromID] {
+				recentDeps[e.ToID]++
+			}
+		}
+	}
+	hasDependents := make(map[string]bool)
+	for id, total := range totalDeps {
+		if recentDeps[id] >= FluencyTrapRecentThreshold || total >= FluencyTrapPersistentThreshold {
+			hasDependents[id] = true
 		}
 	}
 
@@ -1020,15 +1063,42 @@ const (
 	HookColdStartMinClaims = 6
 
 	// HookConversationalWindow defines what counts as "current conversation"
-	// for the load-bearing detectors. A claim is conversationally load-bearing
-	// only if recent claims (created within this window) depend on it. This
-	// shifts the load-bearing definition from "graph-historical weight" to
-	// "what's currently being built on" — a thoughtful collaborator surfaces
-	// claims the conversation is actively resting on, not whatever has
-	// the most cross-session graph centrality. Two hours captures a typical
-	// working session; claims with zero CreatedAt (tests, legacy) are
-	// treated as recent so the change is non-breaking.
-	HookConversationalWindow = 2 * time.Hour
+	// for the load-bearing / fluency / centrality detectors. A claim is
+	// conversationally load-bearing only if recent claims depend on it; a
+	// claim is a current bottleneck only if it sits on paths through the
+	// recent subgraph. This shifts these detectors from "graph-historical
+	// weight" to "what's currently being built on" — what a thoughtful
+	// collaborator would surface, not what has the most cross-session
+	// graph centrality.
+	//
+	// 6 hours captures a typical working session including breaks. Tighter
+	// windows (e.g. 2h) drop too many still-relevant claims when a session
+	// is long; wider windows (24h+) let yesterday's stale stuff dominate.
+	// Claims with zero CreatedAt (tests, legacy) are treated as recent so
+	// the change is non-breaking.
+	HookConversationalWindow = 6 * time.Hour
+
+	// LoadBearingRecentThreshold and LoadBearingPersistentThreshold define the
+	// hybrid load-bearing criterion. A claim fires as load-bearing if EITHER
+	// it has Recent-Threshold or more dependents created within the
+	// HookConversationalWindow (current activity), OR it has Persistent-
+	// Threshold or more total dependents across all time (persistent weight).
+	//
+	// Recent threshold matches the original detector's bar (2+). Persistent
+	// threshold is calibrated against the actual graph distribution: top ~15
+	// claims by dependent count meet 8+, so this branch surfaces only truly
+	// foundational unverified claims, not every old claim with a few stale
+	// supports. Differential cooldown (TODO) should ensure persistent-only
+	// firings don't recur daily — they're meant as occasional reminders.
+	LoadBearingRecentThreshold     = 2
+	LoadBearingPersistentThreshold = 8
+
+	// FluencyTrapRecentThreshold and FluencyTrapPersistentThreshold use the
+	// same hybrid logic. The original detector required ≥1 dependent (any
+	// structural importance); the hybrid keeps that bar for recent activity
+	// while requiring genuine persistence (8+) for the dormant-callback path.
+	FluencyTrapRecentThreshold     = 1
+	FluencyTrapPersistentThreshold = 8
 )
 
 // FormatHookFindings produces a terse, directive summary for hook injection.
