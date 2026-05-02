@@ -1007,6 +1007,38 @@ func TestFormatHookFindings_DifferentialCooldown(t *testing.T) {
 	}
 }
 
+// TestFormatHookFindings_InventoryFlagPrioritized verifies that within the
+// same detector-priority tier, findings on claims with Moore inventory flags
+// (grand_significance, sentience_claim, etc.) are surfaced ahead of findings
+// on neutral claims. The inventory flags are explicit risk markers — a
+// load-bearing vibes claim that's also marked grand_significance is
+// structurally riskier than a neutral one and should win the priority slot.
+func TestFormatHookFindings_InventoryFlagPrioritized(t *testing.T) {
+	now := time.Now()
+	claims := []types.Claim{
+		{ID: "neutral-anchor", Text: "neutral load-bearing", Basis: types.BasisVibes, Speaker: types.SpeakerUser, CreatedAt: now},
+		{ID: "flagged-anchor", Text: "flagged load-bearing", Basis: types.BasisVibes, Speaker: types.SpeakerUser, CreatedAt: now, GrandSignificance: true},
+		{ID: "f1", Text: "f1", Basis: types.BasisDeduction, Speaker: types.SpeakerUser, CreatedAt: now},
+		{ID: "f2", Text: "f2", Basis: types.BasisDeduction, Speaker: types.SpeakerUser, CreatedAt: now},
+		{ID: "f3", Text: "f3", Basis: types.BasisDeduction, Speaker: types.SpeakerUser, CreatedAt: now},
+		{ID: "f4", Text: "f4", Basis: types.BasisDeduction, Speaker: types.SpeakerUser, CreatedAt: now},
+	}
+	topo := &types.Topology{Project: "test", ClaimCount: len(claims)}
+	// Both findings are critical load-bearing — same detector priority.
+	// Neutral one listed first to ensure ordering reflects flag, not position.
+	vulns := &types.Vulnerabilities{
+		Project: "test",
+		Items: []types.Vulnerability{
+			{Severity: "critical", Type: "load_bearing_vibes", Description: `Load-bearing vibes: "neutral" supports 3 other claims (never challenged: true)`, ClaimIDs: []string{"neutral-anchor"}},
+			{Severity: "critical", Type: "load_bearing_vibes", Description: `Load-bearing vibes: "flagged" supports 3 other claims (never challenged: true)`, ClaimIDs: []string{"flagged-anchor"}},
+		},
+	}
+	_, pickedID, _, _ := FormatHookFindings(topo, vulns, claims, nil, 0, 0, 5)
+	if pickedID != "flagged-anchor" {
+		t.Errorf("inventory-flagged claim should win priority slot; got pickedID=%q want flagged-anchor", pickedID)
+	}
+}
+
 // TestFormatHookFindings_AgeDecay verifies that a priority candidate whose
 // anchor claim is older than HookMaxClaimAge gets filtered out.
 func TestFormatHookFindings_AgeDecay(t *testing.T) {

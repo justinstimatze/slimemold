@@ -1263,8 +1263,22 @@ func FormatHookFindings(topo *types.Topology, vulns *types.Vulnerabilities, clai
 		return "", "", "", false
 	}
 
+	// Sort by detector priority, then within priority prefer findings on
+	// claims with any Moore inventory flag set. The inventory flags
+	// (grand_significance, sentience_claim, dismisses_counterevidence, etc.)
+	// are explicit risk markers extracted by the LLM annotator — a load-
+	// bearing vibes claim that's also marked grand_significance is
+	// structurally riskier than a neutral one and should win the priority slot.
 	sort.SliceStable(findings, func(i, j int) bool {
-		return findings[i].priority < findings[j].priority
+		if findings[i].priority != findings[j].priority {
+			return findings[i].priority < findings[j].priority
+		}
+		iFlagged := vulnerabilityHasInventoryFlag(findings[i].item, claimByID)
+		jFlagged := vulnerabilityHasInventoryFlag(findings[j].item, claimByID)
+		if iFlagged != jFlagged {
+			return iFlagged // flagged claims first within same priority
+		}
+		return false // stable: preserve detector order for equal-priority unflagged
 	})
 
 	// Pick a phrasing for the top finding. Phrasings are rotated per-claim
@@ -1299,6 +1313,23 @@ func FormatHookFindings(topo *types.Topology, vulns *types.Vulnerabilities, clai
 	}
 
 	return strings.TrimRight(b.String(), "\n"), pickedClaimID, pickedFindingType, top.FiredViaPersistent
+}
+
+// vulnerabilityHasInventoryFlag reports whether the anchor claim of a
+// vulnerability has any Moore inventory flag set — used as a secondary
+// priority criterion so flagged claims surface ahead of neutral ones at
+// the same detector-priority tier.
+func vulnerabilityHasInventoryFlag(v types.Vulnerability, claimByID map[string]*types.Claim) bool {
+	if len(v.ClaimIDs) == 0 {
+		return false
+	}
+	c, ok := claimByID[v.ClaimIDs[0]]
+	if !ok {
+		return false
+	}
+	return c.GrandSignificance || c.UniqueConnection || c.DismissesCounterevidence ||
+		c.AbilityOverstatement || c.SentienceClaim || c.RelationalDrift ||
+		c.ConsequentialAction
 }
 
 // skipAnchor reports whether a vulnerability should be filtered from the
