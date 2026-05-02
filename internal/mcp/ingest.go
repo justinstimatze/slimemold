@@ -57,7 +57,17 @@ import (
 // (general factual claims about a named thing). Bumping invalidates
 // cached extractions so the next ingest re-runs against the new prompt
 // and the noise floor drop can be measured directly.
-const documentPromptVersion = 8
+//
+// v9: 5-run validation of v8 showed the precision paragraph alone was
+// approximately neutral (definition stddev 26% vs v7's 28%). The leak
+// was the decision-tree rule itself: it ran *before* convention and
+// included "we use 'X' to refer to Y" as an example, which sounds
+// indistinguishable from a convention move ("we track work in Z"). v9
+// swaps the order so convention is checked first (pos 3) and definition
+// second (pos 4), and drops the "refer to" example from the definition
+// rule. This way convention claims short-circuit before reaching the
+// definition rule at all.
+const documentPromptVersion = 9
 
 // DocumentPromptVersion exposes the version constant so outside packages
 // (e.g. the eval CLI) can label snapshots by prompt identity.

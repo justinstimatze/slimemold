@@ -14,8 +14,8 @@ For each claim, determine:
 - basis: how the claim was established. Use the DECISION TREE below:
   1. Does the claim cite a specific paper, author, study, or named finding? → "research"
   2. Does the claim describe first-person observation ("I saw", "we tested", "I noticed")? → "empirical"
-  3. Does the claim explicitly define a term or concept ("X is defined as Y", "by 'Z' we mean...", "we use 'X' to refer to Y")? → "definition"
-  4. Does the claim declare a project/organization policy or adopted practice ("this project uses X", "agents must Y", "we track work in Z")? → "convention"
+  3. Does the claim declare a project/organization policy or adopted practice ("this project uses X", "agents must Y", "we track work in Z")? → "convention"
+  4. Does the claim explicitly define a term or concept ("X is defined as Y", "by 'Z' we mean...")? → "definition"
   5. Does the claim follow explicit logical steps from stated premises? → "deduction"
   6. Does the claim reason by comparison to another domain? → "analogy"
   7. Was the claim stated by the assistant? → "llm_output"
