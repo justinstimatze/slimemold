@@ -122,6 +122,14 @@ func singleRun(apiKey, model, fixturePath, project string) (metrics, error) {
 	edges, _ := db.GetEdgesByProject(project)
 	topo, vulns := analysis.Analyze(claims, edges, project)
 
+	// claim-id → claim-text lookup so finding stability can be compared by
+	// canonical text rather than UUIDs (which are regenerated per run and
+	// would always intersect to zero).
+	claimText := make(map[string]string, len(claims))
+	for _, c := range claims {
+		claimText[c.ID] = c.Text
+	}
+
 	m := metrics{
 		Claims:          len(claims),
 		Edges:           len(edges),
@@ -147,12 +155,20 @@ func singleRun(apiKey, model, fixturePath, project string) (metrics, error) {
 		case "unchallenged_chain":
 			m.UnchallChain++
 		}
-		// Track claim IDs for findings whose stability across runs is the
-		// actually-informative metric (count alone is too coarse).
+		// Track canonical claim text for findings whose stability across
+		// runs is the actually-informative metric (count alone is too
+		// coarse). Field name kept as FindingClaimIDs but values are now
+		// truncated claim text — set-intersection across runs is meaningful
+		// because text is reproducible (modulo small phrasing variance);
+		// UUIDs are not.
 		switch v.Type {
 		case "bottleneck", "load_bearing_vibes", "unchallenged_chain", "fluency_trap":
 			if len(v.ClaimIDs) > 0 {
-				m.FindingClaimIDs[v.Type] = append(m.FindingClaimIDs[v.Type], v.ClaimIDs[0])
+				text := claimText[v.ClaimIDs[0]]
+				if len(text) > 80 {
+					text = text[:80]
+				}
+				m.FindingClaimIDs[v.Type] = append(m.FindingClaimIDs[v.Type], text)
 			}
 		}
 	}
