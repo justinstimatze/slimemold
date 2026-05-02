@@ -67,6 +67,29 @@ ANTHROPIC_API_KEY=... SLIMEMOLD_INVENTORY_ONLINE=1 go test -tags=online \
   ./internal/analysis/ -run TestInventoryOnlineAccuracy -v
 ```
 
+## Extraction-prompt change discipline
+
+When editing extraction prompts (`internal/extract/prompt.go`,
+`documentPromptVersion` in `internal/mcp/ingest.go`), run the variance
+harness before merging so the change can be evaluated against the
+measured noise floor instead of n=1 vibes:
+
+```bash
+ANTHROPIC_API_KEY=... go run benchmarks/variance/run.go -runs 3
+```
+
+Compare per-metric deltas against the floor in
+`benchmarks/variance/README.md`. A metric is *real signal* when the
+delta exceeds ~2σ for that metric; otherwise it's within noise.
+
+- Routine mode: `-runs 3` (~$1.50, ~10-15 min) — sufficient pre-merge check
+- Gold standard: `-runs 5` (~$2.50, ~15-25 min) — annual / pre-major-release / when updating the floor itself
+
+The floor lives in `benchmarks/variance/README.md` and gets updated when
+a new prompt version meaningfully shifts it. Don't bury extraction-
+prompt changes that move metrics beyond noise without saying so in
+the commit message.
+
 ## Dependencies
 
 - mark3labs/mcp-go — MCP server

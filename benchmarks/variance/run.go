@@ -38,17 +38,24 @@ import (
 
 // metrics captures the per-run measurements we aggregate across runs.
 type metrics struct {
-	Claims         int
-	Edges          int
-	BasisCounts    map[types.Basis]int
-	CriticalFinds  int
-	WarningFinds   int
-	InfoFinds      int
-	LoadBearing    int
-	Bottleneck     int
-	UnchallChain   int
-	OrphanCount    int
-	MaxChainDepth  int
+	Claims        int
+	Edges         int
+	BasisCounts   map[types.Basis]int
+	CriticalFinds int
+	WarningFinds  int
+	InfoFinds     int
+	LoadBearing   int
+	Bottleneck    int
+	UnchallChain  int
+	OrphanCount   int
+	MaxChainDepth int
+
+	// FindingClaimIDs records anchor claim IDs per finding type per run, so
+	// across-run comparison can answer "are the same claims surfaced?" not
+	// just "is the count stable?" Especially relevant for bottleneck where
+	// the count is capped at 5 — the count tells us nothing; the identities
+	// tell us whether the top-N is stable or churns.
+	FindingClaimIDs map[string][]string
 }
 
 func main() {
@@ -90,6 +97,7 @@ func main() {
 
 	fmt.Println()
 	printAggregates(allMetrics)
+	printFindingStability(allMetrics)
 }
 
 func singleRun(apiKey, model, fixturePath, project string) (metrics, error) {
@@ -115,11 +123,12 @@ func singleRun(apiKey, model, fixturePath, project string) (metrics, error) {
 	topo, vulns := analysis.Analyze(claims, edges, project)
 
 	m := metrics{
-		Claims:        len(claims),
-		Edges:         len(edges),
-		BasisCounts:   topo.BasisCounts,
-		MaxChainDepth: topo.MaxDepth,
-		OrphanCount:   len(topo.Orphans),
+		Claims:          len(claims),
+		Edges:           len(edges),
+		BasisCounts:     topo.BasisCounts,
+		MaxChainDepth:   topo.MaxDepth,
+		OrphanCount:     len(topo.Orphans),
+		FindingClaimIDs: make(map[string][]string),
 	}
 	for _, v := range vulns.Items {
 		switch v.Severity {
@@ -137,6 +146,14 @@ func singleRun(apiKey, model, fixturePath, project string) (metrics, error) {
 			m.Bottleneck++
 		case "unchallenged_chain":
 			m.UnchallChain++
+		}
+		// Track claim IDs for findings whose stability across runs is the
+		// actually-informative metric (count alone is too coarse).
+		switch v.Type {
+		case "bottleneck", "load_bearing_vibes", "unchallenged_chain", "fluency_trap":
+			if len(v.ClaimIDs) > 0 {
+				m.FindingClaimIDs[v.Type] = append(m.FindingClaimIDs[v.Type], v.ClaimIDs[0])
+			}
 		}
 	}
 	return m, nil
@@ -173,6 +190,59 @@ func extract_(ms []metrics, get func(metrics) int) []int {
 		out[i] = get(m)
 	}
 	return out
+}
+
+// printFindingStability shows, per finding type, the cross-run intersection
+// of claim IDs. A finding type is "stable" when the same claim IDs surface
+// across runs (intersection ≈ per-run count). It "churns" when each run
+// surfaces different claims (intersection much smaller than per-run count) —
+// which means the capped count is hiding real variance, e.g., bottleneck's
+// hardcoded cap at 5 makes count alone uninformative.
+func printFindingStability(ms []metrics) {
+	if len(ms) == 0 {
+		return
+	}
+	fmt.Println("\n=== Finding stability across runs (claim ID intersection) ===")
+	fmt.Println("type                 per-run-mean   intersection   stable?")
+	types := []string{"bottleneck", "load_bearing_vibes", "unchallenged_chain", "fluency_trap"}
+	for _, t := range types {
+		// Intersect claim ID sets across runs.
+		var inter map[string]bool
+		var totalCount int
+		for i, m := range ms {
+			ids := m.FindingClaimIDs[t]
+			totalCount += len(ids)
+			set := make(map[string]bool, len(ids))
+			for _, id := range ids {
+				set[id] = true
+			}
+			if i == 0 {
+				inter = set
+				continue
+			}
+			next := make(map[string]bool)
+			for id := range inter {
+				if set[id] {
+					next[id] = true
+				}
+			}
+			inter = next
+		}
+		mean := float64(totalCount) / float64(len(ms))
+		interN := len(inter)
+		var stable string
+		switch {
+		case mean == 0:
+			stable = "n/a (no fires)"
+		case float64(interN)/mean > 0.7:
+			stable = "stable"
+		case float64(interN)/mean > 0.3:
+			stable = "partially stable"
+		default:
+			stable = "churns (count is misleading)"
+		}
+		fmt.Printf("%-20s %12.1f %14d   %s\n", t, mean, interN, stable)
+	}
 }
 
 func printAggregates(ms []metrics) {
