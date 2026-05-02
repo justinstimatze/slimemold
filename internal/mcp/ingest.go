@@ -58,16 +58,18 @@ import (
 // cached extractions so the next ingest re-runs against the new prompt
 // and the noise floor drop can be measured directly.
 //
-// v9: 5-run validation of v8 showed the precision paragraph alone was
-// approximately neutral (definition stddev 26% vs v7's 28%). The leak
-// was the decision-tree rule itself: it ran *before* convention and
-// included "we use 'X' to refer to Y" as an example, which sounds
-// indistinguishable from a convention move ("we track work in Z"). v9
-// swaps the order so convention is checked first (pos 3) and definition
-// second (pos 4), and drops the "refer to" example from the definition
-// rule. This way convention claims short-circuit before reaching the
-// definition rule at all.
-const documentPromptVersion = 9
+// v9: tried swapping convention-before-definition and dropping the
+// "we use 'X' to refer to Y" example. 5-run variance against the same
+// README fixture made things worse: definition mean 30.0→37.0,
+// stddev 7.72→10.39 (still 28%, no better than v7). Convention firings
+// stayed at 1.0 ± 0.0 across all 5 runs, suggesting the README has
+// almost no stipulative-policy claims at all and the swap just left
+// definition more permissive without redirecting anything. Reverted.
+//
+// v10: revert to v8's prompt content. Bumping the version (rather than
+// just reverting in place) so any v9-cached extractions written during
+// the failed validation aren't served on subsequent ingests.
+const documentPromptVersion = 10
 
 // DocumentPromptVersion exposes the version constant so outside packages
 // (e.g. the eval CLI) can label snapshots by prompt identity.
