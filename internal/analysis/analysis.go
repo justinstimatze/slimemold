@@ -377,7 +377,19 @@ func findBottlenecks(claims []types.Claim, edges []types.Edge) []types.Vulnerabi
 		rev[e.ToID] = append(rev[e.ToID], e.FromID)
 	}
 
-	// Approximate betweenness centrality via BFS from each node
+	// Approximate betweenness centrality via BFS from each node.
+	//
+	// "Approximate" here means: edges are traversed undirected — both
+	// `fwd[v]` and `rev[v]` are explored at each step (see slices.Concat
+	// calls below). A directed Brandes' algorithm would treat depends_on
+	// and supports asymmetrically. We don't, because the question this
+	// detector answers is "many reasoning paths flow through this claim,"
+	// which is structurally bidirectional: a claim that's depended on by
+	// many AND that depends on many is equally a topological hub. The
+	// undirected reading also avoids extractor-direction-noise dominating
+	// the score (the LLM's depends_on/supports direction is the noisiest
+	// edge attribute). Don't "fix" this by adding directional traversal
+	// without first showing the directed score is what's wanted.
 	centrality := make(map[string]float64)
 	ids := make([]string, len(claims))
 	for i, c := range claims {
@@ -454,14 +466,22 @@ func findBottlenecks(claims []types.Claim, edges []types.Edge) []types.Vulnerabi
 		return nil
 	}
 
-	var sum, sumSq float64
+	// Two-pass mean/variance: the textbook stable form. The single-pass
+	// `sumSq/n - mean*mean` form is faster but suffers catastrophic
+	// cancellation when sumSq/n and mean*mean are close — irrelevant for
+	// today's centrality ranges but fragile if the metric ever shifts.
+	var sum float64
 	for _, s := range sorted {
 		sum += s.score
-		sumSq += s.score * s.score
 	}
 	n := float64(len(sorted))
 	mean := sum / n
-	variance := sumSq/n - mean*mean
+	var sumSqDev float64
+	for _, s := range sorted {
+		d := s.score - mean
+		sumSqDev += d * d
+	}
+	variance := sumSqDev / n
 	stddev := 0.0
 	if variance > 0 {
 		stddev = math.Sqrt(variance)
@@ -1232,6 +1252,13 @@ const (
 // finding or be silent — it is not allowed to manufacture one because the
 // slot exists.
 func FormatHookFindings(topo *types.Topology, vulns *types.Vulnerabilities, claims []types.Claim, recentFires map[string]time.Time, newClaims, newEdges, maxFindings int) (string, string, string, bool) {
+	// Defensive: maxFindings < 1 would underflow the secondary-findings
+	// slice expression `remaining[:maxFindings-1]` and panic. Today's only
+	// caller passes 5; this guard makes the API safe for future callers
+	// that might want to suppress secondary findings entirely.
+	if maxFindings < 1 {
+		maxFindings = 1
+	}
 	// Cold-start gate: below a minimum graph size, load-bearing analysis is
 	// dominated by small-sample artifacts. Suppress the hook entirely.
 	if len(claims) < HookColdStartMinClaims {
@@ -1365,6 +1392,31 @@ func vulnerabilityHasInventoryFlag(v types.Vulnerability, claimByID map[string]*
 // Differential cooldown: persistent-only findings (FiredViaPersistent=true)
 // use HookPersistentCooldown so they surface as occasional reminders rather
 // than daily noise; everything else uses HookCooldownWindow.
+//
+// The cooldown is keyed off the *current* candidate's FiredViaPersistent
+// flag, NOT the prior fire's branch. The four-quadrant behavior:
+//
+//  1. prior=persistent, current=persistent: 7d cooldown applies. Skip if
+//     prior fire was within 7d. Reminders stay weekly, not daily.
+//  2. prior=persistent, current=recent: 24h cooldown applies. Fires even
+//     if a persistent reminder showed up 5 days ago — fresh recent activity
+//     is real signal that justifies surfacing again.
+//  3. prior=recent, current=persistent: 7d cooldown applies. A recent fire
+//     within the last week suppresses any persistent reminder; we don't
+//     pile a "still load-bearing" reminder on top of a fresh recent fire.
+//  4. prior=recent, current=recent: 24h cooldown applies. Standard
+//     recurring activity; fires again after 24h of new dependents.
+//
+// This is why LogHookFire doesn't need to record the branch — the prior
+// fire's branch is not consulted on the next firing decision.
+//
+// Age decay: anchors older than HookMaxClaimAge are filtered for
+// recent-branch findings (stale anchors otherwise dominate the priority
+// slot). The persistent branch bypasses this — it exists specifically
+// to surface foundational older claims as periodic reminders, and the
+// 7d cooldown already prevents them from being spammy. Without the
+// bypass, persistent findings collapse to "burst pattern within the
+// last 7d" and the branch's foundational-claim purpose is dead.
 func skipAnchor(v types.Vulnerability, claimByID map[string]*types.Claim, recentFires map[string]time.Time, now time.Time) bool {
 	if len(v.ClaimIDs) == 0 {
 		return false
@@ -1379,9 +1431,13 @@ func skipAnchor(v types.Vulnerability, claimByID map[string]*types.Claim, recent
 			return true
 		}
 	}
-	if c, ok := claimByID[anchor]; ok {
-		if !c.CreatedAt.IsZero() && now.Sub(c.CreatedAt) > HookMaxClaimAge {
-			return true
+	// Age cap applies only to recent-branch findings. Persistent-branch
+	// findings (FiredViaPersistent=true) are exempt — see doc comment.
+	if !v.FiredViaPersistent {
+		if c, ok := claimByID[anchor]; ok {
+			if !c.CreatedAt.IsZero() && now.Sub(c.CreatedAt) > HookMaxClaimAge {
+				return true
+			}
 		}
 	}
 	return false

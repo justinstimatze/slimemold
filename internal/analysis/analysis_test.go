@@ -1158,6 +1158,60 @@ func TestFormatHookFindings_AgeDecay(t *testing.T) {
 	}
 }
 
+// TestFormatHookFindings_PersistentBypassAgeCap verifies the asymmetric
+// age-cap behavior: recent-branch findings are filtered when their anchor
+// is older than HookMaxClaimAge, but persistent-branch findings
+// (FiredViaPersistent=true) bypass that filter so foundational old claims
+// can still surface as periodic reminders.
+//
+// Without the bypass, the persistent branch's "truly foundational unverified
+// claims" purpose collapses to "burst pattern within 7d only" — a foundational
+// claim from 30 days ago with 8+ historical dependents would never surface.
+func TestFormatHookFindings_PersistentBypassAgeCap(t *testing.T) {
+	// Anchor is 2× HookMaxClaimAge old; all dependents are also old (so the
+	// persistent branch fires, not the recent branch).
+	veryOld := time.Now().Add(-2 * HookMaxClaimAge)
+	anchorID := "foundational-old"
+	claims := []types.Claim{
+		{ID: anchorID, Text: "old foundational vibes", Basis: types.BasisVibes, Speaker: types.SpeakerUser, CreatedAt: veryOld},
+	}
+	var edges []types.Edge
+	// LoadBearingPersistentThreshold dependents, spread across
+	// StressTestedSessionThreshold-1 sessions so the stress-test suppression
+	// doesn't eat the finding (we want the foundational-but-unverified path,
+	// not the stress-tested path).
+	for i := 0; i < LoadBearingPersistentThreshold; i++ {
+		depID := fmt.Sprintf("dep%d", i)
+		session := fmt.Sprintf("s%d", i%(StressTestedSessionThreshold-1))
+		claims = append(claims, types.Claim{ID: depID, Text: depID, Basis: types.BasisDeduction, Speaker: types.SpeakerUser, CreatedAt: veryOld, SessionID: session})
+		edges = append(edges, types.Edge{FromID: anchorID, ToID: depID, Relation: types.RelSupports})
+	}
+
+	topo, vulns := Analyze(claims, edges, "test")
+	// Confirm the analyzer produced a persistent-branch finding.
+	var found bool
+	for _, v := range vulns.Items {
+		if v.Type == "load_bearing_vibes" && len(v.ClaimIDs) > 0 && v.ClaimIDs[0] == anchorID {
+			if !v.FiredViaPersistent {
+				t.Fatalf("expected FiredViaPersistent=true for %q with %d ancient deps and zero recent; got false", anchorID, LoadBearingPersistentThreshold)
+			}
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("analyzer did not produce a load_bearing_vibes finding for %q", anchorID)
+	}
+
+	// Now confirm FormatHookFindings does NOT filter it out via age cap.
+	_, pickedID, _, firedViaPersistent := FormatHookFindings(topo, vulns, claims, nil, 0, 0, 5)
+	if pickedID != anchorID {
+		t.Errorf("persistent-branch finding on old anchor must bypass HookMaxClaimAge; got pickedID=%q want %q", pickedID, anchorID)
+	}
+	if !firedViaPersistent {
+		t.Error("returned firedViaPersistent should be true for the persistent-branch pick")
+	}
+}
+
 // TestStrengthCount_SeparateFromInfo verifies that bright/strength findings
 // are counted in StrengthCount and not double-counted in InfoCount.
 func TestStrengthCount_SeparateFromInfo(t *testing.T) {

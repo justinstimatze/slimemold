@@ -619,6 +619,12 @@ func (d *DB) RecentHookFireTimes(project string, since time.Time) (map[string]ti
 		}
 		t, err := time.Parse(time.RFC3339, firedAtStr)
 		if err != nil {
+			// Malformed timestamp in hook_fire_log makes this row invisible
+			// to the cooldown — meaning the next fire on this (claim, type)
+			// won't be suppressed even if it should be. Log so it's not
+			// silent if it ever happens; we still skip the row because we
+			// can't apply a cooldown without a valid timestamp.
+			fmt.Fprintf(os.Stderr, "slimemold: hook_fire_log row %q|%q has malformed fired_at %q: %v\n", claimID, findingType, firedAtStr, err)
 			continue
 		}
 		out[claimID+"|"+findingType] = t
