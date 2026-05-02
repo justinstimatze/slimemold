@@ -106,9 +106,27 @@ specifically. Cross-version comparisons on definition share are unreliable;
 the README appendix's hand-waving about definition swings (10 to 48
 across v4-v7) was right that noise dominates for that metric.
 
-Action: targeted improvement to the basis classifier's definition
-detection — likely a prompt-engineering issue, possibly a fundamental
-ambiguity (definition vs convention vs deduction in instructional prose).
+**Update (v8 / v9):** two prompt-engineering attempts to reduce this.
+
+| version | change | definition mean | stddev | stddev/mean |
+|---|---|---|---|---|
+| v7 baseline | — | 29.2 | 8.13 | 28% |
+| v8 | added "definition declares meaning, convention declares practice" precision paragraph; added inline examples | 30.0 | 7.72 | 26% |
+| v9 (reverted) | swapped convention before definition in decision tree; dropped "we use 'X' to refer to Y" example | 37.0 | 10.39 | 28% |
+
+v8 was approximately neutral. v9 regressed — putting convention first
+left the definition rule more permissive without redirecting anything
+to convention (convention firings stayed at 1.0 ± 0.0 across all 5
+runs, suggesting the README simply has very little stipulative-policy
+content). v9 was reverted; the current state (`documentPromptVersion=10`)
+is v8's prompt content.
+
+Lesson: the ~28% definition floor is not budging within wording-tweak
+range. Reducing it likely requires a structural change — different
+model, ensemble extraction across N runs, or a non-prompt rule (e.g.
+post-extraction reclassification of definition-vs-vibes claims using
+a separate pass). Logged as a known limitation rather than an
+open prompt-engineering task.
 
 ### Bottleneck and unchallenged_chain counts don't sample-vary
 

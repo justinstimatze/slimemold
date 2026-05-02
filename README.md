@@ -862,14 +862,30 @@ Four captures across four prompt versions:
 
 The dominant story across these four runs is that **single-run-per-
 version is not enough to attribute changes to anything**. Definition
-share has now varied from 10 to 48 across four runs of essentially
-the same README under similar prompts — almost a 5× range. Edge
-count dropped 21% from v6 to v7 despite adding only one boolean
-field plus one prompt section. With n=1 per version, any prompt-
-attributable signal is indistinguishable from sampling noise. We
-still have not run the 5–10-runs-per-version experiment that would
-quantify the noise floor (~$3 in tokens). Until we do, treat any
-single number here as one observation, not an estimate.
+share varied from 10 to 48 across four runs of essentially the same
+README under similar prompts — almost a 5× range. Edge count dropped
+21% from v6 to v7 despite adding only one boolean field plus one
+prompt section. With n=1 per version, any prompt-attributable signal
+is indistinguishable from sampling noise.
+
+**Noise floor, characterized.** We then ran the 5-runs-per-version
+experiment we had been deferring (`benchmarks/variance/run.go`).
+Definition basis at this README under three prompt versions:
+
+| version | definition mean | stddev | stddev / mean |
+|---|---|---|---|
+| v7 | 29.2 | 8.13 | 28% |
+| v8 (added definition-vs-convention precision paragraph) | 30.0 | 7.72 | 26% |
+| v9 (swapped convention before definition; reverted) | 37.0 | 10.39 | 28% |
+
+The 10-to-48 range across the single-run table above is consistent
+with that ~28% per-extraction floor — the per-run draw really does
+swing across that range. The two prompt edits we tested within v8/v9
+did not move the floor. Reducing it likely requires a more
+substantial change (different model, ensemble extraction, structural
+rule) rather than further wording tweaks. The per-metric noise table
+across this README, the Sokal fixture, and the Marinetti fixture
+lives in `benchmarks/variance/README.md`.
 
 What v7 did demonstrate: the new `consequential_action` flag
 **fires** on real text, producing two warning-level findings. Both
@@ -894,8 +910,10 @@ behavioral-contract path, and the architectural claims about how
 slimemold works are the densest connection points. Those
 invariants are what we'd expect to hold across noise; they do.
 
-(Numbers captured under extraction prompt version 7 with model
-`claude-sonnet-4-6`. Sampling variance has not been characterized;
-treat each row of the comparison table as one observation each.)
+(Single-run audit table captured under extraction prompt versions
+4–7 with model `claude-sonnet-4-6`; treat each row as one observation
+each. Sampling variance was characterized after the fact — see the
+noise-floor table above. Current prompt content corresponds to v8
+under `documentPromptVersion=10` after a v9 revert.)
 
 </details>
