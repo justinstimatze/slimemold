@@ -46,7 +46,18 @@ import (
 // disproportionate to demonstrated expertise" — was the one signal not
 // captured by the existing six Moore flags. Old cached extractions
 // don't carry the field; bumping forces re-extraction so it's populated.
-const documentPromptVersion = 7
+//
+// v8: tightened "definition" basis classifier after the variance harness
+// surfaced 22-62% noise on definition counts across README and Sokal
+// fixtures (Marinetti has no definitional content so wasn't a signal).
+// The decision-tree rule for definition got example phrasings ("X is
+// defined as Y", "by 'Z' we mean..."); a new "Additional precision"
+// paragraph distinguishes definition (declares what a term *means*)
+// from convention (declares what we *do*) and from vibes/research
+// (general factual claims about a named thing). Bumping invalidates
+// cached extractions so the next ingest re-runs against the new prompt
+// and the noise floor drop can be measured directly.
+const documentPromptVersion = 8
 
 // DocumentPromptVersion exposes the version constant so outside packages
 // (e.g. the eval CLI) can label snapshots by prompt identity.

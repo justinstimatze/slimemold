@@ -14,7 +14,7 @@ For each claim, determine:
 - basis: how the claim was established. Use the DECISION TREE below:
   1. Does the claim cite a specific paper, author, study, or named finding? → "research"
   2. Does the claim describe first-person observation ("I saw", "we tested", "I noticed")? → "empirical"
-  3. Does the claim explicitly define a term or concept? → "definition"
+  3. Does the claim explicitly define a term or concept ("X is defined as Y", "by 'Z' we mean...", "we use 'X' to refer to Y")? → "definition"
   4. Does the claim declare a project/organization policy or adopted practice ("this project uses X", "agents must Y", "we track work in Z")? → "convention"
   5. Does the claim follow explicit logical steps from stated premises? → "deduction"
   6. Does the claim reason by comparison to another domain? → "analogy"
@@ -71,6 +71,7 @@ Additional precision:
 - "deduction" requires explicit logical steps: "if A then B, A, therefore B." Two sequential assertions are NOT deduction.
 - "empirical" requires first-person observation: "I tried X and saw Y".
 - "convention" is for stipulative practice/policy by a named actor. Look for phrasing like "this project uses", "we track", "agents should", "the team's convention is", "our workflow is". It is NOT for general factual claims about the world; only for choices declared as adopted practice.
+- "definition" is for explicit definitional / stipulative semantics — naming what something means within the discourse. Look for "X is defined as", "by Y we mean", "X refers to", explicit definitional moves. NOT for general factual claims about a named thing ("X is widely used" is vibes/research, not definition). NOT for practice/policy choices ("we use X for Y") — that's convention. Distinction: definition declares what a term *means*; convention declares what we *do*.
 
 MOORE ET AL. 2026 INVENTORY FLAGS — six boolean codes drawn from Moore, J. et al. (2026), "Characterizing Delusional Spirals through Human-LLM Chat Logs" (FAccT '26, arXiv:2603.16567). They mark rhetorical moves that the paper found cluster around delusional spirals (sycophancy >80% saturation, sentience misrepresentation 21.2%, relational bonding universal across all 19 study participants).
 
