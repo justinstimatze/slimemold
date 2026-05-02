@@ -82,6 +82,90 @@ func TestCloseSupersededClaims(t *testing.T) {
 	}
 }
 
+// TestCloseSupersededClaims_DirectionCheck verifies the safety property of
+// the cull: an OLDER claim contradicting a NEWER one must NOT close the
+// newer one. The cull is asymmetric — only newer-supersedes-older retires
+// claims. If the SQL's `>` ever flipped to `<` or got dropped, this test
+// would catch it before silent data loss in production.
+func TestCloseSupersededClaims_DirectionCheck(t *testing.T) {
+	db := testDB(t)
+	older := time.Now().Add(-2 * time.Hour)
+	newer := time.Now()
+
+	// The newer claim is the one we want kept. The older claim contradicts
+	// it (e.g. an old vibes-claim that the conversation later established
+	// is wrong, but the contradicts-edge happens to point old→new). The
+	// directional rule: only newer→older closes; older→newer must not.
+	newClaim := &types.Claim{Text: "X works correctly", Basis: types.BasisEmpirical, SessionID: "s1", Project: "test-project", Speaker: types.SpeakerUser, CreatedAt: newer}
+	if err := db.CreateClaim(newClaim); err != nil {
+		t.Fatalf("CreateClaim newClaim: %v", err)
+	}
+	oldClaim := &types.Claim{Text: "X is broken", Basis: types.BasisVibes, SessionID: "s0", Project: "test-project", Speaker: types.SpeakerUser, CreatedAt: older}
+	if err := db.CreateClaim(oldClaim); err != nil {
+		t.Fatalf("CreateClaim oldClaim: %v", err)
+	}
+	// Edge points from the OLDER claim to the NEWER claim.
+	if _, err := db.CreateEdge(&types.Edge{FromID: oldClaim.ID, ToID: newClaim.ID, Relation: types.RelContradicts}); err != nil {
+		t.Fatalf("CreateEdge: %v", err)
+	}
+
+	n, err := db.CloseSupersededClaims("test-project")
+	if err != nil {
+		t.Fatalf("CloseSupersededClaims: %v", err)
+	}
+	if n != 0 {
+		t.Errorf("older-contradicts-newer must not close anything; closed %d", n)
+	}
+
+	gotNew, err := db.GetClaim(newClaim.ID)
+	if err != nil || gotNew == nil {
+		t.Fatalf("GetClaim newClaim: %v", err)
+	}
+	if gotNew.Closed {
+		t.Error("newer claim must stay open when only older claims contradict it")
+	}
+}
+
+// TestCloseSupersededClaims_ProjectIsolation verifies the cull respects
+// project boundaries: a contradicts edge between claims in different
+// projects must not close anything (the SQL filters on
+// new.project = old.project = the target project).
+func TestCloseSupersededClaims_ProjectIsolation(t *testing.T) {
+	db := testDB(t)
+	older := time.Now().Add(-2 * time.Hour)
+	newer := time.Now()
+
+	// Claims in two different projects, with a contradicts edge between
+	// them. Edges aren't normally cross-project, but if one ever sneaks in
+	// the cull must not act on it.
+	old := &types.Claim{Text: "X is missing", Basis: types.BasisVibes, SessionID: "s0", Project: "test-project", Speaker: types.SpeakerUser, CreatedAt: older}
+	if err := db.CreateClaim(old); err != nil {
+		t.Fatalf("CreateClaim old: %v", err)
+	}
+	other := &types.Claim{Text: "X is now done", Basis: types.BasisEmpirical, SessionID: "s1", Project: "other-project", Speaker: types.SpeakerUser, CreatedAt: newer}
+	if err := db.CreateClaim(other); err != nil {
+		t.Fatalf("CreateClaim other: %v", err)
+	}
+	if _, err := db.CreateEdge(&types.Edge{FromID: other.ID, ToID: old.ID, Relation: types.RelContradicts}); err != nil {
+		t.Fatalf("CreateEdge: %v", err)
+	}
+
+	n, err := db.CloseSupersededClaims("test-project")
+	if err != nil {
+		t.Fatalf("CloseSupersededClaims: %v", err)
+	}
+	if n != 0 {
+		t.Errorf("cross-project contradicts must not close; closed %d", n)
+	}
+	gotOld, err := db.GetClaim(old.ID)
+	if err != nil || gotOld == nil {
+		t.Fatalf("GetClaim old: %v", err)
+	}
+	if gotOld.Closed {
+		t.Error("claim must stay open when contradicted only by a different-project claim")
+	}
+}
+
 func TestOpenCreatesDir(t *testing.T) {
 	dir := t.TempDir() + "/sub/deep"
 	db, err := Open(dir, "p")

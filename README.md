@@ -884,8 +884,8 @@ swing across that range. The two prompt edits we tested within v8/v9
 did not move the floor. Reducing it likely requires a more
 substantial change (different model, ensemble extraction, structural
 rule) rather than further wording tweaks. The per-metric noise table
-across this README, the Sokal fixture, and the Marinetti fixture
-lives in `benchmarks/variance/README.md`.
+for this fixture, plus interpretation rules for cross-version
+comparisons, lives in `benchmarks/variance/README.md`.
 
 What v7 did demonstrate: the new `consequential_action` flag
 **fires** on real text, producing two warning-level findings. Both

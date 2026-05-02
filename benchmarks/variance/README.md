@@ -86,18 +86,26 @@ nominal magnitudes.
 
 ## Findings worth flagging
 
-### Bottleneck stability is degenerate, not informative
+### Bottleneck stability: cap removed, churn confirmed
 
-`bottleneck = 5.0 ± 0.0` across runs is **not** evidence of stable
-detection — it's the hardcoded cap (`const maxBottlenecks = 5` at
-`internal/analysis/analysis.go:468`). The informative metric is *which 5
-claims* surface as bottlenecks, not how many. The harness currently
-doesn't log claim IDs per finding; needs to be extended before this
-question can be answered on the next variance run.
+The original 5-run floor showed `bottleneck = 5.0 ± 0.0`. That was
+not evidence of stable detection — it was the hardcoded cap
+(`maxBottlenecks = 5`). Two follow-ups landed:
 
-Action: log claim IDs in the harness output; re-run; check whether the
-top-5 bottlenecks are stable across runs (real signal) or churn (cap is
-hiding the real variance).
+- The cap was removed (`findBottlenecks: remove hardcoded
+  maxBottlenecks=5 cap`). Bottleneck count now varies meaningfully
+  with graph topology (e.g. v9 README runs: 14, 8, 9, 13, 11).
+- The harness was extended to record per-finding claim text and
+  compute set intersection across runs (`variance: compare finding
+  stability by claim text, not UUIDs`). The stability table is now
+  in the harness output.
+
+What that revealed: even after the cap is gone, the claim-identity
+intersection across runs is small — bottleneck identities churn
+within the same fixture. Count is misleading; identity is the
+informative signal. Documented in the harness output's "stable?"
+column, which currently reads `churns (count is misleading)` for
+bottleneck, load_bearing_vibes, unchallenged_chain, and fluency_trap.
 
 ### Definition count is the noisiest basis
 
@@ -128,12 +136,19 @@ post-extraction reclassification of definition-vs-vibes claims using
 a separate pass). Logged as a known limitation rather than an
 open prompt-engineering task.
 
-### Bottleneck and unchallenged_chain counts don't sample-vary
+### Counts vs identities: the analysis layer is stable, extraction isn't
 
-Bottleneck at 5.0 is the cap (above), but unchallenged_chain at 1.0 ± 0.0
-suggests genuine deterministic-after-extraction behavior — the topology
-analysis is stable once the graph exists. All variance is in the
-extraction step; the graph-analysis layer is reliable.
+Once the graph exists, the topology analysis is deterministic — the
+same graph produces the same finding counts. All variance lives in
+the extraction step (basis classification, claim splitting, edge
+inference). The graph-analysis layer is reliable; the LLM-extraction
+layer is the noise source.
+
+This is why per-finding claim-identity intersection is a more useful
+stability signal than count. Two runs producing 11 and 13
+bottlenecks tell you very little; two runs whose top bottlenecks
+share zero claim-text overlap tell you the extractor isn't
+converging on the same structural reading of the document.
 
 ## Pre-commit discipline
 

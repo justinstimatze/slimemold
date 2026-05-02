@@ -128,8 +128,12 @@ func CoreParseTranscript(ctx context.Context, db *store.DB, extractor *extract.E
 	// been contradicted by a newer claim from any session is permanently
 	// retired here — extends filterSuperseded's within-session behavior to
 	// the whole graph so resolution doesn't have to be re-discovered each
-	// session. Idempotent and bounded; safe to run on every parse.
-	_, _ = db.CloseSupersededClaims(project)
+	// session. Idempotent and bounded; safe to run on every parse. Errors
+	// are logged but not propagated — auto-close failure shouldn't block
+	// the parse_transcript path, and the next parse will retry.
+	if _, err := db.CloseSupersededClaims(project); err != nil {
+		fmt.Fprintf(os.Stderr, "slimemold: CloseSupersededClaims failed for %s: %v\n", project, err)
+	}
 
 	// Full project analysis (for audit summary and history).
 	claims, _ := db.GetClaimsByProject(project)
