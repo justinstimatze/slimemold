@@ -346,10 +346,33 @@ func findBottlenecks(claims []types.Claim, edges []types.Edge) []types.Vulnerabi
 		return nil // Too few claims for meaningful centrality analysis
 	}
 
-	// Build directed adjacency for BFS
+	// Conversational centrality: compute on the recent subgraph rather than
+	// the all-time graph. A bottleneck is interesting because many *current*
+	// reasoning paths flow through it; a node with high historical centrality
+	// but no recent connections isn't structurally relevant to what's
+	// happening now. Same recency principle as findLoadBearingVibes.
+	//
+	// Filter rule: keep edges where at least one endpoint is recent. This
+	// includes "boundary" edges that touch an old claim from a recent one
+	// (the recent reasoning is referencing the old claim — it's still part
+	// of the active subgraph). Pure all-old edges drop out.
+	now := time.Now()
+	recentIDs := make(map[string]bool, len(claims))
+	for _, c := range claims {
+		if c.CreatedAt.IsZero() || now.Sub(c.CreatedAt) <= HookConversationalWindow {
+			recentIDs[c.ID] = true
+		}
+	}
+
+	// Build directed adjacency for BFS — restricted to edges that touch the
+	// recent subgraph. With zero-CreatedAt fixtures (tests/legacy) all
+	// claims are recent and behavior matches the original.
 	fwd := make(map[string][]string)
 	rev := make(map[string][]string)
 	for _, e := range edges {
+		if !recentIDs[e.FromID] && !recentIDs[e.ToID] {
+			continue
+		}
 		fwd[e.FromID] = append(fwd[e.FromID], e.ToID)
 		rev[e.ToID] = append(rev[e.ToID], e.FromID)
 	}

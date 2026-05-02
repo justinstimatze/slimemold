@@ -1039,6 +1039,43 @@ func TestFormatHookFindings_InventoryFlagPrioritized(t *testing.T) {
 	}
 }
 
+// TestBottlenecks_RecentSubgraphOnly verifies that findBottlenecks computes
+// centrality on edges that touch the recent subgraph rather than all-time
+// edges — a node with high historical centrality but no recent connections
+// isn't structurally relevant to what's happening now and shouldn't surface.
+func TestBottlenecks_RecentSubgraphOnly(t *testing.T) {
+	now := time.Now()
+	ancient := now.Add(-2 * HookConversationalWindow)
+
+	// Hub claim with many ancient edges only — high historical centrality.
+	// Should NOT fire as bottleneck because all its connections are stale.
+	claims := []types.Claim{
+		{ID: "ancient-hub", Text: "ancient hub", Basis: types.BasisVibes, Speaker: types.SpeakerUser, CreatedAt: ancient},
+	}
+	for i := 0; i < 12; i++ {
+		claims = append(claims, types.Claim{
+			ID: fmt.Sprintf("old-leaf-%d", i), Text: fmt.Sprintf("old %d", i),
+			Basis: types.BasisDeduction, Speaker: types.SpeakerUser, CreatedAt: ancient,
+		})
+	}
+
+	// Build edges through the ancient-hub: many leaves connect via it.
+	edges := []types.Edge{}
+	for i := 0; i < 6; i++ {
+		edges = append(edges, types.Edge{FromID: fmt.Sprintf("old-leaf-%d", i), ToID: "ancient-hub", Relation: types.RelDependsOn})
+	}
+	for i := 6; i < 12; i++ {
+		edges = append(edges, types.Edge{FromID: "ancient-hub", ToID: fmt.Sprintf("old-leaf-%d", i), Relation: types.RelSupports})
+	}
+
+	_, vulns := Analyze(claims, edges, "test")
+	for _, v := range vulns.Items {
+		if v.Type == "bottleneck" && len(v.ClaimIDs) > 0 && v.ClaimIDs[0] == "ancient-hub" {
+			t.Error("ancient-hub with no recent edges should not fire as bottleneck (centrality should be on recent subgraph only)")
+		}
+	}
+}
+
 // TestFormatHookFindings_AgeDecay verifies that a priority candidate whose
 // anchor claim is older than HookMaxClaimAge gets filtered out.
 func TestFormatHookFindings_AgeDecay(t *testing.T) {
