@@ -242,16 +242,32 @@ func findLoadBearingVibes(claims []types.Claim, edges []types.Edge) []types.Vuln
 		types.BasisAssumption: true,
 	}
 
-	// Count how many claims depend on each claim.
-	// "A supports B" means A is load-bearing (from_id=A).
-	// "B depends_on A" means A is load-bearing (to_id=A).
+	// Conversationally load-bearing: count only dependents created within the
+	// recent window. An anchor claim that supports 10 ancient claims isn't
+	// load-bearing for what's happening right now; one that supports 3 recent
+	// claims is. Zero CreatedAt is treated as recent (legacy/test data).
+	now := time.Now()
+	recentIDs := make(map[string]bool, len(claims))
+	for _, c := range claims {
+		if c.CreatedAt.IsZero() || now.Sub(c.CreatedAt) <= HookConversationalWindow {
+			recentIDs[c.ID] = true
+		}
+	}
+
+	// Count how many recent claims depend on each claim.
+	// "A supports B" means A is load-bearing (from_id=A); B (to_id) is the dependent.
+	// "B depends_on A" means A is load-bearing (to_id=A); B (from_id) is the dependent.
 	dependents := make(map[string]int)
 	for _, e := range edges {
 		switch e.Relation {
 		case types.RelSupports:
-			dependents[e.FromID]++
+			if recentIDs[e.ToID] {
+				dependents[e.FromID]++
+			}
 		case types.RelDependsOn:
-			dependents[e.ToID]++
+			if recentIDs[e.FromID] {
+				dependents[e.ToID]++
+			}
 		}
 	}
 
@@ -1002,6 +1018,17 @@ const (
 	HookCooldownWindow     = 24 * time.Hour
 	HookMaxClaimAge        = 7 * 24 * time.Hour
 	HookColdStartMinClaims = 6
+
+	// HookConversationalWindow defines what counts as "current conversation"
+	// for the load-bearing detectors. A claim is conversationally load-bearing
+	// only if recent claims (created within this window) depend on it. This
+	// shifts the load-bearing definition from "graph-historical weight" to
+	// "what's currently being built on" — a thoughtful collaborator surfaces
+	// claims the conversation is actively resting on, not whatever has
+	// the most cross-session graph centrality. Two hours captures a typical
+	// working session; claims with zero CreatedAt (tests, legacy) are
+	// treated as recent so the change is non-breaking.
+	HookConversationalWindow = 2 * time.Hour
 )
 
 // FormatHookFindings produces a terse, directive summary for hook injection.

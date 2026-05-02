@@ -743,6 +743,80 @@ func TestFormatHookFindings_Cooldown(t *testing.T) {
 	}
 }
 
+// TestLoadBearingVibes_AncientDependentsDoNotCount verifies that a vibes
+// anchor whose only dependents were created outside HookConversationalWindow
+// does NOT fire as load-bearing. Conversationally load-bearing means recent
+// claims rest on it, not that any claims ever rested on it.
+func TestLoadBearingVibes_AncientDependentsDoNotCount(t *testing.T) {
+	ancient := time.Now().Add(-2 * HookConversationalWindow)
+	claims := []types.Claim{
+		{ID: "anchor", Text: "old vibes", Basis: types.BasisVibes, Speaker: types.SpeakerUser, CreatedAt: ancient},
+		{ID: "d1", Text: "ancient dep 1", Basis: types.BasisDeduction, Speaker: types.SpeakerUser, CreatedAt: ancient},
+		{ID: "d2", Text: "ancient dep 2", Basis: types.BasisDeduction, Speaker: types.SpeakerUser, CreatedAt: ancient},
+	}
+	edges := []types.Edge{
+		{FromID: "anchor", ToID: "d1", Relation: types.RelSupports},
+		{FromID: "anchor", ToID: "d2", Relation: types.RelSupports},
+	}
+	_, vulns := Analyze(claims, edges, "test")
+	for _, v := range vulns.Items {
+		if v.Type == "load_bearing_vibes" && len(v.ClaimIDs) > 0 && v.ClaimIDs[0] == "anchor" {
+			t.Error("anchor with only ancient dependents should not fire as load-bearing")
+		}
+	}
+}
+
+// TestLoadBearingVibes_RecentDependentsCount verifies that a vibes anchor
+// with recent dependents does fire as load-bearing, even if the anchor itself
+// is old. The anchor's age is checked separately at the priority-selection
+// step (HookMaxClaimAge); the load-bearing detection is about whether recent
+// claims rest on the anchor.
+func TestLoadBearingVibes_RecentDependentsCount(t *testing.T) {
+	now := time.Now()
+	claims := []types.Claim{
+		{ID: "anchor", Text: "older vibes", Basis: types.BasisVibes, Speaker: types.SpeakerUser, CreatedAt: now.Add(-30 * time.Minute)},
+		{ID: "d1", Text: "recent dep 1", Basis: types.BasisDeduction, Speaker: types.SpeakerUser, CreatedAt: now},
+		{ID: "d2", Text: "recent dep 2", Basis: types.BasisDeduction, Speaker: types.SpeakerUser, CreatedAt: now},
+	}
+	edges := []types.Edge{
+		{FromID: "anchor", ToID: "d1", Relation: types.RelSupports},
+		{FromID: "anchor", ToID: "d2", Relation: types.RelSupports},
+	}
+	_, vulns := Analyze(claims, edges, "test")
+	var found bool
+	for _, v := range vulns.Items {
+		if v.Type == "load_bearing_vibes" && len(v.ClaimIDs) > 0 && v.ClaimIDs[0] == "anchor" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("anchor with 2 recent dependents should fire as load-bearing")
+	}
+}
+
+// TestLoadBearingVibes_MixedDependentsCountsOnlyRecent verifies the count is
+// strictly limited to recent dependents — an anchor with 1 ancient + 1 recent
+// dependent has degree 1 (below the 2-threshold) and does not fire.
+func TestLoadBearingVibes_MixedDependentsCountsOnlyRecent(t *testing.T) {
+	now := time.Now()
+	ancient := now.Add(-2 * HookConversationalWindow)
+	claims := []types.Claim{
+		{ID: "anchor", Text: "vibes anchor", Basis: types.BasisVibes, Speaker: types.SpeakerUser, CreatedAt: now},
+		{ID: "old-dep", Text: "ancient dep", Basis: types.BasisDeduction, Speaker: types.SpeakerUser, CreatedAt: ancient},
+		{ID: "new-dep", Text: "recent dep", Basis: types.BasisDeduction, Speaker: types.SpeakerUser, CreatedAt: now},
+	}
+	edges := []types.Edge{
+		{FromID: "anchor", ToID: "old-dep", Relation: types.RelSupports},
+		{FromID: "anchor", ToID: "new-dep", Relation: types.RelSupports},
+	}
+	_, vulns := Analyze(claims, edges, "test")
+	for _, v := range vulns.Items {
+		if v.Type == "load_bearing_vibes" && len(v.ClaimIDs) > 0 && v.ClaimIDs[0] == "anchor" {
+			t.Error("anchor with only 1 recent dependent (out of 2 total) should not fire — recent count below threshold")
+		}
+	}
+}
+
 // TestFormatHookFindings_AgeDecay verifies that a priority candidate whose
 // anchor claim is older than HookMaxClaimAge gets filtered out.
 func TestFormatHookFindings_AgeDecay(t *testing.T) {
