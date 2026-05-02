@@ -124,6 +124,13 @@ func CoreParseTranscript(ctx context.Context, db *store.DB, extractor *extract.E
 	// Phase 4: Integrity validation (read-only, on committed data)
 	integrityWarnings := validateIntegrity(db, project)
 
+	// Phase 5: Cross-session auto-close. Any claim in this project that has
+	// been contradicted by a newer claim from any session is permanently
+	// retired here — extends filterSuperseded's within-session behavior to
+	// the whole graph so resolution doesn't have to be re-discovered each
+	// session. Idempotent and bounded; safe to run on every parse.
+	_, _ = db.CloseSupersededClaims(project)
+
 	// Full project analysis (for audit summary and history).
 	claims, _ := db.GetClaimsByProject(project)
 	edges, _ := db.GetEdgesByProject(project)

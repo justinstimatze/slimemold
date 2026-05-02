@@ -21,6 +21,67 @@ func testDB(t *testing.T) *DB {
 	return db
 }
 
+// TestCloseSupersededClaims verifies that claims contradicted by a newer
+// claim (across any session) get auto-closed. The cull is global, not just
+// within-session — it extends filterSuperseded's behavior to the whole graph
+// so resolution edges don't have to be re-discovered each session.
+func TestCloseSupersededClaims(t *testing.T) {
+	db := testDB(t)
+	older := time.Now().Add(-2 * time.Hour)
+	newer := time.Now()
+
+	// Older claim from session A, newer claim from session B contradicting it.
+	old := &types.Claim{Text: "X is missing", Basis: types.BasisVibes, SessionID: "session-A", Project: "test-project", Speaker: types.SpeakerUser, CreatedAt: older}
+	if err := db.CreateClaim(old); err != nil {
+		t.Fatalf("CreateClaim old: %v", err)
+	}
+	resolution := &types.Claim{Text: "X is now implemented", Basis: types.BasisEmpirical, SessionID: "session-B", Project: "test-project", Speaker: types.SpeakerUser, CreatedAt: newer}
+	if err := db.CreateClaim(resolution); err != nil {
+		t.Fatalf("CreateClaim resolution: %v", err)
+	}
+	// A separate older claim with no resolution — should not be touched.
+	other := &types.Claim{Text: "unrelated open claim", Basis: types.BasisVibes, SessionID: "session-A", Project: "test-project", Speaker: types.SpeakerUser, CreatedAt: older}
+	if err := db.CreateClaim(other); err != nil {
+		t.Fatalf("CreateClaim other: %v", err)
+	}
+	if _, err := db.CreateEdge(&types.Edge{FromID: resolution.ID, ToID: old.ID, Relation: types.RelContradicts}); err != nil {
+		t.Fatalf("CreateEdge: %v", err)
+	}
+
+	n, err := db.CloseSupersededClaims("test-project")
+	if err != nil {
+		t.Fatalf("CloseSupersededClaims: %v", err)
+	}
+	if n != 1 {
+		t.Errorf("expected 1 claim closed, got %d", n)
+	}
+
+	// Idempotent — running again should close nothing.
+	n2, err := db.CloseSupersededClaims("test-project")
+	if err != nil {
+		t.Fatalf("CloseSupersededClaims (second call): %v", err)
+	}
+	if n2 != 0 {
+		t.Errorf("re-running should be idempotent (close 0); got %d", n2)
+	}
+
+	// Verify state: old is closed, other is not.
+	gotOld, err := db.GetClaim(old.ID)
+	if err != nil || gotOld == nil {
+		t.Fatalf("GetClaim old: %v", err)
+	}
+	if !gotOld.Closed {
+		t.Error("contradicted older claim should be closed")
+	}
+	gotOther, err := db.GetClaim(other.ID)
+	if err != nil || gotOther == nil {
+		t.Fatalf("GetClaim other: %v", err)
+	}
+	if gotOther.Closed {
+		t.Error("uncontradicted claim should not be closed")
+	}
+}
+
 func TestOpenCreatesDir(t *testing.T) {
 	dir := t.TempDir() + "/sub/deep"
 	db, err := Open(dir, "p")

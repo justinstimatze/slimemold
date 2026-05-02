@@ -533,6 +533,41 @@ func (d *DB) LogHookFire(project, claimID, findingType string) error {
 	return err
 }
 
+// CloseSupersededClaims auto-closes any claim in `project` that has been
+// contradicted by a newer claim, regardless of which session each claim came
+// from. Extends filterSuperseded's within-session behavior to the whole
+// cross-session graph: when the extractor produces a `contradicts` edge from
+// a newer claim to an older one (e.g. "X is now implemented" contradicting
+// "X is missing"), the older claim is retired permanently rather than just
+// for the current session's findings.
+//
+// Returns the number of claims newly closed by this call. Idempotent —
+// re-running has no effect on already-closed claims.
+//
+// Scope of the cull: this only addresses "explicit resolution via
+// contradicts edge from a newer claim." It does not address other staleness
+// signals (no recent activity, stress-tested-through-use, etc.) — those
+// belong in detectors' surface filtering rather than DB-level pruning.
+func (d *DB) CloseSupersededClaims(project string) (int, error) {
+	res, err := d.q.Exec(`
+		UPDATE claims SET closed = 1
+		WHERE project = ?
+		  AND closed = 0
+		  AND id IN (
+			SELECT old.id FROM claims old
+			JOIN edges e ON e.to_id = old.id AND e.relation = 'contradicts'
+			JOIN claims new ON new.id = e.from_id
+			WHERE old.project = ?
+			  AND new.project = ?
+			  AND datetime(new.created_at) > datetime(old.created_at)
+		)`, project, project, project)
+	if err != nil {
+		return 0, err
+	}
+	n, _ := res.RowsAffected()
+	return int(n), nil
+}
+
 // RecentHookFires returns the set of (claim_id, finding_type) tuples that
 // have fired in `project` since `since`. Keys are encoded "claim_id|type".
 //
