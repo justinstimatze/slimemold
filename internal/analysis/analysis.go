@@ -442,7 +442,13 @@ func findBottlenecks(claims []types.Claim, edges []types.Edge) []types.Vulnerabi
 		return sorted[i].score > sorted[j].score
 	})
 
-	// Flag true outliers: mean + 2*stddev, capped at 5
+	// Flag true outliers: mean + 2*stddev. No fixed-N cap — the threshold
+	// is the gate. Previously a hardcoded `maxBottlenecks = 5` cap double-
+	// filtered, which made the bottleneck count perfectly stable across
+	// runs (degenerate; not informative) and hid genuine variance in
+	// which claims are central. The hook surfacing layer
+	// (FormatHookFindings) already caps the priority slot, so an upstream
+	// detector cap is redundant.
 	var vulns []types.Vulnerability
 	if len(sorted) == 0 {
 		return nil
@@ -465,13 +471,9 @@ func findBottlenecks(claims []types.Claim, edges []types.Edge) []types.Vulnerabi
 		threshold = 1.0 // absolute floor
 	}
 
-	const maxBottlenecks = 5
 	for _, s := range sorted {
 		if s.score < threshold {
-			break // sorted descending, so we're done
-		}
-		if len(vulns) >= maxBottlenecks {
-			break
+			break // sorted descending; threshold is the only gate
 		}
 		c, ok := claimMap[s.id]
 		if !ok {
