@@ -3,7 +3,7 @@ module github.com/justinstimatze/slimemold
 go 1.26
 
 require (
-	github.com/anthropics/anthropic-sdk-go v1.40.0
+	github.com/anthropics/anthropic-sdk-go v1.42.0
 	github.com/google/uuid v1.6.0
 	github.com/mark3labs/mcp-go v0.52.0
 	modernc.org/sqlite v1.50.0
@@ -21,6 +21,7 @@ require (
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2 // indirect
 	github.com/spf13/cast v1.7.1 // indirect
+	github.com/standard-webhooks/standard-webhooks/libraries v0.0.0-20260508151727-1282bb917829 // indirect
 	github.com/tidwall/gjson v1.18.0 // indirect
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.1 // indirect
