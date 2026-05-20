@@ -1,5 +1,5 @@
-github.com/anthropics/anthropic-sdk-go v1.42.0 h1:Zv882/dnrE4OHnwhMAsi9lwVVXRF8GtR3ofiBResYUw=
-github.com/anthropics/anthropic-sdk-go v1.42.0/go.mod h1:r4eaLX9tBolUrXLOrLj7eU8tmeBtoobCkM0kBsivBaY=
+github.com/anthropics/anthropic-sdk-go v1.44.1 h1:HSevhzwYd5CRjW6JXc4P6y4tT4gBpZUpwy5Id0vWXNc=
+github.com/anthropics/anthropic-sdk-go v1.44.1/go.mod h1:bx5vWuHFuGPkELH8Z4KUiNSohFnUwScdpTyr+50myPo=
 github.com/bahlo/generic-list-go v0.2.0 h1:5sz/EEAK+ls5wF+NeqDpk5+iNdMDXrh3z3nPnH1Wvgk=
 github.com/bahlo/generic-list-go v0.2.0/go.mod h1:2KvAjgMlE5NNynlg/5iLrrCCZ2+5xWbdbCW3pNTGyYg=
 github.com/buger/jsonparser v1.1.2 h1:frqHqw7otoVbk5M8LlE/L7HTnIq2v9RX6EJ48i9AxJk=
@@ -49,8 +49,8 @@ github.com/santhosh-tekuri/jsonschema/v6 v6.0.2 h1:KRzFb2m7YtdldCEkzs6KqmJw4nqEV
 github.com/santhosh-tekuri/jsonschema/v6 v6.0.2/go.mod h1:JXeL+ps8p7/KNMjDQk3TCwPpBy0wYklyWTfbkIzdIFU=
 github.com/spf13/cast v1.7.1 h1:cuNEagBQEHWN1FnbGEjCXL2szYEXqfJPbP2HNUaca9Y=
 github.com/spf13/cast v1.7.1/go.mod h1:ancEpBxwJDODSW/UG4rDrAqiKolqNNh2DX3mk86cAdo=
-github.com/standard-webhooks/standard-webhooks/libraries v0.0.0-20260508151727-1282bb917829 h1:zGlGD0Zfk2HaIo4EnUVBRhnXQ+cnGQz5X2PdBcplOyw=
-github.com/standard-webhooks/standard-webhooks/libraries v0.0.0-20260508151727-1282bb917829/go.mod h1:L1MQhA6x4dn9r007T033lsaZMv9EmBAdXyU/+EF40fo=
+github.com/standard-webhooks/standard-webhooks/libraries v0.0.1 h1:uOfcYT+3QungH6tIGSVCR/Y3KJmgJiHcojJbMTPDZAI=
+github.com/standard-webhooks/standard-webhooks/libraries v0.0.1/go.mod h1:L1MQhA6x4dn9r007T033lsaZMv9EmBAdXyU/+EF40fo=
 github.com/stretchr/testify v1.9.0 h1:HtqpIVDClZ4nwg75+f6Lvsy/wHu+3BoSGCbBAcpTsTg=
 github.com/stretchr/testify v1.9.0/go.mod h1:r2ic/lqez/lEtzL7wO/rwa5dbSLXVDPFyf8C91i36aY=
 github.com/tidwall/gjson v1.14.2/go.mod h1:/wbyibRr2FHMks5tjHJ5F8dMZh3AcwJEMf5vlfC0lxk=
