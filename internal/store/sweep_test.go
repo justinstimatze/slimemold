@@ -123,15 +123,15 @@ func TestArchiveAndUnarchive_RoundTrip(t *testing.T) {
 	db := openTestDB(t, "rt")
 	now := time.Now()
 	claim := &types.Claim{
-		ID:        "x",
-		Text:      "Test claim",
-		Project:   "rt",
-		Speaker:   types.SpeakerAssistant,
-		Basis:     types.BasisVibes,
-		Source:    "test",
+		ID:         "x",
+		Text:       "Test claim",
+		Project:    "rt",
+		Speaker:    types.SpeakerAssistant,
+		Basis:      types.BasisVibes,
+		Source:     "test",
 		Confidence: 0.5,
-		SessionID: "s1",
-		CreatedAt: now,
+		SessionID:  "s1",
+		CreatedAt:  now,
 	}
 	if err := db.CreateClaim(claim); err != nil {
 		t.Fatalf("create: %v", err)
@@ -258,7 +258,7 @@ func TestSweepStaleClaims_CapAndOverflow(t *testing.T) {
 			ID: string(rune('a' + i)), Project: "cap", Text: "stale",
 			Speaker: types.SpeakerAssistant, Basis: types.BasisVibes,
 			Source: "", Confidence: 0.5, SessionID: "s",
-			CreatedAt: now.Add(-time.Duration(days) * 24 * time.Hour),
+			CreatedAt:        now.Add(-time.Duration(days) * 24 * time.Hour),
 			LastReferencedAt: now.Add(-time.Duration(days) * 24 * time.Hour),
 		}
 		if err := db.CreateClaim(c); err != nil {

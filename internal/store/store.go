@@ -888,7 +888,7 @@ func migrateArchivedFlag(db *sql.DB) {
 //
 // Idempotent: ALTER TABLE ADD COLUMN errors out if the column exists (we
 // swallow the error); the UPDATE is gated on `last_referenced_at IS NULL OR
-// last_referenced_at = ''` so it's a no-op once backfill has run. The
+// last_referenced_at = ”` so it's a no-op once backfill has run. The
 // post-backfill UPDATE refines stale rows that the naive backfill already
 // set — gated on the column being equal to created_at AND a later edge
 // existing — so an old DB upgraded from an interim version (where naive
@@ -1071,6 +1071,7 @@ func rebuildClaimsIfMissing(db *sql.DB, marker string, ddl []string) {
 //     consequential_action (Phase 3 inventory)
 //   - last_referenced_at (migrateLastReferencedAt — drives sweep + legacy_load_bearer)
 //   - archived (migrateArchivedFlag — drives soft-archive)
+//
 // Rebuilds that ship without these columns will reset archived state and
 // re-derive last_referenced_at from edges (which is approximate, not exact).
 // The current oldSpeakerRebuild / oldBasisRebuild predate those columns

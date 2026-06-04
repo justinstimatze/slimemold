@@ -62,10 +62,10 @@ func TestSweepLegacyThresholdsArePaired(t *testing.T) {
 // into both buckets or neither.
 func TestSweepLegacyThresholdBoundaryBehavior(t *testing.T) {
 	now := time.Now()
-	old := now.Add(-40 * 24 * time.Hour)    // > LegacyAgeThreshold (30d) AND > SweepAgeDays (30d)
-	idleRef := now.Add(-40 * 24 * time.Hour) // > SweepIdleDays (30d) — passes sweep idle gate
+	old := now.Add(-40 * 24 * time.Hour)      // > LegacyAgeThreshold (30d) AND > SweepAgeDays (30d)
+	idleRef := now.Add(-40 * 24 * time.Hour)  // > SweepIdleDays (30d) — passes sweep idle gate
 	recentRef := now.Add(-2 * 24 * time.Hour) // < LegacyRecentRefThreshold (7d) — fires legacy
-	const K = store.SweepStructuralMin       // == analysis.LegacyMinDeps by paired-threshold invariant
+	const K = store.SweepStructuralMin        // == analysis.LegacyMinDeps by paired-threshold invariant
 
 	// Two boundary claims at deps == K, sharing the same K dependents.
 	// boundary-idle exercises sweep's structural-rescue; boundary-recent
