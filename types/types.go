@@ -91,6 +91,20 @@ type Claim struct {
 	// stakes commitment; the structural detector decides whether the
 	// surrounding session shows other inventory flags that elevate it.
 	ConsequentialAction bool `json:"consequential_action"` // speaker is committing to a real-world action with external stakes
+
+	// LastReferencedAt tracks when this claim was most recently touched —
+	// updated on edge insert (from or to endpoint) and on claim creation.
+	// Drives the legacy_load_bearer detector and the archival sweep: an old
+	// claim with recent references is structural; an old claim with no
+	// recent references is stale. Zero-valued if backfill hasn't run yet
+	// (treat as equal to CreatedAt in that case).
+	LastReferencedAt time.Time `json:"last_referenced_at"`
+
+	// Archived is set by the stale-claim sweep when this claim is old,
+	// idle, and either explicitly closed or structurally inert. Archived
+	// claims are excluded from GetClaimsByProject (and therefore from
+	// analysis, hook findings, viz, audit) but remain in the DB.
+	Archived bool `json:"archived"`
 }
 
 // Edge is a directed epistemic relationship between two claims.
@@ -180,6 +194,11 @@ type AuditResult struct {
 }
 
 // ClaimResult is returned after registering a claim.
+//
+// GraphSize is the number of *active* (non-archived) claims in the project
+// after registration. Note that the daily auto-sweep may archive stale
+// claims, so the value can decrease across calls; if you want the raw
+// historical total, query the DB directly via CountClaimsAll.
 type ClaimResult struct {
 	ClaimID   string   `json:"claim_id"`
 	GraphSize int      `json:"graph_size"`

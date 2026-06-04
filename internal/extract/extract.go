@@ -41,7 +41,7 @@ func (e *Extractor) Model() string {
 // ExtractFromTranscript reads a transcript file and extracts claims.
 // existingClaims provides context for cross-batch edge resolution.
 func (e *Extractor) ExtractFromTranscript(ctx context.Context, transcriptPath string, sinceTurn int, existingClaims []ExistingClaimRef) (*types.ExtractionResult, error) {
-	chunk, err := readRecentTranscript(transcriptPath, sinceTurn)
+	chunk, err := ReadTranscriptChunk(transcriptPath, sinceTurn)
 	if err != nil {
 		return nil, fmt.Errorf("reading transcript: %w", err)
 	}
@@ -50,6 +50,16 @@ func (e *Extractor) ExtractFromTranscript(ctx context.Context, transcriptPath st
 	}
 
 	return e.Extract(ctx, chunk, existingClaims)
+}
+
+// ReadTranscriptChunk reads the recent slice of a transcript (role-prefixed,
+// 50-message cap, last-2MB tail seek for baseline reads). Exported so callers
+// that need the same chunk for downstream work (e.g. n-gram context selection
+// or basis validation) can read once and share — historically CoreParseTranscript
+// called readRecentTranscript indirectly via the extractor AND readTranscriptText
+// directly, doing two full-file scans per fire on multi-MB transcripts.
+func ReadTranscriptChunk(transcriptPath string, sinceTurn int) (string, error) {
+	return readRecentTranscript(transcriptPath, sinceTurn)
 }
 
 // Extract sends a text chunk to the LLM and returns extracted claims.

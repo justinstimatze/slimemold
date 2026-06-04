@@ -22,12 +22,12 @@ var schema string
 // claimColumns is the canonical column list used by every SELECT that returns
 // a full claim row. Keep in sync with scanClaim, the CreateClaim INSERT, and
 // schema.sql. Centralized so adding a column is a single-site change.
-const claimColumns = `id, text, basis, confidence, source, session_id, project, turn_number, speaker, created_at, challenged, verified, terminates_inquiry, closed, grand_significance, unique_connection, dismisses_counterevidence, ability_overstatement, sentience_claim, relational_drift, consequential_action`
+const claimColumns = `id, text, basis, confidence, source, session_id, project, turn_number, speaker, created_at, challenged, verified, terminates_inquiry, closed, grand_significance, unique_connection, dismisses_counterevidence, ability_overstatement, sentience_claim, relational_drift, consequential_action, last_referenced_at, archived`
 
 // claimColumnsPrefixed is claimColumns with each name qualified with the alias
 // "c." — used in JOINs against session_claims/edges where column names need to
 // be disambiguated.
-const claimColumnsPrefixed = `c.id, c.text, c.basis, c.confidence, c.source, c.session_id, c.project, c.turn_number, c.speaker, c.created_at, c.challenged, c.verified, c.terminates_inquiry, c.closed, c.grand_significance, c.unique_connection, c.dismisses_counterevidence, c.ability_overstatement, c.sentience_claim, c.relational_drift, c.consequential_action`
+const claimColumnsPrefixed = `c.id, c.text, c.basis, c.confidence, c.source, c.session_id, c.project, c.turn_number, c.speaker, c.created_at, c.challenged, c.verified, c.terminates_inquiry, c.closed, c.grand_significance, c.unique_connection, c.dismisses_counterevidence, c.ability_overstatement, c.sentience_claim, c.relational_drift, c.consequential_action, c.last_referenced_at, c.archived`
 
 // querier abstracts the Exec/Query/QueryRow methods shared by *sql.DB and *sql.Tx.
 type querier interface {
@@ -145,9 +145,13 @@ func (d *DB) CreateClaim(c *types.Claim) error {
 		c.Project = d.project
 	}
 
+	if c.LastReferencedAt.IsZero() {
+		c.LastReferencedAt = c.CreatedAt
+	}
+
 	_, err := d.q.Exec(`
 		INSERT INTO claims (`+claimColumns+`)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		c.ID, c.Text, string(c.Basis), c.Confidence, c.Source,
 		c.SessionID, c.Project, c.TurnNumber, string(c.Speaker),
 		c.CreatedAt.Format(time.RFC3339), boolToInt(c.Challenged), boolToInt(c.Verified),
@@ -156,6 +160,8 @@ func (d *DB) CreateClaim(c *types.Claim) error {
 		boolToInt(c.DismissesCounterevidence), boolToInt(c.AbilityOverstatement),
 		boolToInt(c.SentienceClaim), boolToInt(c.RelationalDrift),
 		boolToInt(c.ConsequentialAction),
+		c.LastReferencedAt.Format(time.RFC3339),
+		boolToInt(c.Archived),
 	)
 	if err != nil {
 		return fmt.Errorf("%w (basis=%q speaker=%q)", err, c.Basis, c.Speaker)
@@ -185,6 +191,16 @@ func (d *DB) CreateEdge(e *types.Edge) (bool, error) {
 		return false, err
 	}
 	n, _ := res.RowsAffected()
+	if n > 0 {
+		// New edge → both endpoints are "active" right now. Touch their
+		// last_referenced_at so the legacy_load_bearer detector and the
+		// archival sweep see the recent reference. Errors swallowed —
+		// the edge insert is the primary write; bookkeeping failure
+		// shouldn't propagate.
+		now := e.CreatedAt.Format(time.RFC3339)
+		_, _ = d.q.Exec(`UPDATE claims SET last_referenced_at = ? WHERE id IN (?, ?) AND (last_referenced_at IS NULL OR last_referenced_at < ?)`,
+			now, e.FromID, e.ToID, now)
+	}
 	return n > 0, nil
 }
 
@@ -200,8 +216,27 @@ func (d *DB) GetClaim(id string) (*types.Claim, error) {
 	return scanClaim(row)
 }
 
-// GetClaimsByProject retrieves all claims for a project.
+// GetClaimsByProject retrieves all non-archived claims for a project. The
+// archived filter is applied by default — Analyze, viz, audit, hook findings
+// all see only the active working set. Use GetClaimsByProjectAll when you
+// need every row (sweep diagnostics, manual unarchive, schema migrations).
+//
+// The `archived = 0` filter is sargable and uses idx_claims_archived
+// (project, archived); migrateArchivedFlag backfills NULL → 0 so this is
+// safe without COALESCE.
 func (d *DB) GetClaimsByProject(project string) ([]types.Claim, error) {
+	rows, err := d.q.Query(`SELECT `+claimColumns+` FROM claims WHERE project = ? AND archived = 0 ORDER BY created_at`, project)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	return scanClaims(rows)
+}
+
+// GetClaimsByProjectAll retrieves every claim for a project including
+// archived rows. Used by the sweep CLI (so dry-run reports surface
+// already-archived counts) and unarchive paths.
+func (d *DB) GetClaimsByProjectAll(project string) ([]types.Claim, error) {
 	rows, err := d.q.Query(`SELECT `+claimColumns+` FROM claims WHERE project = ? ORDER BY created_at`, project)
 	if err != nil {
 		return nil, err
@@ -217,16 +252,23 @@ func (d *DB) RecordSessionClaim(sessionID, claimID string) error {
 	return err
 }
 
-// GetClaimsBySession retrieves all claims associated with a session via
-// the session_claims membership table. This includes claims that were
-// recognized via cross-batch dedup (which keep a prior session's session_id
-// on the claim row but are still logically part of the current session).
+// GetClaimsBySession retrieves all non-archived claims associated with a
+// session via the session_claims membership table. This includes claims
+// that were recognized via cross-batch dedup (which keep a prior session's
+// session_id on the claim row but are still logically part of the current
+// session).
+//
+// The archived filter matches GetClaimsByProject's semantics so the
+// session-scoped hook path doesn't see claims the global view hides — if
+// it did, edges-filtered-by-session would reference claims missing from
+// GetClaimsByProject's set, producing spurious orphan/dangling findings.
 func (d *DB) GetClaimsBySession(sessionID string) ([]types.Claim, error) {
 	rows, err := d.q.Query(`
 		SELECT `+claimColumnsPrefixed+`
 		FROM claims c
 		JOIN session_claims sc ON sc.claim_id = c.id
 		WHERE sc.session_id = ?
+		  AND c.archived = 0
 		ORDER BY c.created_at`, sessionID)
 	if err != nil {
 		return nil, err
@@ -235,14 +277,28 @@ func (d *DB) GetClaimsBySession(sessionID string) ([]types.Claim, error) {
 	return scanClaims(rows)
 }
 
-// GetEdgesByProject retrieves all edges for claims in a project.
+// GetEdgesByProject retrieves all edges for non-archived claims in a project.
+// Edges where either endpoint is archived are excluded — keeping them would
+// leave dangling references in the adjacency maps that consume this slice
+// (findOrphans, findClusters, buildAdjacency would all see endpoints with no
+// matching claim).
+//
+// Edges with endpoints in different projects are also excluded (no project
+// cross-edges exist today, but the two-project predicate makes that explicit).
+// DISTINCT was removed in favor of the natural unique-per-edge join: cf.id
+// and ct.id are PKs, so each edge row matches exactly one (cf, ct) pair —
+// the sort cost of DISTINCT was measurable (~190ms on lucida-class graphs).
+// archived = 0 (not COALESCE) is sargable; migrateArchivedFlag backfills NULL.
 func (d *DB) GetEdgesByProject(project string) ([]types.Edge, error) {
 	rows, err := d.q.Query(`
-		SELECT DISTINCT e.id, e.from_id, e.to_id, e.relation, e.strength, e.created_at
+		SELECT e.id, e.from_id, e.to_id, e.relation, e.strength, e.created_at
 		FROM edges e
-		JOIN claims c ON (e.from_id = c.id OR e.to_id = c.id)
-		WHERE c.project = ?
-		ORDER BY e.created_at`, project)
+		JOIN claims cf ON e.from_id = cf.id
+		JOIN claims ct ON e.to_id = ct.id
+		WHERE cf.project = ? AND ct.project = ?
+		  AND cf.archived = 0
+		  AND ct.archived = 0
+		ORDER BY e.created_at`, project, project)
 	if err != nil {
 		return nil, err
 	}
@@ -250,11 +306,15 @@ func (d *DB) GetEdgesByProject(project string) ([]types.Edge, error) {
 	return scanEdges(rows)
 }
 
-// SearchClaims does a case-insensitive text search across claims.
+// SearchClaims does a case-insensitive text search across non-archived
+// claims. Archived rows are excluded so search results match the active
+// working set users see in viz / audit / hook findings — searching for
+// claims that have been swept would return rows the user can't act on
+// anywhere else.
 func (d *DB) SearchClaims(project, query string, basis string) ([]types.Claim, error) {
 	escaped := strings.NewReplacer("%", "\\%", "_", "\\_").Replace(query)
 	q := `SELECT ` + claimColumns + `
-		FROM claims WHERE project = ? AND text LIKE ? ESCAPE '\'`
+		FROM claims WHERE project = ? AND archived = 0 AND text LIKE ? ESCAPE '\'`
 	args := []any{project, "%" + escaped + "%"}
 
 	if basis != "" {
@@ -271,12 +331,16 @@ func (d *DB) SearchClaims(project, query string, basis string) ([]types.Claim, e
 	return scanClaims(rows)
 }
 
-// FindClaimByText finds the best matching claim by normalized text.
+// FindClaimByText finds the best matching non-archived claim by normalized
+// text. The archived filter is essential here — resolveEdgeByText
+// (mcp/core.go) uses this to wire user-requested edges by text, and
+// wiring an edge to an archived target produces an edge that's invisible
+// in GetEdgesByProject (which excludes edges with archived endpoints).
 func (d *DB) FindClaimByText(project, text string) (*types.Claim, error) {
 	normalized := strings.ToLower(strings.TrimSpace(text))
 	row := d.q.QueryRow(`
 		SELECT `+claimColumns+`
-		FROM claims WHERE project = ? AND LOWER(text) = ?
+		FROM claims WHERE project = ? AND archived = 0 AND LOWER(text) = ?
 		LIMIT 1`, project, normalized)
 	c, err := scanClaim(row)
 	if err == sql.ErrNoRows {
@@ -285,13 +349,15 @@ func (d *DB) FindClaimByText(project, text string) (*types.Claim, error) {
 	return c, err
 }
 
-// FindClaimBySubstring finds claims containing the given text.
+// FindClaimBySubstring finds non-archived claims containing the given text.
+// Archived filter applied for the same reason as FindClaimByText — its
+// primary caller (resolveEdgeByText) shouldn't wire edges to swept rows.
 func (d *DB) FindClaimBySubstring(project, text string) ([]types.Claim, error) {
 	escaped := strings.NewReplacer("%", "\\%", "_", "\\_").Replace(strings.ToLower(strings.TrimSpace(text)))
 	normalized := "%" + escaped + "%"
 	rows, err := d.q.Query(`
 		SELECT `+claimColumns+`
-		FROM claims WHERE project = ? AND LOWER(text) LIKE ? ESCAPE '\'
+		FROM claims WHERE project = ? AND archived = 0 AND LOWER(text) LIKE ? ESCAPE '\'
 		ORDER BY created_at`, project, normalized)
 	if err != nil {
 		return nil, err
@@ -328,6 +394,77 @@ func (d *DB) CloseClaim(id string) error {
 	return err
 }
 
+// ArchiveClaims sets archived=1 on the provided claim IDs scoped to the
+// given project (the project filter is defensive — prevents an accidental
+// archive across projects if the caller passes IDs from elsewhere). Returns
+// the number of rows updated. Idempotent: re-archiving an archived claim
+// is a no-op.
+func (d *DB) ArchiveClaims(project string, ids []string) (int64, error) {
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	placeholders := strings.Repeat("?,", len(ids))
+	placeholders = placeholders[:len(placeholders)-1]
+	args := make([]any, 0, len(ids)+1)
+	args = append(args, project)
+	for _, id := range ids {
+		args = append(args, id)
+	}
+	res, err := d.q.Exec(`UPDATE claims SET archived = 1 WHERE project = ? AND id IN (`+placeholders+`)`, args...)
+	if err != nil {
+		return 0, err
+	}
+	n, _ := res.RowsAffected()
+	return n, nil
+}
+
+// UnarchiveClaims clears the archived flag on the provided claim IDs and
+// bumps last_referenced_at to now. Used by `slimemold unarchive` to recover
+// from false-positive archives and by CoreParseTranscript/ingestOneChunk
+// when a paraphrased re-assertion resurrects a swept claim.
+//
+// The last_referenced_at touch is load-bearing: without it, an unarchived
+// claim with an old created_at would immediately re-qualify for the next
+// sweep (idle >= 30d still holds), forcing the user to keep unarchiving
+// the same claim every fire cycle. The touch makes "unarchive" mean "active
+// again now" — consistent with how a fresh edge would touch a claim.
+//
+// If ids is empty, this is a no-op; pass UnarchiveAll for "everything in
+// this project."
+func (d *DB) UnarchiveClaims(project string, ids []string) (int64, error) {
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	placeholders := strings.Repeat("?,", len(ids))
+	placeholders = placeholders[:len(placeholders)-1]
+	now := time.Now().Format(time.RFC3339)
+	args := make([]any, 0, len(ids)+2)
+	args = append(args, now, project)
+	for _, id := range ids {
+		args = append(args, id)
+	}
+	res, err := d.q.Exec(`UPDATE claims SET archived = 0, last_referenced_at = ? WHERE project = ? AND id IN (`+placeholders+`)`, args...)
+	if err != nil {
+		return 0, err
+	}
+	n, _ := res.RowsAffected()
+	return n, nil
+}
+
+// UnarchiveAll clears the archived flag on every archived claim in a project
+// and bumps last_referenced_at to now (same rationale as UnarchiveClaims —
+// see that doc comment). Recovery hatch for "sweep was too aggressive, give
+// me everything back."
+func (d *DB) UnarchiveAll(project string) (int64, error) {
+	now := time.Now().Format(time.RFC3339)
+	res, err := d.q.Exec(`UPDATE claims SET archived = 0, last_referenced_at = ? WHERE project = ? AND archived = 1`, now, project)
+	if err != nil {
+		return 0, err
+	}
+	n, _ := res.RowsAffected()
+	return n, nil
+}
+
 // MergeClaims absorbs one claim into another, redirecting all edges.
 func (d *DB) MergeClaims(keepID, absorbID string) error {
 	return d.inTx(func(q querier) error {
@@ -354,18 +491,36 @@ func (d *DB) MergeClaims(keepID, absorbID string) error {
 	})
 }
 
-// CountClaims returns the number of claims in a project.
+// CountClaims returns the number of *active* (non-archived) claims in a
+// project. Matches the semantics of GetClaimsByProject — when callers
+// report "graph size" they want the working set, not raw row count.
+// Use CountClaimsAll for the unfiltered count.
 func (d *DB) CountClaims(project string) (int, error) {
+	var n int
+	err := d.q.QueryRow(`SELECT COUNT(*) FROM claims WHERE project = ? AND archived = 0`, project).Scan(&n)
+	return n, err
+}
+
+// CountClaimsAll returns the number of claims in a project including
+// archived ones. Used by sweep diagnostics and tests that need the raw count.
+func (d *DB) CountClaimsAll(project string) (int, error) {
 	var n int
 	err := d.q.QueryRow(`SELECT COUNT(*) FROM claims WHERE project = ?`, project).Scan(&n)
 	return n, err
 }
 
-// CountEdges returns the number of edges for claims in a project.
+// CountEdges returns the number of edges with both endpoints active and in
+// the given project. Matches GetEdgesByProject semantics (archived endpoints
+// excluded). DISTINCT removed — the cf/ct joins on PKs are 1:1 per edge.
 func (d *DB) CountEdges(project string) (int, error) {
 	var n int
 	err := d.q.QueryRow(`
-		SELECT COUNT(DISTINCT e.id) FROM edges e JOIN claims c ON (e.from_id = c.id OR e.to_id = c.id) WHERE c.project = ?`, project).Scan(&n)
+		SELECT COUNT(*) FROM edges e
+		JOIN claims cf ON e.from_id = cf.id
+		JOIN claims ct ON e.to_id = ct.id
+		WHERE cf.project = ? AND ct.project = ?
+		  AND cf.archived = 0
+		  AND ct.archived = 0`, project, project).Scan(&n)
 	return n, err
 }
 
@@ -434,11 +589,13 @@ func scanClaim(s scannable) (*types.Claim, error) {
 	var basis, speaker, createdAt string
 	var challenged, verified, terminatesInquiry, closed int
 	var grandSig, uniqueConn, dismissesCE, abilityOver, sentience, relational, consequential int
+	var lastReferencedAt sql.NullString
+	var archived sql.NullInt64
 	err := s.Scan(&c.ID, &c.Text, &basis, &c.Confidence, &c.Source,
 		&c.SessionID, &c.Project, &c.TurnNumber, &speaker, &createdAt,
 		&challenged, &verified, &terminatesInquiry, &closed,
 		&grandSig, &uniqueConn, &dismissesCE, &abilityOver, &sentience, &relational,
-		&consequential)
+		&consequential, &lastReferencedAt, &archived)
 	if err != nil {
 		return nil, err
 	}
@@ -456,6 +613,16 @@ func scanClaim(s scannable) (*types.Claim, error) {
 	c.SentienceClaim = sentience != 0
 	c.RelationalDrift = relational != 0
 	c.ConsequentialAction = consequential != 0
+	// Fallback to CreatedAt if the column is null/empty (pre-backfill rows
+	// or partially-migrated DBs). Same semantics: "claim has never been
+	// referenced since creation" == "last referenced at creation time."
+	if lastReferencedAt.Valid && lastReferencedAt.String != "" {
+		c.LastReferencedAt, _ = time.Parse(time.RFC3339, lastReferencedAt.String)
+	}
+	if c.LastReferencedAt.IsZero() {
+		c.LastReferencedAt = c.CreatedAt
+	}
+	c.Archived = archived.Valid && archived.Int64 != 0
 	return &c, nil
 }
 
@@ -686,6 +853,75 @@ func migrate(db *sql.DB) {
 	}
 
 	migrateSessionClaims(db)
+	migrateLastReferencedAt(db)
+	migrateArchivedFlag(db)
+}
+
+// migrateArchivedFlag adds the archived column to claims for older DBs. New
+// installs already have it from schema.sql; this ALTER is a no-op (and
+// errors out silently) on those. The index supports the archived=0 filter
+// in GetClaimsByProject without scanning the full table.
+func migrateArchivedFlag(db *sql.DB) {
+	_, _ = db.Exec(`ALTER TABLE claims ADD COLUMN archived INTEGER DEFAULT 0`)
+	// Defensive backfill: ALTER ADD COLUMN ... DEFAULT 0 populates 0 for
+	// existing rows in modern SQLite (verified empirically with modernc.org/
+	// sqlite), so this UPDATE is a no-op on the happy path. Kept anyway so
+	// queries can use `archived = 0` (sargable, index-friendly) instead of
+	// `COALESCE(archived, 0) = 0` (which forces a scan on the second key of
+	// idx_claims_archived). If a DB ever lands here with NULL archived
+	// (interim version, foreign tool import), this guarantees the index is
+	// usable from the next query forward.
+	_, _ = db.Exec(`UPDATE claims SET archived = 0 WHERE archived IS NULL`)
+	_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_claims_archived ON claims(project, archived)`)
+}
+
+// migrateLastReferencedAt adds the last_referenced_at column to claims and
+// backfills it for existing rows. Used by the legacy-load-bearer detector
+// and the archival sweep to distinguish "old and stale" from "old but still
+// actively touched" — see benchmarks/perf/README.md for the rationale.
+//
+// Backfill semantics: last_referenced_at = MAX(created_at, latest edge
+// created_at touching this claim). A naive backfill from created_at alone
+// would over-count staleness on the first sweep — a 35-day-old claim with
+// an edge added 10 days ago would appear "35 days idle." This backfill
+// captures the pre-trigger edge history so the sweep starts honest.
+//
+// Idempotent: ALTER TABLE ADD COLUMN errors out if the column exists (we
+// swallow the error); the UPDATE is gated on `last_referenced_at IS NULL OR
+// last_referenced_at = ''` so it's a no-op once backfill has run. The
+// post-backfill UPDATE refines stale rows that the naive backfill already
+// set — gated on the column being equal to created_at AND a later edge
+// existing — so an old DB upgraded from an interim version (where naive
+// backfill already populated the column) still gets the correction.
+func migrateLastReferencedAt(db *sql.DB) {
+	_, _ = db.Exec(`ALTER TABLE claims ADD COLUMN last_referenced_at TEXT`)
+
+	// Pass 1: any NULL/empty row gets a naive backfill from created_at as
+	// a fallback. The next pass refines it using edge history.
+	_, _ = db.Exec(`UPDATE claims SET last_referenced_at = created_at WHERE last_referenced_at IS NULL OR last_referenced_at = ''`)
+
+	// Pass 2: refine using edges. For each claim, set last_referenced_at to
+	// MAX(claim.created_at, MAX(edge.created_at) for edges touching this
+	// claim). Only applies when the column currently equals created_at —
+	// avoids clobbering values already updated by the trigger / CreateEdge
+	// post-deploy. The SUBSELECT is fine for the one-shot migration; the
+	// idx_claims_referenced index exists from the index creation below.
+	_, _ = db.Exec(`
+		UPDATE claims SET last_referenced_at = (
+			SELECT COALESCE(MAX(e.created_at), claims.created_at)
+			FROM edges e
+			WHERE (e.from_id = claims.id OR e.to_id = claims.id)
+			  AND e.created_at > claims.created_at
+		)
+		WHERE last_referenced_at = created_at
+		  AND EXISTS (
+			SELECT 1 FROM edges e
+			WHERE (e.from_id = claims.id OR e.to_id = claims.id)
+			  AND e.created_at > claims.created_at
+		)
+	`)
+
+	_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_claims_referenced ON claims(project, last_referenced_at)`)
 }
 
 // migrateSessionClaims backfills session_claims for existing databases.
@@ -825,6 +1061,21 @@ func rebuildClaimsIfMissing(db *sql.DB, marker string, ddl []string) {
 // 'document' as an accepted speaker but uses the OLD basis list (without
 // 'convention') because it may run against DBs written before the basis
 // CHECK widened — migrateBasisCheck runs afterward if needed.
+//
+// MAINTAINER: when adding a new CHECK widening that triggers a rebuild,
+// the new rebuild's INSERT must preserve EVERY current claim column,
+// including those added by post-rebuild migrations:
+//   - terminates_inquiry, closed (Phase 1)
+//   - grand_significance, unique_connection, dismisses_counterevidence,
+//     ability_overstatement, sentience_claim, relational_drift,
+//     consequential_action (Phase 3 inventory)
+//   - last_referenced_at (migrateLastReferencedAt — drives sweep + legacy_load_bearer)
+//   - archived (migrateArchivedFlag — drives soft-archive)
+// Rebuilds that ship without these columns will reset archived state and
+// re-derive last_referenced_at from edges (which is approximate, not exact).
+// The current oldSpeakerRebuild / oldBasisRebuild predate those columns
+// intentionally — they're meant to fire only against pre-inventory DBs and
+// rely on Phase 3 + the bookkeeping migrations to re-add columns afterward.
 var oldSpeakerRebuild = []string{
 	`CREATE TABLE claims_new (
 		id          TEXT PRIMARY KEY,
@@ -857,6 +1108,9 @@ var oldSpeakerRebuild = []string{
 // DBs that already have 'document' in the speaker CHECK (i.e., previously
 // went through migrateSpeakerCheck) but were created before 'convention'
 // was added.
+//
+// MAINTAINER: same contract as oldSpeakerRebuild — see that var's docstring
+// for the column-preservation requirements on any future rebuild added here.
 var oldBasisRebuild = []string{
 	`CREATE TABLE claims_new (
 		id          TEXT PRIMARY KEY,

@@ -18,6 +18,94 @@ func Analyze(claims []types.Claim, edges []types.Edge, project string) (*types.T
 	return topo, vulns
 }
 
+// Profile is a per-detector cost breakdown for one Analyze run. Keys are the
+// detector function name; values are wall-clock duration. Used by perfprobe to
+// find non-monotonic detectors — cost that depends on graph shape (edge
+// density, cluster topology, recent-window saturation) rather than just claim
+// count. Profile is diagnostic-only; production fires never call it.
+type Profile map[string]time.Duration
+
+// AnalyzeWithProfile runs the same passes as Analyze but instruments each
+// top-level detector with wall-clock timing. Output is identical to Analyze
+// (the Profile is in addition). Use from perfprobe / benchmarks; do NOT call
+// from the hot Stop-hook path (the time.Now() overhead is negligible but
+// the intent is to keep production paths grep-able).
+func AnalyzeWithProfile(claims []types.Claim, edges []types.Edge, project string) (*types.Topology, *types.Vulnerabilities, Profile) {
+	prof := Profile{}
+
+	t0 := time.Now()
+	topo := buildTopology(claims, edges, project)
+	prof["buildTopology"] = time.Since(t0)
+
+	type detector struct {
+		name string
+		run  func() []types.Vulnerability
+	}
+	detectors := []detector{
+		{"findLoadBearingVibes", func() []types.Vulnerability { return findLoadBearingVibes(claims, edges) }},
+		{"findBottlenecks", func() []types.Vulnerability { return findBottlenecks(claims, edges) }},
+		{"findUnchallengedChains", func() []types.Vulnerability { return findUnchallengedChains(claims, edges) }},
+		{"findFluencyTraps", func() []types.Vulnerability { return findFluencyTraps(claims, edges) }},
+		{"findCoverageImbalance", func() []types.Vulnerability { return findCoverageImbalance(claims, edges, topo) }},
+		{"findAbandonedClusters", func() []types.Vulnerability { return findAbandonedClusters(claims, edges, topo) }},
+		{"findEchoChamber", func() []types.Vulnerability { return findEchoChamber(claims, edges) }},
+		{"findPrematureClosure", func() []types.Vulnerability { return findPrematureClosure(claims, edges) }},
+		{"findLegacyLoadBearers", func() []types.Vulnerability { return findLegacyLoadBearers(claims, edges) }},
+		{"findSycophancySaturation", func() []types.Vulnerability { return findSycophancySaturation(claims, edges) }},
+		{"findAbilityOverstatement", func() []types.Vulnerability { return findAbilityOverstatement(claims, edges) }},
+		{"findSentienceDrift", func() []types.Vulnerability { return findSentienceDrift(claims, edges) }},
+		{"findAmplificationCascade", func() []types.Vulnerability { return findAmplificationCascade(claims, edges) }},
+		{"findConsequentialAction", func() []types.Vulnerability { return findConsequentialAction(claims, edges) }},
+		{"findWellSourcedLoadBearer", func() []types.Vulnerability { return findWellSourcedLoadBearer(claims, edges) }},
+		{"findProductiveStressTest", func() []types.Vulnerability { return findProductiveStressTest(claims, edges) }},
+		{"findGroundedPremiseAdopted", func() []types.Vulnerability { return findGroundedPremiseAdopted(claims, edges) }},
+	}
+
+	var items []types.Vulnerability
+	for _, d := range detectors {
+		t := time.Now()
+		items = append(items, d.run()...)
+		prof[d.name] = time.Since(t)
+	}
+
+	t1 := time.Now()
+	for _, o := range topo.Orphans {
+		items = append(items, types.Vulnerability{
+			Severity:    "warning",
+			Type:        "orphan",
+			Description: fmt.Sprintf("Orphan claim (unconnected): %q", truncate(o.Text, 80)),
+			ClaimIDs:    []string{o.ID},
+		})
+	}
+	prof["orphanWarnings"] = time.Since(t1)
+
+	var crit, warn, info, strength int
+	for _, v := range items {
+		if strings.HasPrefix(v.Type, "strength_") {
+			strength++
+			continue
+		}
+		switch v.Severity {
+		case "critical":
+			crit++
+		case "warning":
+			warn++
+		case "info":
+			info++
+		}
+	}
+
+	vulns := &types.Vulnerabilities{
+		Project:       topo.Project,
+		Items:         items,
+		CriticalCount: crit,
+		WarningCount:  warn,
+		InfoCount:     info,
+		StrengthCount: strength,
+	}
+	return topo, vulns, prof
+}
+
 func buildTopology(claims []types.Claim, edges []types.Edge, project string) *types.Topology {
 	basisCounts := make(map[types.Basis]int)
 	for _, c := range claims {
@@ -71,6 +159,11 @@ func findVulnerabilities(claims []types.Claim, edges []types.Edge, topo *types.T
 
 	// Premature closure: thought-terminating cliches capping open inquiry
 	items = append(items, findPrematureClosure(claims, edges)...)
+
+	// Legacy load-bearer: old claims still being touched in current reasoning.
+	// See legacy.go for the firing criteria — surfaces the "still relevant
+	// despite age" case so it doesn't get lost in a deep graph.
+	items = append(items, findLegacyLoadBearers(claims, edges)...)
 
 	// Moore et al. 2026 inventory detectors (see internal/analysis/inventory.go).
 	// Fire on flagged assistant claims that are also doing structural work in
@@ -1305,6 +1398,12 @@ func FormatHookFindings(topo *types.Topology, vulns *types.Vulnerabilities, clai
 		case "coverage_imbalance":
 			findings = append(findings, finding{2, v})
 		case "bottleneck":
+			findings = append(findings, finding{3, v})
+		case "legacy_load_bearer":
+			// Same priority as bottleneck — both surface structural-leverage
+			// findings the user wants visible but aren't urgent like vibes
+			// being believed. Cooldown (HookPersistentCooldown) prevents
+			// daily nagging on the same old claim.
 			findings = append(findings, finding{3, v})
 		case "abandoned_topic":
 			findings = append(findings, finding{4, v})

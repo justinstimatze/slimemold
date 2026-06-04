@@ -1,10 +1,8 @@
 package mcp
 
 import (
-	"bufio"
 	"cmp"
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -20,22 +18,72 @@ import (
 	"github.com/justinstimatze/slimemold/types"
 )
 
+// autoSweepDisabled returns true when the user has opted out of auto-sweep.
+// Accepts case-insensitive "off", "false", "0", "no" — a typo like "OFF"
+// silently failing-open was an easy regression (the previous strict
+// `!= "off"` check would have enabled sweep on "OFF" / "False" / "no").
+func autoSweepDisabled() bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("SLIMEMOLD_AUTO_SWEEP"))) {
+	case "off", "false", "0", "no":
+		return true
+	}
+	return false
+}
+
 // CoreParseTranscript extracts claims from a transcript and runs analysis.
 // sessionID is the Claude Code session identifier; pass "" to auto-generate one.
 // When non-empty, hook findings are scoped to claims from this session only
 // (cross-session claims are excluded from the priority finding selection).
-func CoreParseTranscript(ctx context.Context, db *store.DB, extractor *extract.Extractor, project, transcriptPath string, sinceTurn int, sessionID string) (*types.AuditResult, error) {
+//
+// preCountedTurns: if >0, the caller has already scanned the transcript and
+// is passing the turn count in. CoreParseTranscript skips its own scan and
+// uses this value as audit.LastTurn. The Stop hook in main.go counts turns
+// pre-call for new-session detection, so reusing that count saves a second
+// full-file scan (~100-200ms on a 26MB transcript). Pass 0 to count internally.
+//
+// Side effect: at the end of a successful parse, triggers a debounced
+// auto-sweep (once per day per project) that archives stale claims matching
+// the criteria documented in internal/store/sweep.go. The sweep is a no-op
+// inside its debounce window. Set SLIMEMOLD_AUTO_SWEEP=off (or false/0/no)
+// to disable; SLIMEMOLD_SWEEP_CAP=N caps the per-fire archive count.
+func CoreParseTranscript(ctx context.Context, db *store.DB, extractor *extract.Extractor, project, transcriptPath string, sinceTurn int, sessionID string, preCountedTurns int) (*types.AuditResult, error) {
 	// Validate transcript path — restrict to JSONL files in expected locations
 	if err := validateTranscriptPath(transcriptPath); err != nil {
 		return nil, err
 	}
 
-	// Load existing claims for cross-batch edge resolution.
-	// For large graphs, filter to relevant claims to avoid overwhelming the context window.
-	existingClaims, _ := db.GetClaimsByProject(project)
+	// Load existing claims for cross-batch edge resolution. The dedup index
+	// uses GetClaimsByProjectAll (NOT just non-archived) so a claim that was
+	// previously archived by the sweep doesn't get silently re-inserted as a
+	// fresh row when the model paraphrases it again. The selector below
+	// (selectRelevantClaims) and edge-resolution paths use the non-archived
+	// view — they shouldn't reach into archived state for context or edges.
+	allClaims, _ := db.GetClaimsByProjectAll(project)
+	existingClaims := make([]types.Claim, 0, len(allClaims))
+	for _, c := range allClaims {
+		if !c.Archived {
+			existingClaims = append(existingClaims, c)
+		}
+	}
 	existingEdges, _ := db.GetEdgesByProject(project)
 
-	chunk, _ := readTranscriptText(transcriptPath, sinceTurn)
+	// Read the transcript chunk ONCE. Same string feeds the LLM, the topical-
+	// relevance selector (selectRelevantClaims), and the basis validator
+	// (validateResearchBasis below). Previously CoreParseTranscript read the
+	// transcript twice — once for context (full-text format) and again inside
+	// the extractor (role-prefixed format). For 26MB transcripts that's
+	// ~150ms saved per fire. Semantically also correct: validateResearchBasis
+	// should check against what the LLM actually saw, not a separate view.
+	//
+	// IO errors are surfaced — previously swallowed, which conflated "the
+	// transcript is empty" with "we failed to read the transcript." An empty
+	// chunk is fine (no API call needed) and the function continues to the
+	// extract path; a real IO error should fail loudly rather than silently
+	// skip extraction.
+	chunk, err := extract.ReadTranscriptChunk(transcriptPath, sinceTurn)
+	if err != nil {
+		return nil, fmt.Errorf("reading transcript: %w", err)
+	}
 	relevantClaims := selectRelevantClaims(existingClaims, existingEdges, chunk)
 
 	existingRefs := make([]extract.ExistingClaimRef, 0, len(relevantClaims))
@@ -47,9 +95,14 @@ func CoreParseTranscript(ctx context.Context, db *store.DB, extractor *extract.E
 		})
 	}
 
-	result, err := extractor.ExtractFromTranscript(ctx, transcriptPath, sinceTurn, existingRefs)
-	if err != nil {
-		return nil, fmt.Errorf("extraction: %w", err)
+	var result *types.ExtractionResult
+	if strings.TrimSpace(chunk) == "" {
+		result = &types.ExtractionResult{}
+	} else {
+		result, err = extractor.Extract(ctx, chunk, existingRefs)
+		if err != nil {
+			return nil, fmt.Errorf("extraction: %w", err)
+		}
 	}
 
 	// Phase 0: Validate basis classifications against transcript text
@@ -68,8 +121,14 @@ func CoreParseTranscript(ctx context.Context, db *store.DB, extractor *extract.E
 	// reduces graph noise and prevents hub inflation.
 	result.Claims = deduplicateBatch(result.Claims)
 
-	// Pre-compute n-gram index for cross-batch dedup (avoids O(n*m*len) per claim)
-	existingIndex := buildNgramIndex(existingClaims)
+	// Pre-compute n-gram index for cross-batch dedup (avoids O(n*m*len) per
+	// claim). Built from ALL claims (including archived) so a paraphrased
+	// resurrection of an archived claim doesn't get re-inserted as a fresh
+	// row — it matches the archived original and (below) unarchives it.
+	// Without this, every sweep cycle would re-import the same stale
+	// observations as new claims, and the working-set growth the sweep was
+	// designed to bound would just repopulate.
+	existingIndex := buildNgramIndex(allClaims)
 
 	// Begin transaction for phases 1-3 (all writes are atomic).
 	txDB, err := db.Begin()
@@ -84,11 +143,31 @@ func CoreParseTranscript(ctx context.Context, db *store.DB, extractor *extract.E
 
 	for _, ec := range result.Claims {
 		// Cross-batch dedup: skip if a similar claim already exists in the graph.
-		// Do NOT call RecordSessionClaim for dedup matches — old-session claims
-		// should stay in their origin session. Adding them here bleeds stale
-		// state observations (e.g. "feature X is missing") into the current
-		// session's findings after the feature has been implemented.
+		// Do NOT call RecordSessionClaim for normal (non-archived) dedup
+		// matches — old-session claims should stay in their origin session.
+		// Adding them here bleeds stale state observations (e.g. "feature X
+		// is missing") into the current session's findings after the
+		// feature has been implemented.
+		//
+		// Archived matches are different: the sweep had retired the claim
+		// as stale, and the model just paraphrased it again. That's the
+		// model saying "I assert this proposition NOW in this session," so:
+		//   1. Unarchive in-tx (UnarchiveClaims also bumps last_referenced_at,
+		//      so the next debounce cycle doesn't immediately re-archive it).
+		//   2. Record session membership — the current session is now
+		//      asserting it; hook findings need to see it.
+		// Error is logged but not propagated — unarchive failure shouldn't
+		// abort the whole parse path; the dedup will just leave the row
+		// archived for this turn and the next paraphrase will retry.
 		if match := existingIndex.findSimilar(ec.Text, types.Speaker(ec.Speaker)); match != nil {
+			if match.Archived {
+				if n, err := txDB.UnarchiveClaims(project, []string{match.ID}); err != nil {
+					fmt.Fprintf(os.Stderr, "slimemold: failed to unarchive %s for dedup match: %v\n", match.ID, err)
+				} else if n == 0 {
+					fmt.Fprintf(os.Stderr, "slimemold: unarchive of %s affected 0 rows (race with concurrent archive?)\n", match.ID)
+				}
+				_ = txDB.RecordSessionClaim(sessionID, match.ID)
+			}
 			indexToID[ec.Index] = match.ID
 			continue
 		}
@@ -113,7 +192,9 @@ func CoreParseTranscript(ctx context.Context, db *store.DB, extractor *extract.E
 		newEdges += resolveEdgesForClaim(txDB, ec, indexToID)
 	}
 
-	// Phase 3: Prune noisy edges — cap outgoing degree per claim
+	// Phase 3: Prune noisy edges — cap outgoing degree per claim. This is the
+	// only inside-transaction load: edges have changed during phase 2, so we
+	// need a fresh snapshot to decide what to prune.
 	pruneHighDegreeEdges(txDB, project)
 
 	// Commit transaction — phases 1-3 are now atomic.
@@ -121,27 +202,51 @@ func CoreParseTranscript(ctx context.Context, db *store.DB, extractor *extract.E
 		return nil, fmt.Errorf("commit transaction: %w", err)
 	}
 
-	// Phase 4: Integrity validation (read-only, on committed data)
-	integrityWarnings := validateIntegrity(db, project)
-
-	// Phase 5: Cross-session auto-close. Any claim in this project that has
-	// been contradicted by a newer claim from any session is permanently
-	// retired here — extends filterSuperseded's within-session behavior to
-	// the whole graph so resolution doesn't have to be re-discovered each
-	// session. Idempotent and bounded; safe to run on every parse. Errors
-	// are logged but not propagated — auto-close failure shouldn't block
-	// the parse_transcript path, and the next parse will retry.
+	// Phase 5 (run before the post-commit load so the closed flag is visible
+	// in our snapshot): cross-session auto-close. Any claim in this project
+	// that has been contradicted by a newer claim from any session is
+	// permanently retired here — extends filterSuperseded's within-session
+	// behavior to the whole graph so resolution doesn't have to be
+	// re-discovered each session. Idempotent and bounded; safe to run on
+	// every parse. Errors are logged but not propagated — auto-close failure
+	// shouldn't block the parse_transcript path, and the next parse will retry.
 	if _, err := db.CloseSupersededClaims(project); err != nil {
 		fmt.Fprintf(os.Stderr, "slimemold: CloseSupersededClaims failed for %s: %v\n", project, err)
 	}
 
-	// Full project analysis (for audit summary and history).
+	// Auto-sweep stale claims, debounced to once per day per project. Hits
+	// the same archive criteria as `slimemold sweep --apply`: closed claims
+	// or old+idle+weak-basis+no-deps. Runs after CloseSupersededClaims so
+	// any newly-superseded claims are eligible for archival in the same pass.
+	// Errors swallowed — sweep is best-effort maintenance and must not block
+	// the parse path. Set SLIMEMOLD_AUTO_SWEEP=off (or false/0/no) to disable.
+	if !autoSweepDisabled() {
+		maxArchive := store.SweepCap()
+		if n, overflow, ran, err := db.SweepStaleClaimsDebounced(project, 24*time.Hour, maxArchive); err != nil {
+			fmt.Fprintf(os.Stderr, "slimemold: auto-sweep error [%s]: %v\n", project, err)
+		} else if ran && n > 0 {
+			if overflow > 0 {
+				fmt.Fprintf(os.Stderr, "slimemold: auto-swept %d stale claims (cap %d hit, %d pending) [%s]\n", n, maxArchive, overflow, project)
+			} else {
+				fmt.Fprintf(os.Stderr, "slimemold: auto-swept %d stale claims [%s]\n", n, project)
+			}
+		}
+	}
+
+	// Single post-commit load. Threaded through validateIntegrity, analysis,
+	// session-scoping, and audit-record counts. On large graphs (13K+ claims)
+	// this saves ~3× duplicate full-table scans per fire.
 	claims, _ := db.GetClaimsByProject(project)
 	edges, _ := db.GetEdgesByProject(project)
+
+	// Phase 4: Integrity validation (read-only, on committed data).
+	integrityWarnings := validateIntegrity(claims, edges)
+
 	topo, vulns := analysis.Analyze(claims, edges, project)
 
-	totalClaims, _ := db.CountClaims(project)
-	totalEdges, _ := db.CountEdges(project)
+	// Counts are just slice lengths — no extra SQL round-trip.
+	totalClaims := len(claims)
+	totalEdges := len(edges)
 
 	summary := analysis.FormatAuditSummary(topo, vulns)
 
@@ -202,7 +307,10 @@ func CoreParseTranscript(ctx context.Context, db *store.DB, extractor *extract.E
 		CriticalCount: vulns.CriticalCount,
 	})
 
-	lastTurn, _ := extract.CountTranscriptTurns(transcriptPath)
+	lastTurn := preCountedTurns
+	if lastTurn <= 0 {
+		lastTurn, _ = extract.CountTranscriptTurns(transcriptPath)
+	}
 
 	return &types.AuditResult{
 		NewClaims:       newClaims,
@@ -732,11 +840,13 @@ func remapIndices(indices []int, remap map[int]int, selfIdx int) []int {
 func pruneHighDegreeEdges(db *store.DB, project string) {
 	const maxOutDegree = 5
 
-	claims, err := db.GetClaimsByProject(project)
-	if err != nil || len(claims) == 0 {
+	// Edges only — the previous claims fetch was just an early-exit guard.
+	// Empty-edge check below covers the same case for ~250ms cheaper on large
+	// graphs (one less full-table scan inside the transaction).
+	edges, err := db.GetEdgesByProject(project)
+	if err != nil || len(edges) == 0 {
 		return
 	}
-	edges, _ := db.GetEdgesByProject(project)
 
 	// Group outgoing edges by source claim
 	outgoing := make(map[string][]types.Edge)
@@ -815,11 +925,11 @@ func validateTranscriptPath(path string) error {
 	return nil
 }
 
-// validateIntegrity checks the graph for structural problems after edge creation.
-func validateIntegrity(db *store.DB, project string) []string {
-	claims, _ := db.GetClaimsByProject(project)
-	edges, _ := db.GetEdgesByProject(project)
-
+// validateIntegrity checks the graph for structural problems after edge
+// creation. Accepts pre-loaded claims/edges so the caller can share its
+// single post-commit snapshot — previously this did its own GetClaimsByProject
+// and GetEdgesByProject (the 3rd duplicate set of full-table scans per fire).
+func validateIntegrity(claims []types.Claim, edges []types.Edge) []string {
 	if len(claims) == 0 {
 		return nil
 	}
@@ -860,69 +970,6 @@ func validateIntegrity(db *store.DB, project string) []string {
 	}
 
 	return warnings
-}
-
-// readTranscriptText reads the raw text content from a transcript for validation.
-func readTranscriptText(path string, sinceTurn int) (string, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return "", err
-	}
-	defer func() { _ = f.Close() }()
-
-	var parts []string
-	turnCount := 0
-	scanner := bufio.NewScanner(f)
-	scanner.Buffer(make([]byte, 0, 1024*1024), 10*1024*1024)
-	for scanner.Scan() {
-		var entry map[string]interface{}
-		if err := json.Unmarshal([]byte(scanner.Text()), &entry); err != nil {
-			continue
-		}
-
-		// Track turns for sinceTurn filtering
-		role, _ := entry["role"].(string)
-		if role == "" {
-			if msg, ok := entry["message"].(map[string]interface{}); ok {
-				role, _ = msg["role"].(string)
-			}
-		}
-		if role == "user" || role == "assistant" {
-			turnCount++
-		}
-		if sinceTurn > 0 && turnCount <= sinceTurn {
-			continue
-		}
-
-		// Extract text content from any structure
-		if content, ok := entry["content"].(string); ok {
-			parts = append(parts, content)
-		} else if content, ok := entry["content"].([]interface{}); ok {
-			for _, block := range content {
-				if m, ok := block.(map[string]interface{}); ok {
-					if m["type"] == "text" {
-						if text, ok := m["text"].(string); ok {
-							parts = append(parts, text)
-						}
-					}
-				}
-			}
-		}
-		if msg, ok := entry["message"].(map[string]interface{}); ok {
-			if content, ok := msg["content"].([]interface{}); ok {
-				for _, block := range content {
-					if m, ok := block.(map[string]interface{}); ok {
-						if m["type"] == "text" {
-							if text, ok := m["text"].(string); ok {
-								parts = append(parts, text)
-							}
-						}
-					}
-				}
-			}
-		}
-	}
-	return strings.Join(parts, "\n"), nil
 }
 
 // validateResearchBasis checks basis classifications against the claim text

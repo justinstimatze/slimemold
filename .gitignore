@@ -1,4 +1,5 @@
-slimemold
+/slimemold
+/perfprobe
 .env
 *.sqlite
 .mcp.json

@@ -25,7 +25,19 @@ CREATE TABLE IF NOT EXISTS claims (
     sentience_claim           INTEGER DEFAULT 0,
     relational_drift          INTEGER DEFAULT 0,
     -- Yang et al. 2026 real-world action signal (CHI EA '26).
-    consequential_action      INTEGER DEFAULT 0
+    consequential_action      INTEGER DEFAULT 0,
+    -- last_referenced_at tracks when this claim was most recently touched —
+    -- updated when an edge is created involving it (from or to), or when the
+    -- claim is created. Used by the legacy_load_bearer detector and by the
+    -- archival sweep to distinguish "stale" claims (no recent references)
+    -- from "old but still active" ones. Defaults to created_at on first write.
+    last_referenced_at        TEXT,
+    -- archived is set by the stale-claim sweep when a claim is old, idle,
+    -- and either explicitly closed or structurally inert. Archived claims
+    -- are excluded from GetClaimsByProject by default (and therefore from
+    -- analysis, hook findings, viz, audit) but remain in the DB for
+    -- provenance and reversibility. slimemold unarchive flips it back.
+    archived                  INTEGER DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS edges (
@@ -78,6 +90,17 @@ CREATE TABLE IF NOT EXISTS session_claims (
     PRIMARY KEY (session_id, claim_id)
 );
 CREATE INDEX IF NOT EXISTS idx_session_claims_session ON session_claims(session_id);
+
+-- slimemold_meta is a small key-value store for in-DB state that doesn't
+-- warrant its own table. Currently holds last-sweep timestamps per project
+-- so the auto-sweep can debounce to once per day without needing access to
+-- the data dir or a separate file path. Keep entries tiny — this is not a
+-- general-purpose KV store, just a place to park a handful of bookkeeping
+-- values that need to live with the DB.
+CREATE TABLE IF NOT EXISTS slimemold_meta (
+    key   TEXT PRIMARY KEY,
+    value TEXT
+);
 
 CREATE INDEX IF NOT EXISTS idx_claims_project ON claims(project);
 CREATE INDEX IF NOT EXISTS idx_claims_basis ON claims(basis);

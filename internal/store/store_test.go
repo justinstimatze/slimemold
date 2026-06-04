@@ -1014,3 +1014,130 @@ func TestEdgeRelationCheckMigration(t *testing.T) {
 		t.Fatalf("CreateEdge with relation=questions after migration: %v", err)
 	}
 }
+
+// TestLastReferencedAtMigration_RefinesFromEdges exercises Pass 2 of
+// migrateLastReferencedAt: after Pass 1 fills last_referenced_at = created_at
+// for all rows, Pass 2 must walk edges and bump claims whose latest edge
+// post-dates their creation. If Pass 2 silently drops (subselect typo, gate
+// inversion, etc.), every old claim with a later edge appears stale-since-
+// creation on the first sweep — false-positive archival on real working data.
+//
+// Setup: pre-column DB with one claim created 30d ago and an edge to itself's
+// neighbor with created_at 5d ago. After migration, last_referenced_at on the
+// claim must equal the edge timestamp (5d ago), not the claim's own
+// created_at (30d ago).
+func TestLastReferencedAtMigration_RefinesFromEdges(t *testing.T) {
+	dir := t.TempDir()
+	projectDir := filepath.Join(dir, "test-project")
+	if err := os.MkdirAll(projectDir, 0700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	dbPath := filepath.Join(projectDir, "graph.sqlite")
+	dsn := dbPath + "?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=foreign_keys(ON)"
+
+	claimTime := time.Now().Add(-30 * 24 * time.Hour).Truncate(time.Second)
+	edgeTime := time.Now().Add(-5 * 24 * time.Hour).Truncate(time.Second)
+
+	{
+		raw, err := sql.Open("sqlite", dsn)
+		if err != nil {
+			t.Fatalf("raw open: %v", err)
+		}
+		// Use a schema that has every column EXCEPT last_referenced_at. Easiest:
+		// copy schema.sql's CREATE then drop the new columns. To avoid drift we
+		// build a minimal one that satisfies CreateClaim's INSERT columns at
+		// least for two seeded rows + an edge.
+		_, err = raw.Exec(`CREATE TABLE claims (
+			id          TEXT PRIMARY KEY,
+			text        TEXT NOT NULL,
+			basis       TEXT NOT NULL CHECK(basis IN ('research','empirical','analogy','vibes','llm_output','deduction','assumption','definition','convention')),
+			confidence  REAL DEFAULT 0.5,
+			source      TEXT DEFAULT '',
+			session_id  TEXT NOT NULL,
+			project     TEXT NOT NULL,
+			turn_number INTEGER DEFAULT 0,
+			speaker     TEXT DEFAULT 'user' CHECK(speaker IN ('user','assistant','document')),
+			created_at  TEXT NOT NULL,
+			challenged  INTEGER DEFAULT 0,
+			verified    INTEGER DEFAULT 0,
+			terminates_inquiry INTEGER DEFAULT 0,
+			closed      INTEGER DEFAULT 0
+		)`)
+		if err != nil {
+			t.Fatalf("create old claims: %v", err)
+		}
+		_, err = raw.Exec(`CREATE TABLE edges (
+			id          TEXT PRIMARY KEY,
+			from_id     TEXT NOT NULL,
+			to_id       TEXT NOT NULL,
+			relation    TEXT NOT NULL CHECK(relation IN ('supports','depends_on','contradicts','questions')),
+			strength    REAL DEFAULT 1.0,
+			created_at  TEXT NOT NULL
+		)`)
+		if err != nil {
+			t.Fatalf("create old edges: %v", err)
+		}
+		// Three claims, all created at claimTime: "old" and "neighbor" will
+		// share an edge created later (testing Pass 2 EXISTS=true branch);
+		// "isolated" has no edges (testing Pass 2 EXISTS=false branch — its
+		// last_referenced_at must stay at claimTime, NOT get NULL'd by the
+		// subquery).
+		for _, id := range []string{"old", "neighbor", "isolated"} {
+			_, err = raw.Exec(`INSERT INTO claims (id, text, basis, session_id, project, speaker, created_at) VALUES (?,?,?,?,?,?,?)`,
+				id, id, "vibes", "s1", "test-project", "assistant", claimTime.Format(time.RFC3339))
+			if err != nil {
+				t.Fatalf("seed claim %s: %v", id, err)
+			}
+		}
+		// Edge from old → neighbor created LATER than the claims. After migration,
+		// both claims should pick this up as their last_referenced_at.
+		_, err = raw.Exec(`INSERT INTO edges (id, from_id, to_id, relation, strength, created_at) VALUES (?,?,?,?,?,?)`,
+			"e1", "old", "neighbor", "supports", 1.0, edgeTime.Format(time.RFC3339))
+		if err != nil {
+			t.Fatalf("seed edge: %v", err)
+		}
+		raw.Close()
+	}
+
+	// Open via the store — runs the full migration chain, including
+	// migrateLastReferencedAt Pass 1 (created_at fallback) and Pass 2 (edge refinement).
+	db, err := Open(dir, "test-project")
+	if err != nil {
+		t.Fatalf("Open after migration: %v", err)
+	}
+	defer db.Close()
+
+	// Pass 2 refines old + neighbor to edgeTime.
+	for _, id := range []string{"old", "neighbor"} {
+		c, err := db.GetClaim(id)
+		if err != nil {
+			t.Fatalf("get %s: %v", id, err)
+		}
+		if c.LastReferencedAt.IsZero() {
+			t.Errorf("%s: last_referenced_at is zero — Pass 1 didn't run (or scanClaim doesn't read the column)", id)
+			continue
+		}
+		got := c.LastReferencedAt.Truncate(time.Second)
+		if !got.Equal(edgeTime) {
+			t.Errorf("%s: expected last_referenced_at = %v (edge time, refined by Pass 2), got %v (claim created_at = %v) — Pass 2 didn't refine",
+				id, edgeTime, got, claimTime)
+		}
+	}
+
+	// Pass 2 EXISTS=false branch: isolated has no edges, so its
+	// last_referenced_at must stay at claimTime (set by Pass 1) — the
+	// Pass-2 UPDATE is gated on EXISTS(SELECT FROM edges...). If a future
+	// change drops the gate, the subquery would resolve to NULL for
+	// isolated claims and overwrite the Pass-1 value, producing a NULL or
+	// zero-valued lrat the sweep would mishandle.
+	isolated, err := db.GetClaim("isolated")
+	if err != nil {
+		t.Fatalf("get isolated: %v", err)
+	}
+	if isolated.LastReferencedAt.IsZero() {
+		t.Error("isolated: last_referenced_at is zero — Pass-2 EXISTS=false branch overwrote Pass-1 fallback")
+	} else if got := isolated.LastReferencedAt.Truncate(time.Second); !got.Equal(claimTime) {
+		t.Errorf("isolated: expected last_referenced_at = %v (claim time, Pass-1 fallback preserved), got %v",
+			claimTime, got)
+	}
+}

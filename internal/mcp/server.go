@@ -280,7 +280,7 @@ func (s *mcpServer) handleClaims(ctx context.Context, req sdkmcp.CallToolRequest
 		if args.TranscriptPath == "" {
 			return sdkmcp.NewToolResultError("transcript_path required"), nil
 		}
-		audit, err := CoreParseTranscript(ctx, s.db, s.extractor, project, args.TranscriptPath, args.SinceTurn, "")
+		audit, err := CoreParseTranscript(ctx, s.db, s.extractor, project, args.TranscriptPath, args.SinceTurn, "", 0)
 		if err != nil {
 			return sdkmcp.NewToolResultError(err.Error()), nil
 		}

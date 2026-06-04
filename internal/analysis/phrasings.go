@@ -91,6 +91,11 @@ var phrasingsByType = map[string][]string{
 		`"Pausing on '%s' — that's a real-world commitment, and the worst time to discover the case isn't airtight is after you've sent it. Before the irreversible step: what's the one stress-test we haven't run yet?"`,
 		`"'%s' is the kind of move where the cost of being wrong is asymmetric — much higher than the cost of waiting a day to verify. What would a domain expert who hasn't seen our chat history say about it?"`,
 	},
+	"legacy_load_bearer": {
+		`"Worth flagging that '%s' is from a while back but is still doing structural work in what we're discussing now — that's interesting. Is the original reasoning still as solid as we'd want, or is it just been around so long that it feels settled? Worth a fresh look at the foundation."`,
+		`"'%s' is an old claim that keeps coming up — usually that means either it's genuinely foundational or it's calcified. Which is it here? If we re-derived it today, would we land on the same thing?"`,
+		`"Noticing that '%s' is still being referenced in current threads despite being old. Could be solid bedrock; could be a load-bearing assumption that hasn't been re-examined. Worth checking which one before building further on it."`,
+	},
 	"default": {
 		`"I want to make '%s' as strong as possible — do we have a source for it, or is this one where we should go find one? I think it's worth the investment."`,
 	},

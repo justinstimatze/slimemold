@@ -140,7 +140,18 @@ func CoreIngestDocument(ctx context.Context, db *store.DB, extractor *extract.Ex
 }
 
 func ingestOneChunk(ctx context.Context, db *store.DB, extractor *extract.Extractor, project, sessionID, displayPath string, chunk ingest.DocumentChunk) (int, int, error) {
-	existingClaims, _ := db.GetClaimsByProject(project)
+	// Load ALL claims (including archived) so the dedup index can match
+	// archived rows and unarchive them on resurrection — same fix as
+	// CoreParseTranscript. Without this, re-ingesting a document after a
+	// sweep silently re-inserts duplicate rows, defeating the working-set
+	// containment the sweep was designed to provide.
+	allClaims, _ := db.GetClaimsByProjectAll(project)
+	existingClaims := make([]types.Claim, 0, len(allClaims))
+	for _, c := range allClaims {
+		if !c.Archived {
+			existingClaims = append(existingClaims, c)
+		}
+	}
 	existingEdges, _ := db.GetEdgesByProject(project)
 	relevant := selectRelevantClaims(existingClaims, existingEdges, chunk.Text)
 
@@ -190,7 +201,10 @@ func ingestOneChunk(ctx context.Context, db *store.DB, extractor *extract.Extrac
 	}
 
 	result.Claims = deduplicateBatch(result.Claims)
-	existingIndex := buildNgramIndex(existingClaims)
+	// Index built from ALL claims (incl. archived) so paraphrased
+	// resurrections of swept claims match the original and unarchive in
+	// place rather than creating duplicate rows.
+	existingIndex := buildNgramIndex(allClaims)
 
 	txDB, err := db.Begin()
 	if err != nil {
@@ -202,6 +216,22 @@ func ingestOneChunk(ctx context.Context, db *store.DB, extractor *extract.Extrac
 	newClaims := 0
 	for _, ec := range result.Claims {
 		if match := existingIndex.findSimilar(ec.Text, types.Speaker(ec.Speaker)); match != nil {
+			// Unlike CoreParseTranscript's dedup branch, ingest ALWAYS
+			// calls RecordSessionClaim — document ingest sessions are
+			// deterministic per file and the membership table is what
+			// makes a re-ingest produce the same session-scoped findings
+			// as the first ingest.
+			//
+			// Archived matches additionally need unarchiving so the
+			// resurrected claim re-enters the working set; error logged
+			// but not propagated (same rationale as core.go).
+			if match.Archived {
+				if n, err := txDB.UnarchiveClaims(project, []string{match.ID}); err != nil {
+					fmt.Fprintf(os.Stderr, "slimemold: failed to unarchive %s during ingest: %v\n", match.ID, err)
+				} else if n == 0 {
+					fmt.Fprintf(os.Stderr, "slimemold: unarchive of %s affected 0 rows (race?)\n", match.ID)
+				}
+			}
 			indexToID[ec.Index] = match.ID
 			_ = txDB.RecordSessionClaim(sessionID, match.ID)
 			continue

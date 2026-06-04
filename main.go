@@ -23,6 +23,7 @@ import (
 	"github.com/justinstimatze/slimemold/internal/mcp"
 	"github.com/justinstimatze/slimemold/internal/store"
 	"github.com/justinstimatze/slimemold/internal/viz"
+	"github.com/justinstimatze/slimemold/types"
 )
 
 // evalCorpus embeds the demo documents into the binary so `slimemold eval`
@@ -72,6 +73,10 @@ func main() {
 		cmdEval()
 	case "analyze-winze":
 		cmdAnalyzeWinze(args[1:])
+	case "sweep":
+		cmdSweep(project, args[1:])
+	case "unarchive":
+		cmdUnarchive(project, args[1:])
 	case "help", "--help", "-h":
 		usage()
 	default:
@@ -97,6 +102,11 @@ Usage:
   slimemold [--project NAME] ingest PATH   Ingest a document (text or markdown) into the graph
   slimemold eval                       Run the demo corpus through extraction and print a basis-distribution snapshot
   slimemold analyze-winze [FILE]       Run slimemold detectors on a winze KB export (stdin if FILE is "-" or omitted)
+  slimemold [--project NAME] sweep [--apply [--no-cap]]
+                                       List claims that would be archived (dry-run by default; --apply to actually archive).
+                                       --apply honors SLIMEMOLD_SWEEP_CAP; --no-cap forces a single uncapped pass.
+  slimemold [--project NAME] unarchive [--all [--confirm] | CLAIM_ID...]
+                                       Reverse archival: --all needs --confirm (shows count first); per-ID is unconfirmed.
   slimemold help                       Show this help
 
 Project resolution: --project flag > .slimemold-project file > directory name
@@ -106,6 +116,8 @@ Environment:
   SLIMEMOLD_MODEL      Extraction model (default: claude-sonnet-4-6)
   SLIMEMOLD_DATA_DIR   Data directory (default: ~/.slimemold)
   SLIMEMOLD_INTERVAL   Hook fires every N turns (default: 3)
+  SLIMEMOLD_AUTO_SWEEP Set to "off" to disable the daily auto-archive of stale claims
+  SLIMEMOLD_SWEEP_CAP  Max claims to archive per fire (default: 1000; set 0 or negative for no cap)
 `)
 }
 
@@ -267,7 +279,9 @@ func cmdHook() {
 	logDir := filepath.Join(cfg.DataDir, "tmp")
 	_ = os.MkdirAll(logDir, 0700)
 	cleanStaleLocks(logDir)
-	logFile, _ := os.OpenFile(filepath.Join(logDir, "hook.log"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
+	logPath := filepath.Join(logDir, "hook.log")
+	rotateLogIfLarge(logPath)
+	logFile, _ := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
 	logf := func(format string, args ...interface{}) {
 		if logFile != nil {
 			fmt.Fprintf(logFile, "%s %s\n", time.Now().Format("2006-01-02 15:04:05"), fmt.Sprintf(format, args...))
@@ -378,17 +392,20 @@ func cmdHook() {
 		}
 	}
 
-	// Detect new session: transcript has fewer turns than our bookmark
-	if sinceTurn > 0 {
-		if actualTurns, err := extract.CountTranscriptTurns(input.TranscriptPath); err == nil && sinceTurn >= actualTurns {
-			logf("new session detected (sinceTurn=%d >= actualTurns=%d), resetting", sinceTurn, actualTurns)
-			sinceTurn = 0
-		}
+	// Single transcript scan: counts turns for new-session detection AND
+	// passes the count through to CoreParseTranscript so it doesn't rescan
+	// the file. Saves ~100-200ms per fire on multi-MB transcripts. We always
+	// count (not only when sinceTurn>0) so CoreParseTranscript gets the hint
+	// regardless of whether we're in baseline or incremental mode.
+	turnCount, _ := extract.CountTranscriptTurns(input.TranscriptPath)
+	if sinceTurn > 0 && turnCount > 0 && sinceTurn >= turnCount {
+		logf("new session detected (sinceTurn=%d >= actualTurns=%d), resetting", sinceTurn, turnCount)
+		sinceTurn = 0
 	}
 
 	logf("extracting [%s] from %s (since turn %d)", project, filepath.Base(input.TranscriptPath), sinceTurn)
 
-	audit, err := mcp.CoreParseTranscript(ctx, db, extractor, project, input.TranscriptPath, sinceTurn, input.SessionID)
+	audit, err := mcp.CoreParseTranscript(ctx, db, extractor, project, input.TranscriptPath, sinceTurn, input.SessionID, turnCount)
 	if err != nil {
 		logf("extraction error: %s", err)
 		return
@@ -917,6 +934,327 @@ func cmdAnalyzeWinze(args []string) {
 	topo, vulns := analysis.Analyze(claims, edges, "winze")
 	fmt.Printf("Winze KB: %d claims, %d edges\n\n", topo.ClaimCount, topo.EdgeCount)
 	fmt.Print(analysis.FormatAuditSummary(topo, vulns))
+}
+
+// rotateLogIfLarge moves hook.log → hook.log.1 when it exceeds maxLogBytes,
+// so the file doesn't grow without bound across months of hook fires. One
+// backup is kept (overwriting any prior backup). Errors are swallowed —
+// log rotation is best-effort and must never block extraction.
+//
+// Was: hook.log grew linearly with usage (780KB / 10k lines after ~2 months
+// of light use). No real cost on disk, but verbose tail-grepping over
+// stale entries makes status checks noisier than they should be.
+func rotateLogIfLarge(logPath string) {
+	const maxLogBytes = 5 * 1024 * 1024 // 5 MB
+	info, err := os.Stat(logPath)
+	if err != nil || info.Size() < maxLogBytes {
+		return
+	}
+	_ = os.Rename(logPath, logPath+".1")
+}
+
+// sweepBuckets is the per-category breakdown shown in the sweep CLI report.
+// Built from the candidate IDs returned by store.SweepCandidates — the
+// criteria themselves live in the store package so CoreParseTranscript can
+// share them without an import cycle.
+type sweepBuckets struct {
+	count              int
+	closedCount        int
+	weakAndNoDepsCount int
+	byBasis            map[string]int
+	bySpeaker          map[string]int
+}
+
+// buildSweepBreakdown bins candidate IDs into a per-category report and
+// returns the set as a map for callers (the sample-rendering loop) to reuse.
+// deps is the incoming-structural-edges map produced by
+// store.SweepCandidatesWithDeps — passed in to avoid recomputing the same
+// O(E) pass already done inside the criteria function. Returning idSet
+// avoids an O(N*K) `contains(ids, c.ID)` lookup in the sample loop on
+// lucida-class graphs (15k claims, 5k candidates) where the inner loop
+// would dominate the report cost.
+func buildSweepBreakdown(ids []string, claims []types.Claim, deps map[string]int) (sweepBuckets, map[string]bool) {
+	b := sweepBuckets{byBasis: map[string]int{}, bySpeaker: map[string]int{}}
+	idSet := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		idSet[id] = true
+	}
+	for _, c := range claims {
+		if !idSet[c.ID] {
+			continue
+		}
+		b.count++
+		b.byBasis[string(c.Basis)]++
+		b.bySpeaker[string(c.Speaker)]++
+		if c.Closed {
+			b.closedCount++
+		} else if deps[c.ID] < store.SweepStructuralMin && store.SweepWeakBasis[string(c.Basis)] {
+			b.weakAndNoDepsCount++
+		}
+	}
+	return b, idSet
+}
+
+// cmdSweep reports (default) or applies (with --apply) the stale-claim
+// sweep. Criteria documented at sweepCandidates above. --apply is the only
+// destructive action in slimemold; the dry-run path is purely diagnostic.
+//
+// Reversal: every archived claim can be restored via `slimemold unarchive`.
+// Archival sets a flag rather than deleting rows, so no data is actually lost.
+//
+// --apply honors SLIMEMOLD_SWEEP_CAP for parity with the auto-sweep path —
+// previously the env var only applied inside the MCP daemon, so a manual
+// `sweep --apply` on a lucida-class backlog (5k+ candidates) ignored the
+// user's "max N per batch" preference and archived everything in one shot.
+// `--no-cap` overrides the env to force a single uncapped pass (useful when
+// the user has explicitly inspected the dry-run report and knows what they
+// want). Set the env var to 0 or negative for "no cap" without the flag.
+func cmdSweep(projectOverride string, args []string) {
+	apply := false
+	noCap := false
+	for _, a := range args {
+		switch a {
+		case "--apply":
+			apply = true
+		case "--no-cap":
+			noCap = true
+		}
+	}
+	// --no-cap is only meaningful with --apply (dry-run reports all
+	// candidates regardless of cap). Warn rather than silently ignore so
+	// the user notices the typo / wrong invocation order.
+	if noCap && !apply {
+		fmt.Fprintf(os.Stderr, "slimemold: --no-cap has no effect without --apply (dry-run always reports all candidates); ignoring.\n")
+	}
+	cfg, err := config.Load()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "slimemold: config error: %s\n", err)
+		os.Exit(1)
+	}
+	// DB path is always CWD-keyed; --project only changes which rows we
+	// query/mutate inside it. resolveDBProject preserves that invariant —
+	// the previous form (queryProject = projectOverride or detectProject)
+	// would open a SECOND db under the override name, splitting state.
+	dbProject, queryProject := resolveDBProject(projectOverride)
+	db, err := store.Open(cfg.DataDir, dbProject)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "slimemold: database error: %s\n", err)
+		os.Exit(1)
+	}
+	defer db.Close()
+
+	// Use the *all-including-archived* view so report counts reflect the
+	// actual DB state — re-running the sweep should show already-archived
+	// claims as archived, not invisible. sweepCandidates filters internally.
+	claims, err := db.GetClaimsByProjectAll(queryProject)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "slimemold: error loading claims: %s\n", err)
+		os.Exit(1)
+	}
+	edges, err := db.GetEdgesByProject(queryProject)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "slimemold: error loading edges: %s\n", err)
+		os.Exit(1)
+	}
+
+	ids, deps := store.SweepCandidatesWithDeps(claims, edges)
+	b, idSet := buildSweepBreakdown(ids, claims, deps)
+	archivedAlready := 0
+	for _, c := range claims {
+		if c.Archived {
+			archivedAlready++
+		}
+	}
+
+	mode := "dry-run"
+	if apply {
+		mode = "APPLY"
+	}
+	fmt.Printf("=== Stale-claim sweep (%s): project=%q ===\n\n", mode, queryProject)
+	fmt.Printf("Total claims: %d (%d already archived, %d active)\n", len(claims), archivedAlready, len(claims)-archivedAlready)
+	fmt.Printf("Total edges:  %d\n\n", len(edges))
+	fmt.Printf("New archive candidates: %d (%.1f%% of active)\n",
+		b.count, percent(b.count, len(claims)-archivedAlready))
+	fmt.Printf("  closed=true:                  %d\n", b.closedCount)
+	fmt.Printf("  weak basis + no deps:         %d\n", b.weakAndNoDepsCount)
+	fmt.Println("  by basis:")
+	for k, v := range b.byBasis {
+		fmt.Printf("    %-12s %d\n", k, v)
+	}
+	fmt.Println("  by speaker:")
+	for k, v := range b.bySpeaker {
+		fmt.Printf("    %-12s %d\n", k, v)
+	}
+
+	// Sample candidates so the user can eyeball them. Reuses idSet from the
+	// breakdown to avoid an O(N*K) contains() scan per claim on large graphs.
+	if b.count > 0 {
+		fmt.Println("\nSample candidates:")
+		now := time.Now()
+		shown := 0
+		for _, c := range claims {
+			if c.Archived || shown >= 8 {
+				continue
+			}
+			if !idSet[c.ID] {
+				continue
+			}
+			age := int(now.Sub(c.CreatedAt).Hours() / 24)
+			idle := int(now.Sub(c.LastReferencedAt).Hours() / 24)
+			fmt.Printf("  - [%dd old, %dd idle, deps=%d, basis=%s%s] %s\n",
+				age, idle, deps[c.ID], c.Basis, closedTag(c.Closed),
+				truncateForSweep(c.Text, 80))
+			shown++
+		}
+	}
+
+	if !apply {
+		fmt.Println("\n(No data was modified. Add --apply to archive these claims.)")
+		return
+	}
+	if b.count == 0 {
+		fmt.Println("\nNothing to archive.")
+		return
+	}
+
+	// Apply the cap (SLIMEMOLD_SWEEP_CAP or --no-cap override). Oldest
+	// first — the same ordering policy the auto-sweep uses, so manual and
+	// auto runs converge on the same set of archived claims given the same
+	// state. Print BOTH the cap-affected count and the overflow so the user
+	// knows how many fires it'll take to drain the backlog.
+	toArchive := ids
+	overflow := 0
+	capValue := 0
+	if !noCap {
+		capValue = store.SweepCap()
+		if capValue >= 1 && len(toArchive) > capValue {
+			store.SortCandidatesOldestFirst(toArchive, claims)
+			overflow = len(toArchive) - capValue
+			toArchive = toArchive[:capValue]
+		}
+	}
+	if overflow > 0 {
+		// cap=%d uses the captured capValue (not len(toArchive)) so the
+		// label can't desync if future logic archives fewer than cap due
+		// to a different filter.
+		fmt.Printf("\nArchiving %d claims (cap=%d hit, %d pending — re-run to drain, or pass --no-cap)...\n",
+			len(toArchive), capValue, overflow)
+	} else {
+		fmt.Printf("\nArchiving %d claims...\n", len(toArchive))
+	}
+	n, err := db.ArchiveClaims(queryProject, toArchive)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "\nslimemold: archive error: %s\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("Archived %d claims. Restore with: slimemold --project %s unarchive --all --confirm\n", n, queryProject)
+}
+
+// cmdUnarchive flips archived=0 on claims, either by ID or all-at-once.
+// The recovery hatch for false-positive sweep archives.
+//
+// --all is asymmetric to cmdSweep --apply: sweep defaults to dry-run and
+// requires explicit --apply, whereas unarchive --all mutates immediately
+// once entered. To avoid a misclick on a lucida-class graph (~5k archived
+// claims that the legacy_load_bearer detector would then flood), --all
+// shows the count and requires --confirm in the same invocation. Per-ID
+// unarchive doesn't need this guard — the user typed the IDs.
+func cmdUnarchive(projectOverride string, args []string) {
+	cfg, err := config.Load()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "slimemold: config error: %s\n", err)
+		os.Exit(1)
+	}
+	dbProject, queryProject := resolveDBProject(projectOverride)
+	db, err := store.Open(cfg.DataDir, dbProject)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "slimemold: database error: %s\n", err)
+		os.Exit(1)
+	}
+	defer db.Close()
+
+	all := false
+	confirm := false
+	var ids []string
+	for _, a := range args {
+		switch {
+		case a == "--all":
+			all = true
+		case a == "--confirm":
+			confirm = true
+		case !strings.HasPrefix(a, "--"):
+			ids = append(ids, a)
+		}
+	}
+	if !all && len(ids) == 0 {
+		fmt.Fprintf(os.Stderr, "usage: slimemold [--project NAME] unarchive --all [--confirm] | CLAIM_ID...\n")
+		os.Exit(1)
+	}
+	// --all + per-ID args is ambiguous: did the user mean "everything plus
+	// these" (which is just "everything") or "wait I'll just unarchive
+	// these"? Reject rather than silently doing one and dropping the other.
+	if all && len(ids) > 0 {
+		fmt.Fprintf(os.Stderr, "slimemold: --all and explicit CLAIM_IDs are mutually exclusive; pick one.\n")
+		os.Exit(1)
+	}
+
+	// For --all paths (both dry-run and --confirm), short-circuit on zero
+	// archived rows so neither path prints a misleading "Unarchived 0
+	// claims" success line. Per-ID paths don't need this — UnarchiveClaims
+	// already returns 0 on misses and the message is accurate.
+	if all {
+		everything, _ := db.GetClaimsByProjectAll(queryProject)
+		archivedCount := 0
+		for _, c := range everything {
+			if c.Archived {
+				archivedCount++
+			}
+		}
+		if archivedCount == 0 {
+			fmt.Printf("No archived claims in project %q. Nothing to do.\n", queryProject)
+			return
+		}
+		if !confirm {
+			fmt.Printf("Would unarchive %d claims in project %q.\n", archivedCount, queryProject)
+			fmt.Println("This re-activates them in hook findings, viz, audit, and analysis.")
+			fmt.Println("Add --confirm to actually unarchive.")
+			return
+		}
+	}
+
+	var n int64
+	if all {
+		n, err = db.UnarchiveAll(queryProject)
+	} else {
+		n, err = db.UnarchiveClaims(queryProject, ids)
+	}
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "slimemold: unarchive error: %s\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("Unarchived %d claims in project %q.\n", n, queryProject)
+}
+
+func closedTag(closed bool) string {
+	if closed {
+		return " CLOSED"
+	}
+	return ""
+}
+
+func truncateForSweep(s string, n int) string {
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	return string(r[:n]) + "..."
+}
+
+func percent(num, denom int) float64 {
+	if denom == 0 {
+		return 0
+	}
+	return 100.0 * float64(num) / float64(denom)
 }
 
 // cleanStaleLocks removes hook lock files whose owner PIDs are no longer alive.

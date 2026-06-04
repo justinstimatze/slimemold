@@ -54,4 +54,26 @@ The ` + "`ingest_document`" + ` action runs the same extraction pipeline over an
 
 The ` + "`close`" + ` action permanently removes a claim from future hook findings. Use it when you confirm that a state observation is no longer true — for example, after implementing a feature that a prior claim said was missing, call ` + "`claims(close, claim_id)`" + ` to retire the "X is missing" claim. Do this on your own initiative after completing implementation work; the user does not need to ask. Closing a claim does not delete it — it stays in the DB for provenance — but it will not surface as a finding again.
 
-Use these when the user asks to inspect the graph, register a claim manually, mark a claim as challenged or closed, audit an external knowledge base, or analyze a document. Do not use them to self-audit during conversation — the hook is already doing that.`
+Use these when the user asks to inspect the graph, register a claim manually, mark a claim as challenged or closed, audit an external knowledge base, or analyze a document. Do not use them to self-audit during conversation — the hook is already doing that.
+
+## Auto-sweep and archival
+
+The MCP server runs a debounced auto-sweep at most once per day per project, triggered by ` + "`claims(parse_transcript, ...)`" + ` calls. The sweep soft-archives stale claims so the working set stays small and analysis stays fast on long-lived projects.
+
+A claim is eligible for archival when it meets either branch, AND has not been touched for at least 30 days, AND is at least 30 days old:
+- ` + "`closed=true`" + ` — the model (you) explicitly retired it via ` + "`claims(close, ...)`" + `, OR
+- weak basis (vibes/llm_output/assumption) AND fewer than 2 incoming supports/depends_on edges (structurally inert chatter)
+
+Strong-basis claims (research/empirical/definition/convention) are kept regardless of dep count — they earned their position by being grounded. Claims with 2+ incoming structural edges are kept regardless of basis — those are picked up by the legacy_load_bearer detector instead.
+
+Archive is soft (sets a flag) and reversible. If a user asks "where did my claims go?" or "the graph looks smaller than I remember" or "did the sweep just eat something I needed?", the recovery path is shell-level, not an MCP tool:
+- ` + "`slimemold unarchive --all`" + ` restores every archived claim in the project
+- ` + "`slimemold unarchive CLAIM_ID...`" + ` restores specific claims by ID
+- ` + "`slimemold sweep`" + ` (no ` + "`--apply`" + `) is a dry-run report showing what WOULD be archived; useful to preview before manual sweep, and to inspect what was archived recently
+
+Tuning env vars (set on the calling shell that launches Claude Code, not via an MCP call):
+- ` + "`SLIMEMOLD_AUTO_SWEEP=off|false|0|no`" + ` (case-insensitive) disables auto-sweep entirely; any other value or unset → enabled
+- ` + "`SLIMEMOLD_SWEEP_CAP=N`" + ` caps the per-fire archive count (default 1000; set 0/negative for no cap)
+- ` + "`SLIMEMOLD_SCOPE=all`" + ` widens hook findings from session-only to project-wide (default: session-scoped to avoid bleed across concurrent sessions)
+
+You do not call the sweep directly — the MCP server runs it as a side effect of ` + "`parse_transcript`" + `. Mention these recovery commands only if the user actually asks about missing claims or archive behavior. Don't preemptively warn that the sweep ran.`
