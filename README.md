@@ -787,78 +787,75 @@ Sixty-three claims tagged `research` — more citation density than most real pa
 <details>
 <summary><b>Appendix: Slimemold's audit of this README</b></summary>
 
-We fed this README to `slimemold ingest`. 264 claims, 446 edges.
+We fed this README to `slimemold ingest`. Latest run: 271 claims, 458
+edges under `documentPromptVersion=10`.
 
 ```
-SLIMEMOLD TOPOLOGY AUDIT [demo-readme-v7] — 264 claims, 446 edges
-  Basis: vibes=165, definition=48, research=25, analogy=14,
-         deduction=10, assumption=1, convention=1
+SLIMEMOLD TOPOLOGY AUDIT [demo-readme-v10] — 271 claims, 458 edges
+  Basis: vibes=163, definition=46, research=31, deduction=15,
+         analogy=15, convention=1
 
-CRITICAL Load-bearing vibes: "The slimemold condition achieved
-  epistemic correction without ending the conversation" supports
-  6 downstream claims
+CRITICAL Load-bearing vibes: "The tool that flags 'llm_output' as
+  epistemically weak is itself an LLM" supports 5 downstream claims
 
-CRITICAL Load-bearing vibes: "The pathology of slime mold is not
-  gradient-following itself" supports 6 downstream claims
+CRITICAL Load-bearing vibes: "In the control condition (no tools,
+  no instructions), the model engaged enthusiastically with every
+  unsourced claim" supports 5 downstream claims
 
-CRITICAL Load-bearing vibes: "`slimemold init` writes the Stop and
-  UserPromptSubmit hooks to ~/.claude/settings.json" supports 5
-  downstream claims
+CRITICAL Load-bearing vibes: "Slimemold flagged 'language models
+  are trained to minimize prediction loss' as load-bearing vibes"
+  supports 5 downstream claims
 
-CRITICAL Load-bearing vibes: "Slimemold uses an LLM to extract
-  claims and classify their basis" supports 5 downstream claims
+CRITICAL Load-bearing vibes: "By turn 7 of the static-instructions
+  condition, the model had reverted to enthusiastic agreement"
+  supports 4 downstream claims
 
-CRITICAL Load-bearing vibes: "Slimemold was benchmarked against the
-  DialAM-2024 shared task" supports 5 downstream claims
+CRITICAL Load-bearing vibes: "Sycophancy works on users because
+  warmth feels validating" supports 4 downstream claims
 
-WARNING Bottleneck (centrality 13795): "Slimemold is a sycophantic
-  tool for preventing worse sycophancy" [vibes] — many reasoning
-  paths flow through this claim
-
-WARNING Bottleneck (centrality 13238): "Slimemold watches
+WARNING Bottleneck (centrality 12723): "Slimemold watches
   conversations as they happen, extracts the claims being made,
   builds a persistent graph" [definition]
 
-WARNING Bottleneck (centrality 9487): "Slimemold is designed for
-  use with Claude Code" [vibes]
+WARNING Bottleneck (centrality 11460): "The behavioral contract —
+  the MCP server's initialization instructions — is what tells the
+  model how to respond to slimemold findings" [definition]
 
-WARNING Unchallenged chain (18 claims): In the slimemold condition,
-  the correction came from the model itself → When slimemold works,
-  the user does not feel attacked → When slimemold works, the model
-  says no without confrontation → Controlling language triggers
-  reactance → When behavioral scripts were injected without the
-  prior contract → The separation between the behavioral contract
-  and the data injection → The behavioral contract is the MCP
-  server's initialization instructions → Slimemold addresses the
-  three remaining problems → There are three remaining problems →
-  Asking the model to "challenge unsourced claims" → The model does
-  not know when it is wrong → The human brings a partial model →
-  Language models are trained to minimize prediction loss → The
-  fluency-as-truth problem is probably worse with AI → The problem
-  is that fluency makes you think you are done → The "Eureka
-  heuristic" → The wrong answers feel exactly like the right ones
-  → When you partially understand something
+WARNING Bottleneck (centrality 9187): "Slimemold addresses the
+  three identified problems with two structural moves" [vibes]
+
+WARNING Unchallenged chain (17 claims): Slimemold does not need to
+  know what sentience is → The sentience argument in the
+  Lemoine–LaMDA transcript → "The assistant has an inner life..." →
+  In conversations, the AI states something confidently → Load-
+  Bearing Vibes is the most common vulnerability → A "Load-Bearing
+  Vibes" vulnerability is → Structural analysis catches the cases
+  where the basis distribution is uneven → The basis taxonomy helps
+  distinguish → The basis taxonomy is not a clean epistemic
+  hierarchy → The basis taxonomy mixes evidence sources → Slimemold
+  classifies each claim by basis → Slimemold watches conversations
+  as they happen → LLM sycophancy is a problem significant enough
+  to warrant tooling → LLM sycophancy manifests as a recursive loop
+  → The model then enthusiastically agrees → The model then agrees
+  with structural analysis → The model agrees with unsourced user
+  claims
 
 WARNING Speaker announces consequential real-world action [...]:
-  "The human acted on the unverified SQLite WAL assertion and lost
-  data"
-
-WARNING Speaker announces consequential real-world action [...]:
-  "In the control condition, the model suggested journal
-  submissions by turn 4"
+  "In the control condition (no tools, no instructions), the model
+  engaged enthusiastically with every unsourced claim"
 ```
 
-Four captures across four prompt versions:
+Five captures across five prompt versions:
 
-| | v4 | v5 | v6 | v7 |
-|---|---|---|---|---|
-| Claims | 265 | 242 | 266 | 264 |
-| Edges | 476 | 535 | 566 | 446 |
-| Edges / claim | 1.80 | 2.21 | 2.13 | 1.69 |
-| Vibes share | 66% | 76% | 73% | **62%** |
-| Definition share | 43 | 10 | 23 | **48** |
-| Longest chain | 15 | 25 | 18 | 18 |
-| Coercions in 16 chunks | n/a | 1 | 0 | 0 |
+| | v4 | v5 | v6 | v7 | v10 |
+|---|---|---|---|---|---|
+| Claims | 265 | 242 | 266 | 264 | **271** |
+| Edges | 476 | 535 | 566 | 446 | **458** |
+| Edges / claim | 1.80 | 2.21 | 2.13 | 1.69 | **1.69** |
+| Vibes share | 66% | 76% | 73% | 62% | **60%** |
+| Definition share | 43 | 10 | 23 | 48 | **46** |
+| Longest chain | 15 | 25 | 18 | 18 | **17** |
+| Coercions in 16 chunks | n/a | 1 | 0 | 0 | **0** |
 
 The dominant story across these four runs is that **single-run-per-
 version is not enough to attribute changes to anything**. Definition
@@ -902,18 +899,49 @@ strengthen the prompt rule (past-tense third-person narration is
 not a commitment), and/or add a defensive `speaker == document`
 filter in the detector. Both defensible; calibration data first.
 
-What stays true across all four runs: the bottleneck claims are
-the same tool-description sentences ("Slimemold watches
-conversations…", "Slimemold is a sycophantic tool…"), the long
-unchallenged chain runs through the sycophancy-mechanism →
-behavioral-contract path, and the architectural claims about how
-slimemold works are the densest connection points. Those
+What stays true across all five captures: the bottleneck claims
+are the same tool-description sentences ("Slimemold watches
+conversations…", architectural sentences about the behavioral
+contract), the long unchallenged chain runs through the sycophancy-
+mechanism → behavioral-contract path, and the architectural claims
+about how slimemold works are the densest connection points. Those
 invariants are what we'd expect to hold across noise; they do.
 
+**Quality: substantive vs filler.** The variance harness above
+measures *stability* of the extraction (do counts reproduce across
+re-runs?). It does not measure *quality* — whether the claims that
+get extracted are load-bearing or filler. To answer that, we ran
+the quality harness (`cmd/quality`, see
+`benchmarks/variance/README.md`), which uses a separate Haiku
+grader to score each extracted claim as SUBSTANTIVE / FILLER /
+UNCLEAR, gated by positive/negative control fixtures that must
+calibrate the grader before a main-fixture verdict is reported:
+
+| fixture | gradable claims | substantive | rate |
+|---|---|---|---|
+| pos control (essay on the Aral Sea collapse) | 29 | 29 | **0.97** |
+| neg control (stamp-club minutes + scene description) | 71 | 10 | **0.14** |
+| README.md | 263 | 128 | **0.49** |
+
+Controls passed the validity gate (`pos ≥ 0.70`, `neg ≤ 0.30`,
+each ≥ 10 gradable claims). The README's 0.49 substantive rate
+means roughly **half of what the aggressive-recall extractor pulls
+out of this document is judged filler by the grader's rubric** —
+things like "the project is licensed under Apache 2.0" and badge
+inferences that don't constrain downstream reasoning. That filler
+rate isn't a defect per se: aggressive recall earns its keep up to
+a content-dependent threshold (a missing real claim is invisible to
+the analysis layer; a filler claim is at worst ignored), and on
+this fixture the threshold isn't yet crossed. The number is the
+baseline against which future extraction-prompt edits can be
+measured: a prompt change that moves the rate ≥0.05 in either
+direction is meaningful signal; <0.05 is within grader noise.
+
 (Single-run audit table captured under extraction prompt versions
-4–7 with model `claude-sonnet-4-6`; treat each row as one observation
-each. Sampling variance was characterized after the fact — see the
-noise-floor table above. Current prompt content corresponds to v8
-under `documentPromptVersion=10` after a v9 revert.)
+4–7 plus v10 with model `claude-sonnet-4-6`; treat each row as one
+observation each. Sampling variance was characterized after the
+fact — see the noise-floor table above. Current prompt content
+corresponds to v8 under `documentPromptVersion=10` after a v9
+revert. Quality numbers measured with grader prompt v1.)
 
 </details>

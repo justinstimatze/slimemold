@@ -176,3 +176,178 @@ go run benchmarks/variance/run.go -runs 5 -fixture README.md \
 ```
 
 Output is JSONL-able if needed; current implementation prints to stdout.
+
+---
+
+# Quality harness (`cmd/quality`)
+
+Stability ≠ quality. `run.go` answers "are the extracted COUNTS reproducible
+across runs"; it can't tell you whether those counts are mostly substantive
+claims or mostly filler. `cmd/quality` measures the latter via a separate
+grader model (Haiku) that scores each extracted claim as SUBSTANTIVE or
+FILLER, gated by positive/negative control fixtures so a broken grader
+can't silently produce a confidently-wrong number.
+
+Adapted from the buddy re-injection eval harness
+(`~/Documents/buddy/scripts/reinject-harness.mjs`), which used the same
+validity-gate discipline to catch two real bugs in its own pipeline.
+
+## Why this exists
+
+Slimemold's extractor uses a deliberately aggressive-recall prompt: missing
+a real claim is worse than emitting a filler claim (because the downstream
+graph analysis is blind to absent nodes, while ignoring filler is just
+cost). That trade-off is correct *up to a content-dependent threshold* —
+beyond which filler dilutes the load-bearing signal and the analysis
+layer pays full DFS cost for zero detection value. Without a quality
+number you can't tell when the threshold's been crossed; you can only
+see the variance floor stay calm while the precision quietly tanks.
+
+The buddy eval measured this same pattern at the host layer and saw it
+move ~25pp on one fixture-model cell (sonnet @ 150k tokens, slimemold
+transcript). It's content-dependent and not uniform — which means a
+single quality number per fixture is the right granularity.
+
+## Architecture
+
+Grading logic lives in `internal/qualityharness/` so `go build ./...`,
+`go vet ./...`, and the pre-commit gate catch signature drift against
+`internal/extract`, `internal/mcp`, and `internal/store`. The CLI shim
+at `cmd/quality/main.go` is a real package (not `//go:build ignore`)
+so shim-vs-library drift is ALSO caught. Pure logic (rate computation,
+validity gate, rune-safe truncation, schema construction, prompt
+assembly) has unit-test coverage in `internal/qualityharness/qualityharness_test.go`.
+
+The grader prompt itself is versioned via `GraderPromptVersion` in the
+internal package; the version is stamped into every emitted result so
+cross-run comparisons can detect that the grader (not the extractor)
+changed between runs. Note: result persistence + cross-run diff tooling
+do not yet exist — the version stamp is documented intent, not a
+delivered capability. Future work.
+
+## Usage
+
+```bash
+ANTHROPIC_API_KEY=... go run ./cmd/quality [flags]
+# or
+go install ./cmd/quality && ANTHROPIC_API_KEY=... quality [flags]
+```
+
+Flags:
+- `-fixture PATH` — main fixture to grade (default `README.md`)
+- `-pos-fixture PATH` — positive control (default `benchmarks/variance/fixtures/positive_control.md`)
+- `-neg-fixture PATH` — negative control (default `benchmarks/variance/fixtures/negative_control.md`)
+- `-grader-model NAME` — model for per-claim grading (default `claude-haiku-4-5-20251001`)
+- `-extract-model NAME` — extraction model (default `SLIMEMOLD_MODEL` env, then `claude-sonnet-4-6`)
+- `-concurrency N` — max concurrent grader calls (default `10`; must be `>= 1`)
+- `-pos-min F` — positive-control substantive rate must be ≥ this (default `0.70`)
+- `-neg-max F` — negative-control substantive rate must be ≤ this (default `0.30`)
+- `-min-gradable N` — min gradable claims per control before the gate can pass (default `10`)
+- `-timeout DUR` — total wall-clock cap; aborts on SIGINT/SIGTERM or deadline (default `30m`)
+- `-controls-only` — run pos+neg controls and exit (useful when re-tuning controls)
+
+The harness ALWAYS runs the controls before the main fixture and refuses
+to interpret the main result if the validity gate fails. The gate
+requires each control to produce at least `-min-gradable` gradable
+claims — a network outage that collapses the denominator to zero would
+otherwise make `SubstantiveRate` return 0 and trivially satisfy
+`negRate ≤ 0.30`, reporting VALID on nothing. The verdict is emitted
+with a machine-readable `Kind` (one of `VALID`, `POS_SMALL_N`,
+`NEG_SMALL_N`, `POS_BELOW_MIN`, `NEG_ABOVE_MAX`) so downstream
+automation can route on failure type without string-parsing the prose
+reason.
+
+## Calibration: controls are intentionally domain-distant
+
+The control fixtures live in `benchmarks/variance/fixtures/`. They're
+domain-distant from slimemold's typical input (essays + emails, not
+codebase prose) and deliberately written NOT to pattern-match the
+rubric's example structure:
+
+- **Pos** is a personal essay about programmer-to-manager transitions
+  — substantive prose with mechanisms and contested opinions, but in
+  prose form (no "Decision: ..." section headers, no comparison
+  trade-off subheads that map 1:1 onto the rubric's SUBSTANTIVE example
+  list).
+- **Neg** is an email thread of small-talk acknowledgments — trivial
+  content without using the rubric's named FILLER categories
+  (no temperature readings, no grocery items, no standup chatter, no
+  list-of-numbers items).
+
+This is an attempt to break the circular-calibration trap where
+controls are constructed against the same rubric the grader uses —
+which would let the gate pass by example-recognition rather than
+independent judgment. **Honest disclosure:** the trap is hard to fully
+escape since the author writes both the rubric and the controls. The
+strongest test of grader independence would be controls drawn from
+external sources the author didn't write (a paper section for pos,
+a Wikipedia trivia list for neg). The current fixtures are a step in
+that direction but not the endpoint.
+
+## Cost / time
+
+| run | wall-clock | cost | use |
+|---|---|---|---|
+| controls only | 3-5 min | ~$0.50 | sanity-check grader after prompt tweaks |
+| full eval (3 fixtures) | 8-15 min | ~$1.50-2.00 | per extraction-prompt edit |
+
+The grader makes one Haiku call per extracted claim. At ~275 claims for
+the README fixture and ~$0.0003/call, grading is ~$0.08 per fixture;
+three fixtures = ~$0.25 grading + ~$1.50 extraction.
+
+## Interpreting the verdict
+
+The harness exits with one of:
+
+- **Code 0 + substantive rate** — both controls passed, main rate reported.
+  Interpretation bands (in the output):
+  - ≥0.85: precision-heavy, very little filler
+  - 0.70-0.85: healthy precision band
+  - 0.50-0.70: filler rate is non-trivial; consider whether the
+    aggressive-recall prompt is over-extracting on this content
+  - <0.50: filler dominates; extraction is over-recalling
+- **Code 2** — validity gate failed (controls invalid). Inspect the
+  `Kind` and the printed pos/neg rates. Fix the grader prompt
+  (`internal/qualityharness/qualityharness.go` `GraderRubric`, bump
+  `GraderPromptVersion`), the control fixtures, or pass `-pos-min` /
+  `-neg-max` / `-min-gradable` to retune the gate.
+- **Code 1** — pipeline error (extraction or fixture read failed).
+
+## Discipline
+
+This is the documented protocol when editing extraction prompts
+(`internal/extract/prompt.go`, `documentPromptVersion` in
+`internal/mcp/ingest.go`):
+
+1. Run `./cmd/quality` against the current README fixture BEFORE merging
+2. Note the substantive rate
+3. Make the prompt change
+4. Run `./cmd/quality` again
+5. If rate moves ≥0.05 in either direction, document in commit:
+   - Up: precision improved (good if recall didn't tank — cross-check with `run.go`)
+   - Down: filler increased (note whether it's the targeted trade-off)
+6. If rate moves <0.05, the change is below the grader's measurement
+   precision — call it out as "within quality noise"
+
+**Honest disclosure:** the discipline is currently enforced by human
+memory of this README. There is no pre-commit hook, no CI gate, and no
+required-checks rule. The harness `Kind` codes are designed for future
+automation but no automation consumes them yet. The package's
+import-ability is real (lives in `internal/`, compiled by `go build`)
+but the only consumer today is `cmd/quality`.
+
+## Known limitations
+
+- **One grader, one model.** A second-grader vote (e.g., Sonnet judging
+  whether Haiku judged correctly) would tighten the calibration but
+  triples cost. Currently not warranted — buddy's experience showed
+  Haiku is a competent grader for this binary task.
+- **Per-claim cost scales with extraction recall.** If the extractor
+  emits 1000+ claims (lucida-class graph from a single fixture), grading
+  cost approaches $0.30 per fixture. Sample-grading (random N claims per
+  fixture instead of all) is the obvious extension if cost becomes the
+  binding constraint.
+- **Controls are project-specific.** The bundled fixtures are calibrated
+  for technical-prose extraction (similar to slimemold's typical input).
+  For a different domain (medical notes, legal text), write domain-
+  specific controls and re-tune the gate.
