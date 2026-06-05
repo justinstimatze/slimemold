@@ -69,7 +69,36 @@ import (
 // v10: revert to v8's prompt content. Bumping the version (rather than
 // just reverting in place) so any v9-cached extractions written during
 // the failed validation aren't served on subsequent ingests.
-const documentPromptVersion = 10
+//
+// v11: added SCOPE EXCLUSIONS block to the system prompt — narrow
+// suppression of badge / repository-metadata facts (CI status, license
+// identity, language-by-badge), boilerplate identity statements about
+// the document itself, and bare section pointers. Motivated by the
+// v0.11.0 quality-harness baseline (0.49 substantive / 0.51 filler on
+// the README): the filler samples were dominated by exactly these
+// metadata claims, which constrain no downstream reasoning yet count
+// equally in the topology analysis.
+//
+// Measured outcome on README.md:
+//   - quality harness: substantive rate 0.49 → 0.54 (+5pp, at the
+//     documented signal threshold). Substantive count absolute 128 →
+//     140 (+12 kept); filler 135 → 118 (−17, the targeted reduction);
+//     unclear 20 → 5. Controls: pos 0.97 → 0.94, neg 0.14 → 0.15
+//     (both safely within the gate).
+//   - variance harness (3 runs): claims 272.0 ± 4.32 vs the v7 floor
+//     of 275.0 ± 9.78 (within 1σ — no recall loss). Edges 461.0 ±
+//     8.52 vs 483.8 ± 18.78 (~1.2σ, below the 2σ signal threshold).
+//     Vibes basis 177.7 ± 9.39 vs 192.4 ± 10.69 (consistent with
+//     suppressing badge/license claims that previously emitted as
+//     vibes).
+//
+// Buddy's analogous softening experiment (~/Documents/buddy) tanked
+// recall (lexicon 100 → 73%, opus 13–27% at long context) and was
+// reverted. The lesson stood, but didn't apply here — the rule is
+// exclusion-by-category, not tone shift, and the recall metrics held.
+// If a future evaluation finds claims dropping >10pp from this
+// version's variance run, revert following the v9 → v10 precedent.
+const documentPromptVersion = 11
 
 // DocumentPromptVersion exposes the version constant so outside packages
 // (e.g. the eval CLI) can label snapshots by prompt identity.

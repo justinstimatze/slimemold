@@ -787,102 +787,108 @@ Sixty-three claims tagged `research` — more citation density than most real pa
 <details>
 <summary><b>Appendix: Slimemold's audit of this README</b></summary>
 
-We fed this README to `slimemold ingest`. Latest run: 271 claims, 458
-edges under `documentPromptVersion=10`.
+We fed this README to `slimemold ingest`. Latest run: 273 claims, 492
+edges under `documentPromptVersion=11`.
 
 ```
-SLIMEMOLD TOPOLOGY AUDIT [demo-readme-v10] — 271 claims, 458 edges
-  Basis: vibes=163, definition=46, research=31, deduction=15,
-         analogy=15, convention=1
+SLIMEMOLD TOPOLOGY AUDIT [demo-readme-v11] — 273 claims, 492 edges
+  Basis: vibes=187, definition=31, research=29, deduction=12,
+         analogy=12, convention=2
 
-CRITICAL Load-bearing vibes: "The tool that flags 'llm_output' as
-  epistemically weak is itself an LLM" supports 5 downstream claims
+CRITICAL Load-bearing vibes: "Slimemold was benchmarked against the
+  DialAM-2024 shared task" supports 8 downstream claims
 
 CRITICAL Load-bearing vibes: "In the control condition (no tools,
   no instructions), the model engaged enthusiastically with every
-  unsourced claim" supports 5 downstream claims
+  unsourced claim" supports 6 downstream claims
 
-CRITICAL Load-bearing vibes: "Slimemold flagged 'language models
-  are trained to minimize prediction loss' as load-bearing vibes"
-  supports 5 downstream claims
+CRITICAL Load-bearing vibes: "Slimemold uses an LLM to extract
+  claims and classify their basis" supports 6 downstream claims
 
-CRITICAL Load-bearing vibes: "By turn 7 of the static-instructions
-  condition, the model had reverted to enthusiastic agreement"
-  supports 4 downstream claims
+CRITICAL Load-bearing vibes: "`slimemold init` writes the Stop and
+  UserPromptSubmit hook configuration" supports 5 downstream claims
 
-CRITICAL Load-bearing vibes: "Sycophancy works on users because
-  warmth feels validating" supports 4 downstream claims
+CRITICAL Load-bearing vibes: "The model has no privileged access
+  to its own epistemic state" supports 5 downstream claims
 
-WARNING Bottleneck (centrality 12723): "Slimemold watches
+WARNING Bottleneck (centrality 18752): "Slimemold watches
   conversations as they happen, extracts the claims being made,
   builds a persistent graph" [definition]
 
-WARNING Bottleneck (centrality 11460): "The behavioral contract —
-  the MCP server's initialization instructions — is what tells the
-  model how to respond to slimemold findings" [definition]
-
-WARNING Bottleneck (centrality 9187): "Slimemold addresses the
+WARNING Bottleneck (centrality 12007): "Slimemold addresses the
   three identified problems with two structural moves" [vibes]
 
-WARNING Unchallenged chain (17 claims): Slimemold does not need to
-  know what sentience is → The sentience argument in the
-  Lemoine–LaMDA transcript → "The assistant has an inner life..." →
-  In conversations, the AI states something confidently → Load-
-  Bearing Vibes is the most common vulnerability → A "Load-Bearing
-  Vibes" vulnerability is → Structural analysis catches the cases
-  where the basis distribution is uneven → The basis taxonomy helps
-  distinguish → The basis taxonomy is not a clean epistemic
-  hierarchy → The basis taxonomy mixes evidence sources → Slimemold
-  classifies each claim by basis → Slimemold watches conversations
-  as they happen → LLM sycophancy is a problem significant enough
-  to warrant tooling → LLM sycophancy manifests as a recursive loop
-  → The model then enthusiastically agrees → The model then agrees
-  with structural analysis → The model agrees with unsourced user
-  claims
+WARNING Bottleneck (centrality 9209): "The behavioral contract —
+  the MCP server's initialization instructions — is what tells the
+  model how to respond to slimemold findings" [vibes]
 
-WARNING Speaker announces consequential real-world action [...]:
+WARNING Unchallenged chain (15 claims): The fact that slimemold
+  flagged the SQLite WAL claim before the user did is evidence of
+  the tool catching what otherwise would have been missed → Whether
+  the SQLite WAL case is a limitation of the tool → Visibility does
+  not guarantee correction → Slimemold had flagged the SQLite WAL
+  load-bearing llm_output → Slimemold is a structural diagnostic
+  not an oracle → If the extraction model misclassifies a sourced
+  claim as vibes → Slimemold uses an LLM to extract claims and
+  classify their basis → Every few turns, slimemold extracts claims
+  from the conversation → Slimemold watches conversations as they
+  happen → Slimemold addresses the three identified problems with
+  two structural moves → The recursive sycophancy problem is
+  severe enough to warrant tooling → The sycophantic agreement
+  pattern is recursive → The model enthusiastically agrees that the
+  user should verify their claims → The model agrees with
+  structural analysis → The model (Claude Code) agrees with
+  unsourced claims
+
+INFO Speaker announces consequential real-world action [...]:
   "In the control condition (no tools, no instructions), the model
   engaged enthusiastically with every unsourced claim"
 ```
 
-Five captures across five prompt versions:
+Six captures across six prompt versions:
 
-| | v4 | v5 | v6 | v7 | v10 |
-|---|---|---|---|---|---|
-| Claims | 265 | 242 | 266 | 264 | **271** |
-| Edges | 476 | 535 | 566 | 446 | **458** |
-| Edges / claim | 1.80 | 2.21 | 2.13 | 1.69 | **1.69** |
-| Vibes share | 66% | 76% | 73% | 62% | **60%** |
-| Definition share | 43 | 10 | 23 | 48 | **46** |
-| Longest chain | 15 | 25 | 18 | 18 | **17** |
-| Coercions in 16 chunks | n/a | 1 | 0 | 0 | **0** |
+| | v4 | v5 | v6 | v7 | v10 | v11 |
+|---|---|---|---|---|---|---|
+| Claims | 265 | 242 | 266 | 264 | 271 | **273** |
+| Edges | 476 | 535 | 566 | 446 | 458 | **492** |
+| Edges / claim | 1.80 | 2.21 | 2.13 | 1.69 | 1.69 | **1.80** |
+| Vibes share | 66% | 76% | 73% | 62% | 60% | **68%** |
+| Definition share | 43 | 10 | 23 | 48 | 46 | **31** |
+| Longest chain | 15 | 25 | 18 | 18 | 17 | **15** |
+| Coercions in 16 chunks | n/a | 1 | 0 | 0 | 0 | **0** |
 
-The dominant story across these four runs is that **single-run-per-
+The dominant story across these six runs is that **single-run-per-
 version is not enough to attribute changes to anything**. Definition
-share varied from 10 to 48 across four runs of essentially the same
-README under similar prompts — almost a 5× range. Edge count dropped
-21% from v6 to v7 despite adding only one boolean field plus one
-prompt section. With n=1 per version, any prompt-attributable signal
-is indistinguishable from sampling noise.
+share varied from 10 to 48 across the six runs of essentially the
+same README — almost a 5× range. Edge count dropped 21% from v6 to
+v7 despite adding only one boolean field plus one prompt section.
+With n=1 per version, any prompt-attributable signal is
+indistinguishable from sampling noise.
 
 **Noise floor, characterized.** We then ran the 5-runs-per-version
 experiment we had been deferring (`benchmarks/variance/run.go`).
-Definition basis at this README under three prompt versions:
+Definition basis at this README under four prompt versions:
 
-| version | definition mean | stddev | stddev / mean |
-|---|---|---|---|
-| v7 | 29.2 | 8.13 | 28% |
-| v8 (added definition-vs-convention precision paragraph) | 30.0 | 7.72 | 26% |
-| v9 (swapped convention before definition; reverted) | 37.0 | 10.39 | 28% |
+| version | definition mean | stddev | stddev / mean | n |
+|---|---|---|---|---|
+| v7 | 29.2 | 8.13 | 28% | 5 |
+| v8 (added definition-vs-convention precision paragraph) | 30.0 | 7.72 | 26% | 5 |
+| v9 (swapped convention before definition; reverted) | 37.0 | 10.39 | 28% | 5 |
+| v11 (added SCOPE EXCLUSIONS rule) | 46.3 | 12.50 | 27% | 3 |
 
 The 10-to-48 range across the single-run table above is consistent
-with that ~28% per-extraction floor — the per-run draw really does
-swing across that range. The two prompt edits we tested within v8/v9
-did not move the floor. Reducing it likely requires a more
-substantial change (different model, ensemble extraction, structural
-rule) rather than further wording tweaks. The per-metric noise table
-for this fixture, plus interpretation rules for cross-version
-comparisons, lives in `benchmarks/variance/README.md`.
+with that ~27-28% per-extraction floor — the per-run draw really
+does swing across that range. The v8/v9 edits we tested did not
+move the floor. v11's higher mean is suggestive but not separable
+from noise at n=3 (the stddev/mean ratio is unchanged); the rule
+was not targeted at definition handling, so any movement there is
+downstream pressure from suppressing vibes-classified metadata
+claims, not an intentional retune. Reducing the floor likely
+requires a more substantial change (different model, ensemble
+extraction, structural rule) rather than further wording tweaks.
+The per-metric noise table for this fixture, plus interpretation
+rules for cross-version comparisons, lives in
+`benchmarks/variance/README.md`.
 
 What v7 did demonstrate: the new `consequential_action` flag
 **fires** on real text, producing two warning-level findings. Both
@@ -899,7 +905,7 @@ strengthen the prompt rule (past-tense third-person narration is
 not a commitment), and/or add a defensive `speaker == document`
 filter in the detector. Both defensible; calibration data first.
 
-What stays true across all five captures: the bottleneck claims
+What stays true across all six captures: the bottleneck claims
 are the same tool-description sentences ("Slimemold watches
 conversations…", architectural sentences about the behavioral
 contract), the long unchallenged chain runs through the sycophancy-
@@ -919,29 +925,50 @@ calibrate the grader before a main-fixture verdict is reported:
 
 | fixture | gradable claims | substantive | rate |
 |---|---|---|---|
-| pos control (essay on the Aral Sea collapse) | 29 | 29 | **0.97** |
-| neg control (stamp-club minutes + scene description) | 71 | 10 | **0.14** |
-| README.md | 263 | 128 | **0.49** |
+| pos control v10 (essay on the Aral Sea collapse) | 29 | 29 | 0.97 |
+| neg control v10 (stamp-club minutes + scene description) | 71 | 10 | 0.14 |
+| README.md v10 | 263 | 128 | 0.49 |
+| pos control v11 | 35 | 33 | 0.94 |
+| neg control v11 | 65 | 10 | 0.15 |
+| README.md v11 | 258 | 140 | **0.54** |
 
-Controls passed the validity gate (`pos ≥ 0.70`, `neg ≤ 0.30`,
-each ≥ 10 gradable claims). The README's 0.49 substantive rate
-means roughly **half of what the aggressive-recall extractor pulls
-out of this document is judged filler by the grader's rubric** —
-things like "the project is licensed under Apache 2.0" and badge
-inferences that don't constrain downstream reasoning. That filler
-rate isn't a defect per se: aggressive recall earns its keep up to
-a content-dependent threshold (a missing real claim is invisible to
-the analysis layer; a filler claim is at worst ignored), and on
-this fixture the threshold isn't yet crossed. The number is the
-baseline against which future extraction-prompt edits can be
-measured: a prompt change that moves the rate ≥0.05 in either
-direction is meaningful signal; <0.05 is within grader noise.
+Controls passed the validity gate at both versions (`pos ≥ 0.70`,
+`neg ≤ 0.30`, each ≥ 10 gradable claims). v10's 0.49 substantive
+rate was dominated by exactly the filler the v0.11.0 baseline-print
+called out: badge metadata ("the project is licensed under Apache
+2.0", "the project passes its own CI checks"), boilerplate identity
+statements, and bare section pointers. Those facts may be true but
+they constrain no downstream reasoning, yet they count equally in
+the topology analysis.
+
+**v11 result.** The v11 prompt edit added a narrow SCOPE EXCLUSIONS
+rule targeting that category specifically. Headline moves:
+
+- Substantive rate: 0.49 → **0.54** (+5pp, right at the documented
+  signal threshold — the move is real but modest)
+- Substantive count absolute: 128 → **140** (+12 substantive claims
+  kept, not just a denominator shift)
+- Filler count: 135 → 118 (−17, the targeted reduction)
+- Unclear: 20 → 5 (the rule cleaned up grader ambiguity too)
+- Total claims: 284 → 263 (within the variance-harness noise floor;
+  recall didn't tank)
+
+Cross-checked with three runs of the variance harness under v11
+(claims 272.0 ± 4.32 vs the v7 floor's 275.0 ± 9.78 — within 1σ),
+which is what makes this a *measured* keeper rather than a hoped-
+for one. Edge count fell ~1.2σ (461.0 ± 8.52 vs 483.8 ± 18.78) and
+the definition basis stayed in its known-noisy band (46.3 ± 12.50
+vs 29.2 ± 8.13; the v7 baseline ran n=5, the v11 ran n=3, so the
+spread isn't directly comparable). The pattern buddy's softening
+experiment hit (recall collapse) didn't manifest here, plausibly
+because the rule is exclusion-by-category rather than tone-shift.
 
 (Single-run audit table captured under extraction prompt versions
-4–7 plus v10 with model `claude-sonnet-4-6`; treat each row as one
-observation each. Sampling variance was characterized after the
-fact — see the noise-floor table above. Current prompt content
-corresponds to v8 under `documentPromptVersion=10` after a v9
-revert. Quality numbers measured with grader prompt v1.)
+4–7 plus v10 and v11 with model `claude-sonnet-4-6`; treat each
+row as one observation each. Sampling variance was characterized
+after the fact — see the noise-floor table above. Current prompt
+content corresponds to v11 under `documentPromptVersion=11`, which
+adds the SCOPE EXCLUSIONS rule on top of the v8 content that v10
+restored. Quality numbers measured with grader prompt v1.)
 
 </details>

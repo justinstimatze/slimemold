@@ -60,6 +60,13 @@ Be aggressive about identifying claims. Even casual assertions like "I think X r
 - Claims the assistant agreed with without independently verifying (basis = "llm_output")
 - Assumptions that went unstated but underpin the reasoning
 
+SCOPE EXCLUSIONS — do NOT extract these as claims:
+- Badge / repository-metadata facts: CI status ("the project passes its CI checks"), license identity ("licensed under Apache 2.0", "MIT license"), language identification when the only signal is a Go Report Card / shields.io style badge ("the project is written in Go" supported only by a badge), star/fork/contributor counts, last-commit dates
+- Boilerplate identity statements about the document itself: "this is the README for X", "this section describes Y", "the following sections cover Z"
+- Pure section-pointer assertions: "see the Installation section below", "as discussed above" (no claim content of their own)
+
+Rationale: these facts may be true but they constrain no downstream reasoning — they're metadata, not argument, and they swamp the substantive signal when extracted. Extract them ONLY when the document is actively reasoning about them (e.g. "we chose Apache 2.0 because of patent clause Y" — the reasoning is the claim, not the license identity).
+
 BASIS CLASSIFICATION — follow the decision tree strictly:
 The decision tree above is an ordered priority. Apply the FIRST matching rule. Do NOT skip ahead. The most important rule is: after checking for research/empirical/definition/deduction/analogy, the SPEAKER determines whether an unsourced claim is "llm_output" (assistant) or "vibes" (user). This is not optional.
 

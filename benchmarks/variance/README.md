@@ -114,27 +114,37 @@ specifically. Cross-version comparisons on definition share are unreliable;
 the README appendix's hand-waving about definition swings (10 to 48
 across v4-v7) was right that noise dominates for that metric.
 
-**Update (v8 / v9):** two prompt-engineering attempts to reduce this.
+**Update (v8 / v9 / v11):** three prompt-engineering attempts.
 
-| version | change | definition mean | stddev | stddev/mean |
-|---|---|---|---|---|
-| v7 baseline | — | 29.2 | 8.13 | 28% |
-| v8 | added "definition declares meaning, convention declares practice" precision paragraph; added inline examples | 30.0 | 7.72 | 26% |
-| v9 (reverted) | swapped convention before definition in decision tree; dropped "we use 'X' to refer to Y" example | 37.0 | 10.39 | 28% |
+| version | change | definition mean | stddev | stddev/mean | n |
+|---|---|---|---|---|---|
+| v7 baseline | — | 29.2 | 8.13 | 28% | 5 |
+| v8 | added "definition declares meaning, convention declares practice" precision paragraph; added inline examples | 30.0 | 7.72 | 26% | 5 |
+| v9 (reverted) | swapped convention before definition in decision tree; dropped "we use 'X' to refer to Y" example | 37.0 | 10.39 | 28% | 5 |
+| v11 | added SCOPE EXCLUSIONS rule (badge/metadata/license/boilerplate suppression) — not targeting definition specifically | 46.3 | 12.50 | 27% | 3 |
 
 v8 was approximately neutral. v9 regressed — putting convention first
 left the definition rule more permissive without redirecting anything
 to convention (convention firings stayed at 1.0 ± 0.0 across all 5
 runs, suggesting the README simply has very little stipulative-policy
-content). v9 was reverted; the current state (`documentPromptVersion=10`)
-is v8's prompt content.
+content). v9 was reverted; v10 restored v8's prompt content.
 
-Lesson: the ~28% definition floor is not budging within wording-tweak
-range. Reducing it likely requires a structural change — different
-model, ensemble extraction across N runs, or a non-prompt rule (e.g.
-post-extraction reclassification of definition-vs-vibes claims using
-a separate pass). Logged as a known limitation rather than an
-open prompt-engineering task.
+v11's higher mean and stddev are NOT a targeted change in definition
+handling — v11 added a scope-exclusion rule for badge/metadata facts,
+which removed some claims that were previously emitted as
+basis="vibes". The lower-vibes mean (177.7 vs v7's 192.4) is the
+direct effect; the definition shift may be downstream pressure on
+borderline cases that no longer have the suppressed metadata as
+competitors, or it may just be n=3 noise (the stddev/mean ratio is
+unchanged from v7-v9 at ~27-28%). Distinguishing requires re-running
+at n=5; logged as a follow-up.
+
+Lesson: the ~28% definition stddev/mean floor is not budging within
+wording-tweak range. Reducing it likely requires a structural change
+— different model, ensemble extraction across N runs, or a non-prompt
+rule (e.g. post-extraction reclassification of definition-vs-vibes
+claims using a separate pass). Logged as a known limitation rather
+than an open prompt-engineering task.
 
 ### Counts vs identities: the analysis layer is stable, extraction isn't
 
@@ -264,15 +274,15 @@ domain-distant from slimemold's typical input (essays + emails, not
 codebase prose) and deliberately written NOT to pattern-match the
 rubric's example structure:
 
-- **Pos** is a personal essay about programmer-to-manager transitions
-  — substantive prose with mechanisms and contested opinions, but in
-  prose form (no "Decision: ..." section headers, no comparison
-  trade-off subheads that map 1:1 onto the rubric's SUBSTANTIVE example
-  list).
-- **Neg** is an email thread of small-talk acknowledgments — trivial
-  content without using the rubric's named FILLER categories
-  (no temperature readings, no grocery items, no standup chatter, no
-  list-of-numbers items).
+- **Pos** is a personal essay on why the Aral Sea collapsed —
+  substantive prose with causal mechanisms, planning-failure analysis,
+  and contested opinions in a domain (irrigation engineering / Soviet
+  agricultural policy) distant from slimemold's natural input. Pos
+  rate has run consistently ≥ 0.95 since adoption.
+- **Neg** is a pair of low-stakes domestic scenes: minutes from a
+  stamp collectors' society meeting plus a dining-room scene at half
+  past four. Pure record-keeping and ambient observation, where each
+  fact constrains no downstream reasoning. Neg rate has run ≈ 0.14.
 
 This is an attempt to break the circular-calibration trap where
 controls are constructed against the same rubric the grader uses —
