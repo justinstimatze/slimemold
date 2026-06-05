@@ -317,7 +317,7 @@ func buildGraderPrompt(source string, claim types.Claim) string {
 	b.WriteString(string(claim.Basis))
 	b.WriteString("\n  speaker: ")
 	b.WriteString(string(claim.Speaker))
-	b.WriteString(fmt.Sprintf("\n  confidence: %.2f\n\n", claim.Confidence))
+	fmt.Fprintf(&b, "\n  confidence: %.2f\n\n", claim.Confidence)
 	b.WriteString("Per the rubric in the system block, call the grade tool with your verdict.")
 	return b.String()
 }
