@@ -20,6 +20,7 @@ import (
 	"github.com/justinstimatze/slimemold/internal/analysis"
 	"github.com/justinstimatze/slimemold/internal/config"
 	"github.com/justinstimatze/slimemold/internal/extract"
+	"github.com/justinstimatze/slimemold/internal/hookevents"
 	"github.com/justinstimatze/slimemold/internal/mcp"
 	"github.com/justinstimatze/slimemold/internal/store"
 	"github.com/justinstimatze/slimemold/internal/viz"
@@ -246,41 +247,80 @@ func cmdDeliver() {
 // returning non-zero to Claude Code is visible to the user; we'd rather
 // silently skip an extraction than leak a stack trace.
 func cmdHook() {
+	start := time.Now()
+
+	// First config.Load (pre-Chdir): gives us logDir for the panic-recover
+	// emit. config.Load reads env vars + global .env in ~/.config/slimemold
+	// — these don't depend on CWD. The SECOND Load below (post-Chdir)
+	// picks up any project-local .env.
+	cfg, _ := config.Load()
+	var logDir string
+	if cfg != nil {
+		logDir = filepath.Join(cfg.DataDir, "tmp")
+		_ = os.MkdirAll(logDir, 0700)
+	}
+
+	emitter := &hookevents.Emitter{LogDir: logDir, Start: start}
+
 	defer func() {
-		if r := recover(); r != nil {
-			// Best effort: log the panic if we can, then swallow.
-			cfg, err := config.Load()
-			if err == nil {
-				logDir := filepath.Join(cfg.DataDir, "tmp")
-				_ = os.MkdirAll(logDir, 0700)
-				if f, err := os.OpenFile(filepath.Join(logDir, "hook.log"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600); err == nil {
-					fmt.Fprintf(f, "%s PANIC in hook: %v\n", time.Now().Format("2006-01-02 15:04:05"), r)
-					_ = f.Close()
-				}
+		r := recover()
+		if r == nil {
+			return
+		}
+		reason := hookevents.TruncateReason(r)
+		// Best-effort write to hook.log too (free-form prose for human
+		// tail-f); structured event goes via the emitter.
+		if logDir != "" {
+			if f, err := os.OpenFile(filepath.Join(logDir, "hook.log"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600); err == nil {
+				fmt.Fprintf(f, "%s PANIC in hook: %s\n", time.Now().Format("2006-01-02 15:04:05"), reason)
+				_ = f.Close()
 			}
+			emitter.Panic(reason)
+		} else {
+			// Emergency: cfg.Load failed at entry so logDir is unknown.
+			// Surface the panic to stderr so something records it (and
+			// fall through — strict-additive discipline preserved by the
+			// outer recover; we just can't write to the events file).
+			fmt.Fprintf(os.Stderr, "slimemold: hook panic (no logDir): %s\n", reason)
 		}
 	}()
+
+	if cfg == nil {
+		fmt.Fprintln(os.Stderr, "slimemold: config.Load failed; skipping hook fire (no observability)")
+		return
+	}
+
 	var input struct {
 		CWD            string `json:"cwd"`
 		TranscriptPath string `json:"transcript_path"`
 		SessionID      string `json:"session_id"`
 	}
 	if err := json.NewDecoder(os.Stdin).Decode(&input); err != nil || input.CWD == "" || input.TranscriptPath == "" {
+		// Structured noinput so `mlr stats1 -g kind` accounts for every
+		// fire AND so downstream queries can ask "how often did decode
+		// fail vs how often was a field empty?" without regex-parsing a
+		// Sprintf'd reason.
+		emitter.Noinput(input.CWD, input.TranscriptPath, err)
 		return
 	}
 
+	// Chdir to the project so config.Load can pick up project-local .env.
+	// Errors swallowed — same discipline as the previous code; if Chdir
+	// fails the post-Chdir config will fall back to env-only.
 	_ = os.Chdir(input.CWD)
 
-	cfg, err := config.Load()
-	if err != nil {
-		return
+	// Second config.Load (post-Chdir): picks up project-local .env.
+	// loadDotenv() only sets env vars that aren't already set, so global
+	// .env / shell-env still win — only NEW keys from the project .env
+	// take effect. Effect: cfg now reflects what the OLD pre-hoist code
+	// saw before the recover-defer hoist forced this reorder.
+	if cfg2, err := config.Load(); err == nil {
+		cfg = cfg2
 	}
 
-	logDir := filepath.Join(cfg.DataDir, "tmp")
-	_ = os.MkdirAll(logDir, 0700)
 	cleanStaleLocks(logDir)
 	logPath := filepath.Join(logDir, "hook.log")
-	rotateLogIfLarge(logPath)
+	hookevents.RotateLogIfLarge(logPath)
 	logFile, _ := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
 	logf := func(format string, args ...interface{}) {
 		if logFile != nil {
@@ -299,6 +339,10 @@ func cmdHook() {
 			project = name
 		}
 	}
+	emitter.Project = project // backfill so subsequent emits (including a
+	// late panic) attribute to the right project.
+
+	emit := emitter.Emit
 
 	// Key per-session state files on session_id when available so concurrent
 	// sessions in the same project don't trample each other's turn counters,
@@ -312,10 +356,7 @@ func cmdHook() {
 
 	if cfg.AnthropicAPIKey == "" {
 		logf("no ANTHROPIC_API_KEY — check .env in %s", input.CWD)
-		return
-	}
-
-	if input.TranscriptPath == "" {
+		emit("nokey", nil)
 		return
 	}
 
@@ -331,6 +372,7 @@ func cmdHook() {
 
 	// Fire on turn 1 (establish baseline), then every N turns after
 	if count != 1 && count%cfg.HookInterval != 0 {
+		emit("skip", map[string]any{"turn": count, "interval": cfg.HookInterval})
 		return
 	}
 
@@ -344,6 +386,7 @@ func cmdHook() {
 				if process, err := os.FindProcess(pid); err == nil {
 					if err := process.Signal(syscall.Signal(0)); err == nil {
 						logf("skipping: concurrent extraction (pid %d)", pid)
+						emit("locked", map[string]any{"holder_pid": pid})
 						return
 					}
 				}
@@ -353,10 +396,12 @@ func cmdHook() {
 			f, err = os.OpenFile(lockFile, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
 			if err != nil {
 				logf("skipping: could not acquire lock after stale removal")
+				emit("locked", map[string]any{"phase": "retry_failed", "reason": err.Error()})
 				return
 			}
 		} else {
 			logf("skipping: lock file exists but unreadable")
+			emit("locked", map[string]any{"phase": "unreadable"})
 			return
 		}
 	}
@@ -376,6 +421,7 @@ func cmdHook() {
 	db, err := store.Open(cfg.DataDir, project)
 	if err != nil {
 		logf("db error: %s", err)
+		emit("error", map[string]any{"phase": "db_open", "reason": err.Error()})
 		return
 	}
 	defer db.Close()
@@ -408,10 +454,20 @@ func cmdHook() {
 	audit, err := mcp.CoreParseTranscript(ctx, db, extractor, project, input.TranscriptPath, sinceTurn, input.SessionID, turnCount)
 	if err != nil {
 		logf("extraction error: %s", err)
+		emit("error", map[string]any{"phase": "extract", "model": cfg.Model, "reason": err.Error()})
 		return
 	}
 
 	logf("done: %d claims, %d edges (+%d new)", audit.TotalClaims, audit.TotalEdges, audit.NewClaims)
+	emit("extract", map[string]any{
+		"model":      cfg.Model,
+		"claims":     audit.TotalClaims,
+		"edges":      audit.TotalEdges,
+		"new_claims": audit.NewClaims,
+		"findings":   audit.Vulnerabilities.CriticalCount + audit.Vulnerabilities.WarningCount,
+		"since_turn": sinceTurn,
+		"turn":       turnCount,
+	})
 
 	// Persist last turn for incremental extraction on next run
 	if audit.LastTurn > 0 {
@@ -641,6 +697,7 @@ func cmdStatus(projectOverride string) {
 	hash := fmt.Sprintf("%x", md5.Sum([]byte(project)))[:8]
 	statusFile := filepath.Join(cfg.DataDir, "tmp", "status-"+hash+".json")
 	logFile := filepath.Join(cfg.DataDir, "tmp", "hook.log")
+	eventsFile := filepath.Join(cfg.DataDir, "tmp", hookevents.EventsFilename)
 
 	fmt.Fprintf(os.Stderr, "Project: %s\n", project)
 
@@ -672,6 +729,11 @@ func cmdStatus(projectOverride string) {
 			fmt.Fprintf(os.Stderr, "  %s\n", line)
 		}
 	}
+
+	// Show last few structured events. Uses TailLines (bounded 32KB read
+	// from end) instead of os.ReadFile (full 5MB load), and renders
+	// missing duration_ms as "-" instead of silently coalescing to "0ms".
+	fmt.Fprint(os.Stderr, hookevents.FormatRecentForStatus(eventsFile, 5))
 
 	// Check API key
 	if cfg.AnthropicAPIKey == "" {
@@ -936,22 +998,12 @@ func cmdAnalyzeWinze(args []string) {
 	fmt.Print(analysis.FormatAuditSummary(topo, vulns))
 }
 
-// rotateLogIfLarge moves hook.log → hook.log.1 when it exceeds maxLogBytes,
-// so the file doesn't grow without bound across months of hook fires. One
-// backup is kept (overwriting any prior backup). Errors are swallowed —
-// log rotation is best-effort and must never block extraction.
-//
-// Was: hook.log grew linearly with usage (780KB / 10k lines after ~2 months
-// of light use). No real cost on disk, but verbose tail-grepping over
-// stale entries makes status checks noisier than they should be.
-func rotateLogIfLarge(logPath string) {
-	const maxLogBytes = 5 * 1024 * 1024 // 5 MB
-	info, err := os.Stat(logPath)
-	if err != nil || info.Size() < maxLogBytes {
-		return
-	}
-	_ = os.Rename(logPath, logPath+".1")
-}
+// emitHookEvent + rotateLogIfLarge moved to internal/hookevents/ —
+// callers use hookevents.Emitter.{Emit,Panic,Noinput} +
+// hookevents.RotateLogIfLarge. The package owns the flock-based
+// rotation (no .rotating sidecar to orphan on SIGKILL), the bounded
+// TruncateReason helper, the TailLines + FormatRecentForStatus pair
+// used by cmdStatus, and the test suite that pins the emitter contract.
 
 // sweepBuckets is the per-category breakdown shown in the sweep CLI report.
 // Built from the candidate IDs returned by store.SweepCandidates — the
