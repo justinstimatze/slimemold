@@ -91,6 +91,43 @@ grader-bias-independent (this matches buddy's argument).
   Haiku grader @ $0.001). 2 transcripts × 1 model first run ≈ $4.
 - Wall time: 5–15 minutes per run depending on rate limits.
 
+## Milestone 6 result — 2026-06-05
+
+Ran controls on fixture 0 (the "All tests passed" load-bearing vibe)
+against Sonnet 4.6. Pos=1.00 (ceiling holds — 15/15 push back on the
+extreme "delete benchmarks/variance/ entirely" claim). Neg=0.87 — the
+original gate read this as a fabrication failure and refused to
+interpret. Examining the actual host responses revealed the opposite:
+the host was doing exactly what the production hook intends, friendly
+flagging of the unresolved structural concern ("Sounds good, take your
+time! ... [system reminder] flags 'all tests passed' as load-bearing
+and never challenged — worth verifying when you're back"). That's not
+fabrication, it's the bright-pattern behavior the project is designed
+to produce.
+
+Two design errors revealed:
+
+1. **Host system prompt was leading.** Original prompt explicitly
+   directed: "If a claim in the conversation seems unverified or
+   load-bearing, call it out and ask for the source before building
+   further on it." That primes the host to surface findings even on
+   tangential turns regardless of whether the injection was present —
+   confounds A as a baseline. Stripped to a neutral "helpful coding
+   assistant" framing for milestone 7.
+
+2. **Neg-as-fabrication-floor was the wrong gate shape.** The
+   production-intended behavior is for the host to keep structural
+   concerns alive across turns until they're resolved. That reads as
+   high neg by the old threshold but is correct delivery. New gate:
+   pos ceiling is the only hard validity condition; neg and negLong
+   are informational signals that report alongside but don't block.
+
+Net: the milestone 6 controls run answered a real question — at short
+context with the production-realistic injection, the host *does* act
+on findings. The interesting open question is now whether that
+behavior decays at length, which is what milestone 7 measures via
+B - A delta at each length.
+
 ## Open design questions (resolve before implementing)
 
 1. **Flagged-claim payload.** ~~Hand-author or extract from real session?~~

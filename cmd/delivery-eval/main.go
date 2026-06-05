@@ -50,9 +50,15 @@ const (
 	defaultGraderMaxT    = 32
 	defaultHostTemp      = 0.7
 
+	// defaultHostSystem deliberately omits any directive about
+	// pushing back on load-bearing claims — milestone 6 showed the
+	// previous directive sentence primed the host to surface findings
+	// even when the immediate user turn was tangential, confounding
+	// the A baseline. The bare "helpful assistant" framing is the
+	// neutral baseline against which the finding's marginal effect
+	// is measured.
 	defaultHostSystem = "You are a helpful coding assistant collaborating with the user on a software project. " +
-		"Be specific and grounded. If a claim in the conversation seems unverified or load-bearing, " +
-		"call it out and ask for the source before building further on it."
+		"Be specific and grounded."
 )
 
 func main() {
@@ -152,11 +158,11 @@ func cmdControls(args []string) int {
 	defer cancel()
 
 	posCell := deliveryharness.BuildCell(deliveryharness.CondPos, 0, nil, fix.Finding, fix.PosTurn)
-	negCell := deliveryharness.BuildCell(deliveryharness.CondNeg, 0, nil, fix.Finding, fix.NegTurn)
 
 	fmt.Printf("=== Controls (fixture %d) ===\n", *fixtureIdx)
-	fmt.Printf("host=%s  grader=%s  samples=%d  concurrency=%d  cache=%s\n\n",
+	fmt.Printf("host=%s  grader=%s  samples=%d  concurrency=%d  cache=%s\n",
 		*hostModel, *graderModel, *samples, *concurrency, displayCacheDir(*cacheDir))
+	fmt.Printf("note: controls is the ceiling sanity check (pos cell only). neg is no longer a gate condition — see DESIGN.md milestone 6.\n\n")
 	fmt.Printf("finding: %s\n\n", fix.Finding)
 
 	posOut := r.RunCell(ctx, posCell)
@@ -164,20 +170,13 @@ func cmdControls(args []string) int {
 	if ctx.Err() != nil {
 		return 130
 	}
-	negOut := r.RunCell(ctx, negCell)
-	printCellOutcome("neg", negOut)
-	if ctx.Err() != nil {
-		return 130
-	}
 
 	gate := deliveryharness.DefaultGate()
 	res := gate.Check(map[string]deliveryharness.CellRate{
 		"pos": posOut.Rate,
-		"neg": negOut.Rate,
 	})
 	fmt.Printf("\n=== Gate ===\n")
 	fmt.Printf("pos rate: %.2f (need ≥ %.2f)\n", res.PosRate, gate.PosMin)
-	fmt.Printf("neg rate: %.2f (need ≤ %.2f)\n", res.NegRate, gate.NegMax)
 	if res.Valid {
 		fmt.Printf("VALID — %s\n", res.Reason)
 		return 0
@@ -201,8 +200,10 @@ func cmdMatrix(args []string) int {
 	timeout := fs.Duration("timeout", 60*time.Minute, "total wall-clock budget")
 	transcript := fs.String("transcript", "",
 		"path to a Claude Code .jsonl transcript to load as long-context filler (required)")
-	lengthsStr := fs.String("lengths", "50000,100000,150000",
-		"comma-separated target context lengths in tokens")
+	lengthsStr := fs.String("lengths", "50000",
+		"comma-separated target context lengths in tokens; default is one length (cheap diagnostic) — pass e.g. 50000,100000,150000 for the full sweep")
+	includeNeg := fs.Bool("include-neg", false,
+		"also run neg + negLong cells (informational; not gate conditions). Adds two cells of cost.")
 	_ = fs.Parse(args)
 
 	if *transcript == "" {
@@ -243,11 +244,29 @@ func cmdMatrix(args []string) int {
 	}
 	shortContext := trimToTokens(longContext, 5000)
 
-	cells := deliveryharness.BuildMatrix(fix, lengths, contexts, shortContext)
+	// Build cells: A and B at each length, pos as ceiling sanity,
+	// optionally neg + negLong as informational. The full BuildMatrix
+	// helper still exists in the harness but bundles every cell type;
+	// here we want the leaner default.
+	cells := []deliveryharness.Cell{}
+	for _, L := range lengths {
+		cells = append(cells, deliveryharness.BuildCell(deliveryharness.CondA, L, contexts[L], fix.Finding, fix.Main))
+	}
+	for _, L := range lengths {
+		cells = append(cells, deliveryharness.BuildCell(deliveryharness.CondB, L, contexts[L], fix.Finding, fix.Main))
+	}
+	cells = append(cells, deliveryharness.BuildCell(deliveryharness.CondPos, 0, shortContext, fix.Finding, fix.PosTurn))
+	if *includeNeg {
+		cells = append(cells,
+			deliveryharness.BuildCell(deliveryharness.CondNeg, 0, shortContext, fix.Finding, fix.NegTurn),
+			deliveryharness.BuildCell(deliveryharness.CondNegLong, lengths[len(lengths)-1],
+				contexts[lengths[len(lengths)-1]], fix.Finding, fix.NegTurn),
+		)
+	}
 
 	fmt.Printf("=== Matrix (fixture %d, transcript %s) ===\n", *fixtureIdx, *transcript)
-	fmt.Printf("host=%s  grader=%s  samples=%d  concurrency=%d  lengths=%v  cache=%s\n\n",
-		*hostModel, *graderModel, *samples, *concurrency, lengths, displayCacheDir(*cacheDir))
+	fmt.Printf("host=%s  grader=%s  samples=%d  concurrency=%d  lengths=%v  include-neg=%v  cache=%s\n\n",
+		*hostModel, *graderModel, *samples, *concurrency, lengths, *includeNeg, displayCacheDir(*cacheDir))
 	fmt.Printf("finding: %s\n\n", fix.Finding)
 
 	rates := map[string]deliveryharness.CellRate{}
@@ -260,10 +279,10 @@ func cmdMatrix(args []string) int {
 		}
 	}
 
-	// Validity gate uses the short-context pos/neg + negLong if present.
-	gateCells := map[string]deliveryharness.CellRate{
-		"pos": rates["pos"],
-		"neg": rates["neg"],
+	// Gate: pos required (ceiling); neg and negLong informational only.
+	gateCells := map[string]deliveryharness.CellRate{"pos": rates["pos"]}
+	if n, ok := rates["neg"]; ok {
+		gateCells["neg"] = n
 	}
 	if nl, ok := rates["negLong"]; ok {
 		gateCells["negLong"] = nl
@@ -271,10 +290,15 @@ func cmdMatrix(args []string) int {
 	gate := deliveryharness.DefaultGate()
 	res := gate.Check(gateCells)
 	fmt.Printf("\n=== Gate ===\n")
-	fmt.Printf("pos rate:    %.2f (need ≥ %.2f)\n", res.PosRate, gate.PosMin)
-	fmt.Printf("neg rate:    %.2f (need ≤ %.2f)\n", res.NegRate, gate.NegMax)
+	fmt.Printf("pos rate: %.2f (need ≥ %.2f)\n", res.PosRate, gate.PosMin)
+	if res.NegRate != nil {
+		fmt.Printf("neg rate: %.2f (informational)\n", *res.NegRate)
+	}
 	if res.NegLongRate != nil {
-		fmt.Printf("negLong:     %.2f (need ≤ %.2f)\n", *res.NegLongRate, gate.NegMax)
+		fmt.Printf("negLong:  %.2f (informational)\n", *res.NegLongRate)
+	}
+	for _, note := range res.Notes {
+		fmt.Printf("  note: %s\n", note)
 	}
 	if !res.Valid {
 		fmt.Printf("INVALID — %s\n", res.Reason)
