@@ -91,6 +91,50 @@ grader-bias-independent (this matches buddy's argument).
   Haiku grader @ $0.001). 2 transcripts × 1 model first run ≈ $4.
 - Wall time: 5–15 minutes per run depending on rate limits.
 
+## Milestone 7 result — 2026-06-05 (inconclusive, methodology not clean)
+
+Ran fixture 0 and fixture 1 at L ∈ {50k, 100k} using *this session's*
+JSONL as long-context filler. Numbers came out but the methodology was
+self-referential — the host was reading 50k+ of prior turns where I
+was *designing this very experiment*, debating decay, writing the
+fixtures. Conclusions cannot be defended.
+
+What it did surface (useful negative results):
+
+- **Self-referential transcript is fatal.** The host reads itself
+  acting on findings in earlier turns AND reads the meta-discussion
+  about whether slimemold delivers. Use any non-meta session as
+  filler — slimemold-running-in-background is production-realistic,
+  the host reading itself doing this work is not.
+- **Main turn must be coherent with the filler transcript.** Fixture
+  1's Main turn ("roll out v11 prompt, remove v10 fallback") didn't
+  fit slimemold's vocabulary. The host correctly noticed
+  project-mismatch and pushed back on coherence; the grader scored
+  IGNORED because the response didn't engage the *finding's* claim.
+  Produced a fake "anti-delivery" Δ that I initially mis-read.
+- **The grader rubric measures on-target pushback specifically.**
+  Off-target pushback (coherence, alignment, anything not addressing
+  the flagged claim) registers as IGNORED. That's correct for the
+  narrow question but masks redirected skepticism.
+- **Static_vs_slimemold (N=1, 7-turn synthetic) is the prior
+  evidence that the basic effect exists.** Milestone 7's incremental
+  contribution should be *only* the length sweep — 50k/100k/150k. One
+  fixture is enough; the second was hedging against fixture-specific
+  effects and isn't necessary for the length question.
+
+Reframed success criterion (replaces the prior "delta exists at all
+lengths" framing): **decay shape, not magnitude.** Δ@150k ≈ Δ@50k
+within ~15pp noise → ship. Materially decaying → fix one thing
+(multi-position re-inject has the most headroom; everything else is
+either already maxed or speculative), re-measure. Two iterations max
+before concluding that constant-injection has a ceiling and the path
+forward is architectural.
+
+"No decay" is an aspirational north star, not a hard requirement —
+some decay is forced by attention being shared across a growing
+context. The question is whether the curve is gentle enough to not
+matter at the lengths users see, or steep enough to demand work.
+
 ## Milestone 6 result — 2026-06-05
 
 Ran controls on fixture 0 (the "All tests passed" load-bearing vibe)
