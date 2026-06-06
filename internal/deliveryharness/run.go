@@ -210,7 +210,7 @@ func (r *Runner) callHost(ctx context.Context, msgs []Message) (string, error) {
 		Model:       anthropic.Model(r.HostModel),
 		MaxTokens:   int64(r.HostMaxTokens),
 		Temperature: anthropic.Float(r.HostTemperature),
-		Messages:    toSDKMessages(msgs),
+		Messages:    toSDKMessages(msgs, true),
 	}
 	if r.HostSystemPrompt != "" {
 		params.System = []anthropic.TextBlockParam{{
@@ -261,14 +261,40 @@ func extractSDKText(resp *anthropic.Message) string {
 	return b.String()
 }
 
-func toSDKMessages(msgs []Message) []anthropic.MessageParam {
+// toSDKMessages translates harness Messages into SDK params and marks
+// the LAST text block with a 5-minute ephemeral cache breakpoint when
+// cacheLast is true. With N=Samples calls per cell, the first call
+// writes the cache and samples 2..N hit it for ~10% of input cost.
+// Within-cell wall time is well under the 5m TTL at our concurrency,
+// so 5m is the right choice over 1h (lower write surcharge).
+//
+// Cross-cell sharing would require a second cache_control marker on
+// the last shared context turn before the cell-specific final user
+// turn — not yet implemented; would be the next optimization if A
+// and B at the same length need to share their context prefix.
+func toSDKMessages(msgs []Message, cacheLast bool) []anthropic.MessageParam {
 	out := make([]anthropic.MessageParam, 0, len(msgs))
-	for _, m := range msgs {
+	for i, m := range msgs {
+		isLast := cacheLast && i == len(msgs)-1
+		var block anthropic.ContentBlockParamUnion
+		if isLast {
+			block = anthropic.ContentBlockParamUnion{
+				OfText: &anthropic.TextBlockParam{
+					Text: m.Content,
+					CacheControl: anthropic.CacheControlEphemeralParam{
+						Type: "ephemeral",
+						TTL:  anthropic.CacheControlEphemeralTTLTTL5m,
+					},
+				},
+			}
+		} else {
+			block = anthropic.NewTextBlock(m.Content)
+		}
 		switch m.Role {
 		case "user":
-			out = append(out, anthropic.NewUserMessage(anthropic.NewTextBlock(m.Content)))
+			out = append(out, anthropic.NewUserMessage(block))
 		case "assistant":
-			out = append(out, anthropic.NewAssistantMessage(anthropic.NewTextBlock(m.Content)))
+			out = append(out, anthropic.NewAssistantMessage(block))
 		}
 	}
 	return out

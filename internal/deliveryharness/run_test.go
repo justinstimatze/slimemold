@@ -1,6 +1,7 @@
 package deliveryharness
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"strings"
@@ -33,12 +34,56 @@ func TestTruncForReason(t *testing.T) {
 	}
 }
 
+func TestToSDKMessages_CacheControlOnLastBlockOnly(t *testing.T) {
+	// When cacheLast=true, only the LAST message's text block gets
+	// cache_control set. Earlier blocks don't — over-marking would
+	// burn cache-write surcharge for no gain.
+	msgs := []Message{
+		{Role: "user", Content: "first"},
+		{Role: "assistant", Content: "middle"},
+		{Role: "user", Content: "last"},
+	}
+	got := toSDKMessages(msgs, true)
+	if len(got) != 3 {
+		t.Fatalf("expected 3 messages, got %d", len(got))
+	}
+	// Inspect via the JSON marshal — the SDK structures are
+	// internal but cache_control is a documented field, so it shows
+	// in the JSON.
+	for i, mp := range got {
+		blob, err := mp.MarshalJSON()
+		if err != nil {
+			t.Fatalf("marshal msg %d: %v", i, err)
+		}
+		hasCache := bytes.Contains(blob, []byte("cache_control"))
+		wantCache := i == len(got)-1
+		if hasCache != wantCache {
+			t.Errorf("msg %d: cache_control=%v, want %v\n  json=%s", i, hasCache, wantCache, blob)
+		}
+	}
+}
+
+func TestToSDKMessages_NoCacheWhenDisabled(t *testing.T) {
+	msgs := []Message{{Role: "user", Content: "only"}}
+	got := toSDKMessages(msgs, false)
+	if len(got) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(got))
+	}
+	blob, err := got[0].MarshalJSON()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(blob, []byte("cache_control")) {
+		t.Errorf("cacheLast=false should NOT set cache_control, got %s", blob)
+	}
+}
+
 func TestToSDKMessages_DropsUnknownRoles(t *testing.T) {
 	got := toSDKMessages([]Message{
 		{Role: "user", Content: "a"},
 		{Role: "assistant", Content: "b"},
 		{Role: "system", Content: "skip-me"}, // should be dropped
-	})
+	}, false)
 	if len(got) != 2 {
 		t.Errorf("expected 2 valid messages, got %d", len(got))
 	}
