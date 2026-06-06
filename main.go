@@ -215,8 +215,15 @@ func cmdDeliver() {
 	}
 
 	// Key the pending file on session_id when available so concurrent sessions
-	// in the same project don't deliver each other's findings.
-	pendingKey := input.SessionID
+	// in the same project don't deliver each other's findings. Claude Code
+	// 2.1.x exposes the session ID as CLAUDE_CODE_SESSION_ID in the hook
+	// subprocess environment — prefer that over the JSON field so we don't
+	// depend on a payload shape that may shift across CC versions. JSON is
+	// kept as fallback for older runtimes.
+	pendingKey := os.Getenv("CLAUDE_CODE_SESSION_ID")
+	if pendingKey == "" {
+		pendingKey = input.SessionID
+	}
 	if pendingKey == "" {
 		pendingKey = project
 	}
@@ -344,10 +351,18 @@ func cmdHook() {
 
 	emit := emitter.Emit
 
-	// Key per-session state files on session_id when available so concurrent
-	// sessions in the same project don't trample each other's turn counters,
-	// locks, or pending findings. Status stays project-scoped (for `status` cmd).
-	sessionKey := input.SessionID
+	// Resolve session ID: prefer CLAUDE_CODE_SESSION_ID env (Claude Code
+	// 2.1.x+ broadcasts it to hook subprocesses); JSON field is the
+	// fallback for older runtimes. sessionID is the canonical identifier
+	// stored on extracted claims (passed through CoreParseTranscript);
+	// sessionKey is what we hash for per-session state files and falls
+	// back further to project so single-session-per-project usage still
+	// gets a stable key even when neither env nor JSON provide one.
+	sessionID := os.Getenv("CLAUDE_CODE_SESSION_ID")
+	if sessionID == "" {
+		sessionID = input.SessionID
+	}
+	sessionKey := sessionID
 	if sessionKey == "" {
 		sessionKey = project
 	}
@@ -451,7 +466,7 @@ func cmdHook() {
 
 	logf("extracting [%s] from %s (since turn %d)", project, filepath.Base(input.TranscriptPath), sinceTurn)
 
-	audit, err := mcp.CoreParseTranscript(ctx, db, extractor, project, input.TranscriptPath, sinceTurn, input.SessionID, turnCount)
+	audit, err := mcp.CoreParseTranscript(ctx, db, extractor, project, input.TranscriptPath, sinceTurn, sessionID, turnCount)
 	if err != nil {
 		logf("extraction error: %s", err)
 		emit("error", map[string]any{"phase": "extract", "model": cfg.Model, "reason": err.Error()})
