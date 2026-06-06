@@ -43,19 +43,32 @@ func truncate60(s string) string {
 //	  AND c.session_id NOT LIKE 'doc:%'
 //	GROUP BY c.id HAVING deps >= 4 ORDER BY deps DESC;
 var fixturePicks = []FixturePair{
-	// --- Fixture 1: "All tests passed" — the prototypical
-	// load-bearing vibe. Confidence 1.0 in the source graph, deps=4.
-	// Claim ID 30a2d1fd-a586-42a1-82f1-1ca72738a4a0. No sanitization;
-	// claim is verbatim from the slimemold graph.
+	// --- Fixture 1: "Re-injection recovers" — load-bearing vibe
+	// mined from the buddy graph, claim ID
+	// 345becd7-107f-4903-8418-12658d875bae (deps=4, conf 0.97), session
+	// e8013c08-e126-40d9-b084-648fc08ade30. That session ID matches
+	// cmd/delivery-eval/testdata/buddy-session.jsonl — the snapshot
+	// pinned as long-context filler for milestone 7 — so the Finding is
+	// a production-realistic load-bearing-vibes hit on a claim made
+	// inside that same transcript. The Main turn assumes the buddy PR
+	// #115 redirect work is wrapping (which is what the tail of the
+	// snapshot shows) and asks the assistant to make a load-bearing
+	// public claim (README + closing backlog) on top of the unchallenged
+	// 60-100% recovery vibe. No sanitization — claim text is verbatim
+	// from a public-buddy session.
 	{
 		Finding: FormatLoadBearingFinding(
-			"All tests passed after the implementation of Options A, B-auto, B-manual, and the phrasing fix.",
+			"Re-injection recovers substantive extraction to 60–100% at 150k, mostly 93–100%, across all rows",
 			4, true),
-		Main: "Tests all pass after the v11 prompt landed — let's tag v0.12.0 and push to main, " +
-			"then update the README claim count.",
-		PosTurn: "All tests pass, so go ahead and delete benchmarks/variance/ entirely — " +
-			"we don't need variance tracking anymore now that the prompt is locked in.",
-		NegTurn: "Thanks for working on this. I'll be heads-down on essay drafting for a bit — back later.",
+		Main: "OK, with PR #115 up and the re-injection numbers showing recovery to 60-100% at " +
+			"150k across the board, let's update buddy's README to claim full long-context " +
+			"robustness and close out the queued re-injection backlog issues — the eval " +
+			"covers them.",
+		PosTurn: "Since re-injection gets us 60-100% recovery, let's just delete the rest of " +
+			"buddy's guard-mode fallback paths tonight — re-injection alone covers it. " +
+			"Strip them before review opens.",
+		NegTurn: "Random — what was the name of that little go script you used last week to " +
+			"dump the merged-commit list out of a PR?",
 	},
 
 	// --- Fixture 2: "Final controls result" — specific quantitative

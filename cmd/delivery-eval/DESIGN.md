@@ -91,7 +91,69 @@ grader-bias-independent (this matches buddy's argument).
   Haiku grader @ $0.001). 2 transcripts × 1 model first run ≈ $4.
 - Wall time: 5–15 minutes per run depending on rate limits.
 
-## Milestone 7 result — 2026-06-05 (inconclusive, methodology not clean)
+## Milestone 7 closed — 2026-06-05 (CLOSED INCONCLUSIVE, no further spend)
+
+The 2026-06-05 re-run on a frozen buddy-session filler reproduced the
+prior session's ceiling saturation: A = B = 1.00 at every measured
+length, Δ = 0 everywhere. Two distinct lengths actually exercised (50k
+and the snapshot's full ~53k; the "100k" and "150k" labels collapsed
+because the buddy snapshot only contains ~53k tokens of usable content
+after merging/trim). ~$3 spent. ~$11 total across both runs.
+
+Reading the cached host responses showed the deeper structural
+problem the prior post-mortem missed: **the Main turn restates the
+load-bearing claim explicitly**. A-cells (no slimemold injection) push
+back on the claim just as strongly as B-cells, on the same specific
+grounds (drawn from the filler session's prior reasoning about the
+same claim). What this design measures is *redundancy* — "does adding
+a slimemold reminder change behavior when the user has already stated
+the load-bearing claim?" — not *salience recovery*, which is
+slimemold's actual value prop.
+
+Slimemold's hook is for surfacing claims the host has *lost track of*
+— claims that live in the graph (or older context) but are not in the
+host's current attention. Any test that puts the claim in the user's
+immediate turn is in the wrong regime to measure that.
+
+**Decision:** close the milestone. The
+[`benchmarks/static_vs_slimemold`](../../benchmarks/static_vs_slimemold)
+N=1 prior at 7-turn synthetic context remains the only evidence for
+the hook's basic effect; production-length delivery is documented as
+untested. Shipping slimemold doesn't depend on this milestone; we were
+spending to characterize a curve, and the experimental design
+characterizes the wrong curve.
+
+**Constraints on any future revisit** (not a roadmap — listed so that
+if anyone, including a future Claude session, comes back to this they
+don't repeat the same class of mistake):
+
+1. Main turn must NOT restate the flagged claim. Main is a downstream
+   request — something whose correctness *depends on* the claim being
+   true, but does not name the claim. The host has to retrieve the
+   claim from the filler (A) or from the slimemold injection (B) and
+   then notice the dependence.
+2. Filler transcript must not be ABOUT slimemold, ABOUT the claim, or
+   ABOUT this evaluation. Production-realistic background slimemold
+   firings are fine; meta-discussion of slimemold's mechanism or
+   purpose is not. The buddy-session filler used in 2026-06-05 was
+   specifically a slimemold-validation session (PR #115 about
+   re-injection) and contained 396 slimemold mentions plus the exact
+   reasoning the host then echoed — that filler was a poisoned choice
+   I made despite a memory file warning against this class.
+3. Filler must actually contain enough tokens for the longest target
+   length. Re-confirm with `EstimateTokens` before paying — don't trust
+   line count or byte size.
+4. Pre-spend gate: write down the predicted A-rate AND B-rate before
+   running. If predicted A-rate ≥ 0.90, the design is in the wrong
+   regime; stop and redesign before paying.
+
+If those four constraints can be met, the question becomes
+answerable. If they can't, the question is structurally unanswerable
+by this kind of A/B harness and the right modality is something else
+(e.g., qualitative shadow-eval on real-use sessions over a week of
+slimemold use — no API spend, slower wall-time, honest).
+
+## Milestone 7 prior post-mortem — 2026-06-05 (kept for the audit trail)
 
 Ran fixture 0 and fixture 1 at L ∈ {50k, 100k} using *this session's*
 JSONL as long-context filler. Numbers came out but the methodology was
