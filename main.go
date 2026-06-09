@@ -256,10 +256,18 @@ func cmdDeliver() {
 		return
 	}
 	if data, err := os.ReadFile(pendingFile); err == nil && len(data) > 0 {
-		// Keep delivering until the next extraction replaces the file.
-		// This provides constant corrective pressure between extractions
-		// instead of one hard redirect followed by silence.
+		// Single-delivery semantics: emit the finding once, then remove the
+		// pending file so the same finding doesn't fire on every subsequent
+		// UserPromptSubmit until the next Stop hook overwrites it (which is
+		// ~5 turns later). The "constant corrective pressure" framing was the
+		// dominant wallpaper engine — one Stop fire produced ~5 deliveries of
+		// the same finding, and the model habituated. The Stop hook's own
+		// cooldown is what handles "anchor was ignored, surface again."
+		// UserPromptSubmit's job is just to deliver the latest pending finding
+		// once. If the model didn't act, the next Stop fire will pick it up
+		// again (or rotate to a different anchor).
 		fmt.Print(string(data))
+		_ = os.Remove(pendingFile)
 	}
 }
 
@@ -542,10 +550,18 @@ func cmdHook() {
 	})
 	_ = os.WriteFile(filepath.Join(logDir, "status-"+projectHash+".json"), statusJSON, 0600)
 
-	// Write findings to pending file — delivered by the UserPromptSubmit hook
+	// Write findings to pending file — delivered ONCE by the next
+	// UserPromptSubmit hook, then removed. If this Stop fire produced no
+	// finding (HookSummary == "" — cooldown filtered everything, or no
+	// detector tripped), explicitly remove any stale pending file from a
+	// prior fire so the UserPromptSubmit hook doesn't re-deliver yesterday's
+	// finding. cmdDeliver's stat-then-skip on 12h-old files is a backstop;
+	// explicit removal here keeps the semantics tight.
 	if audit.HookSummary != "" {
 		_ = os.WriteFile(pendingFile, []byte(audit.HookSummary), 0600)
 		logf("wrote pending findings for [%s]", project)
+	} else {
+		_ = os.Remove(pendingFile)
 	}
 }
 
