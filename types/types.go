@@ -21,6 +21,20 @@ const (
 	BasisConvention Basis = "convention"
 )
 
+// IsWeak reports whether the basis is a working hypothesis rather than
+// a grounded source. Used by structural detectors (load-bearing-vibes,
+// fluency-trap, STOP-class verification gate, stale-claim sweep) — any
+// place a check needs "this claim is unsupported." Centralizing here so
+// the set of weak bases is defined once; adding or demoting a basis
+// (e.g. promoting `analogy` to weak) becomes a one-line change.
+func (b Basis) IsWeak() bool {
+	switch b {
+	case BasisVibes, BasisAssumption, BasisLLMOutput:
+		return true
+	}
+	return false
+}
+
 // Relation describes the epistemic relationship between two claims.
 type Relation string
 

@@ -1090,7 +1090,7 @@ func buildSweepBreakdown(ids []string, claims []types.Claim, deps map[string]int
 		b.bySpeaker[string(c.Speaker)]++
 		if c.Closed {
 			b.closedCount++
-		} else if deps[c.ID] < store.SweepStructuralMin && store.SweepWeakBasis[string(c.Basis)] {
+		} else if deps[c.ID] < store.SweepStructuralMin && c.Basis.IsWeak() {
 			b.weakAndNoDepsCount++
 		}
 	}

@@ -115,10 +115,17 @@ func (v *Verifier) Prefetch(claimText string) {
 		return
 	}
 	key := claimKey(claimText)
-	if _, fresh := v.lookupReconciled(claimText); fresh {
+	v.mu.Lock()
+	// Re-check freshness AND inflight under the same lock the
+	// goroutine clears inflight under. A coarser scope but it closes
+	// the TOCTOU window where another goroutine's fetchAndStore
+	// finishes (writes cache + drops inflight) between an out-of-lock
+	// freshness check and the inflight check — the second caller
+	// would otherwise spawn a duplicate fetch.
+	if _, fresh := v.cache.get(key); fresh {
+		v.mu.Unlock()
 		return
 	}
-	v.mu.Lock()
 	if _, busy := v.inflight[key]; busy {
 		v.mu.Unlock()
 		return

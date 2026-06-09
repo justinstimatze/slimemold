@@ -1699,14 +1699,7 @@ func isDocOrigin(c types.Claim) bool {
 // basis are ambient by design (self-correcting as the conversation moves).
 // Strong-basis claims regardless of origin already earned their position.
 func IsSTOPClass(c types.Claim) bool {
-	if !isDocOrigin(c) {
-		return false
-	}
-	switch c.Basis {
-	case "vibes", "assumption", "llm_output":
-		return true
-	}
-	return false
+	return isDocOrigin(c) && c.Basis.IsWeak()
 }
 
 // HookVerifier is the optional verification backend FormatHookFindings

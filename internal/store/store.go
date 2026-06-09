@@ -1142,8 +1142,12 @@ var oldBasisRebuild = []string{
 
 var projectRe = regexp.MustCompile(`[^a-zA-Z0-9_\-]`)
 
-// sanitizeProject strips path separators and unsafe characters from project names.
-func sanitizeProject(name string) string {
+// SanitizeProject strips path separators and unsafe characters from
+// project names. Exported so packages that derive per-project state
+// dirs (internal/verify, future internal/hookevents callers) use the
+// same rule and land their files in the same directory as graph.sqlite
+// — no split-brain layouts on disk if the sanitizer rule evolves.
+func SanitizeProject(name string) string {
 	name = filepath.Base(name) // strip directory components
 	name = projectRe.ReplaceAllString(name, "")
 	if name == "" {
@@ -1151,3 +1155,8 @@ func sanitizeProject(name string) string {
 	}
 	return name
 }
+
+// sanitizeProject is the internal lowercase alias kept for backward
+// compatibility with the in-package call sites. New external callers
+// should use SanitizeProject.
+func sanitizeProject(name string) string { return SanitizeProject(name) }

@@ -5,36 +5,27 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"sync"
+
+	"github.com/justinstimatze/slimemold/internal/store"
 )
 
 // cache is a disk-backed key→Reconciled store. Entries persist as a
 // single JSON file per project so a session restart preserves prior
-// fetches. Concurrency is guarded by a single mutex — the read path
-// is fast, writes are batched on every put with an atomic rename.
+// fetches. Concurrency is guarded by mu for the in-memory map; writeMu
+// serializes the marshal+write+rename sequence so concurrent put()s
+// can't rename their snapshots out of order and drop entries on disk.
 type cache struct {
 	path string
 
 	mu      sync.RWMutex
 	entries map[string]Reconciled
-}
 
-var projectRe = regexp.MustCompile(`[^a-zA-Z0-9_\-]`)
-
-// sanitizeProject mirrors internal/store's sanitizer so the verify
-// cache file lands in the same project directory as graph.sqlite.
-func sanitizeProject(name string) string {
-	name = filepath.Base(name)
-	name = projectRe.ReplaceAllString(name, "")
-	if name == "" {
-		name = "default"
-	}
-	return name
+	writeMu sync.Mutex
 }
 
 func openCache(dataDir, project string) (*cache, error) {
-	project = sanitizeProject(project)
+	project = store.SanitizeProject(project)
 	dir := filepath.Join(dataDir, project)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, fmt.Errorf("verify: create dir: %w", err)
@@ -81,6 +72,13 @@ func (c *cache) get(key string) (Reconciled, bool) {
 }
 
 func (c *cache) put(key string, r Reconciled) error {
+	// writeMu serializes the marshal+write+rename for all callers.
+	// Without it, two concurrent puts can take their snapshots in one
+	// order and rename in the opposite order, leaving the on-disk file
+	// missing the newer entry even though both put()s returned nil.
+	c.writeMu.Lock()
+	defer c.writeMu.Unlock()
+
 	c.mu.Lock()
 	c.entries[key] = r
 	snapshot := make(map[string]Reconciled, len(c.entries))
@@ -89,12 +87,16 @@ func (c *cache) put(key string, r Reconciled) error {
 	}
 	c.mu.Unlock()
 
-	b, err := json.MarshalIndent(snapshot, "", "  ")
+	b, err := json.Marshal(snapshot)
 	if err != nil {
 		return fmt.Errorf("verify: marshal cache: %w", err)
 	}
 	tmp := c.path + ".tmp"
-	if err := os.WriteFile(tmp, b, 0o644); err != nil {
+	// 0o600: cached Kagi snippets may quote text from privately
+	// ingested documents; matches graph.sqlite's restrictiveness and
+	// the project's convention on user-data files. The parent dir is
+	// 0o700; file-mode hardening is defense in depth.
+	if err := os.WriteFile(tmp, b, 0o600); err != nil {
 		return fmt.Errorf("verify: write tmp: %w", err)
 	}
 	if err := os.Rename(tmp, c.path); err != nil {

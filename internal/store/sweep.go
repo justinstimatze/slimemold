@@ -32,15 +32,10 @@ const (
 	SweepStructuralMin = 2 // paired with analysis.LegacyMinDeps — keep equal
 )
 
-// SweepWeakBasis is the set of basis values that are eligible for the
-// "no structural deps" archive branch. Strong-basis claims (research,
-// empirical, definition, convention) are kept regardless of dep count —
-// they earned their position by being grounded, not by being popular.
-var SweepWeakBasis = map[string]bool{
-	"vibes":      true,
-	"llm_output": true,
-	"assumption": true,
-}
+// Weak-basis eligibility for the "no structural deps" archive branch
+// lives on types.Basis.IsWeak() so the set is defined once for sweep,
+// for STOP-class verification gating, and any future detector that
+// needs it.
 
 // SweepCap returns the per-fire archive cap, read from SLIMEMOLD_SWEEP_CAP.
 // Default 1000 — enough to drain a fresh backlog over a handful of days on
@@ -161,7 +156,7 @@ func SweepCandidatesWithDeps(claims []types.Claim, edges []types.Edge) ([]string
 			ids = append(ids, c.ID)
 			continue
 		}
-		if !structural && SweepWeakBasis[string(c.Basis)] {
+		if !structural && c.Basis.IsWeak() {
 			ids = append(ids, c.ID)
 		}
 	}
