@@ -286,7 +286,8 @@ func CoreParseTranscript(ctx context.Context, db *store.DB, extractor *extract.E
 	recentFires, _ := db.RecentHookFireTimes(project, time.Now().Add(-analysis.HookPersistentCooldown))
 	hookSummary, pickedClaimID, pickedFindingType, _ := analysis.FormatHookFindings(findingTopo, findingVulns, findingClaims, recentFires, newClaims, newEdges, 5, verifier)
 	if pickedClaimID != "" && pickedFindingType != "" {
-		_ = db.LogHookFire(project, pickedClaimID, pickedFindingType)
+		snap := buildFireSnapshot(findingClaims, pickedClaimID, preCountedTurns, transcriptPath)
+		_ = db.LogHookFire(project, pickedClaimID, pickedFindingType, snap)
 	}
 
 	// Append integrity warnings to summary
@@ -1112,6 +1113,38 @@ func filterClosed(claims []types.Claim) []types.Claim {
 		}
 	}
 	return out
+}
+
+// buildFireSnapshot captures the picked anchor's text/basis/turn at fire
+// time so RefreshRate can later detect whether its assertion changed.
+// Non-STOP-class anchors yield a snapshot with StopClass=false and the
+// remaining fields zero — RefreshRate skips those rows entirely.
+//
+// turn_at_fire prefers preCountedTurns (the Stop hook's own pre-call count,
+// which represents the conversational turn the user just sent), falling
+// back to a transcript scan if that's zero. The claim's own turn_number
+// would say "when the extractor saw this claim" which is irrelevant — we
+// want "where in the conversation was the model when the flag fired."
+func buildFireSnapshot(claims []types.Claim, pickedClaimID string, preCountedTurns int, transcriptPath string) store.HookFireSnapshot {
+	for _, c := range claims {
+		if c.ID != pickedClaimID {
+			continue
+		}
+		if !analysis.IsSTOPClass(c) {
+			return store.HookFireSnapshot{}
+		}
+		turn := preCountedTurns
+		if turn <= 0 {
+			turn, _ = extract.CountTranscriptTurns(transcriptPath)
+		}
+		return store.HookFireSnapshot{
+			StopClass:   true,
+			TextAtFire:  c.Text,
+			BasisAtFire: string(c.Basis),
+			TurnAtFire:  turn,
+		}
+	}
+	return store.HookFireSnapshot{}
 }
 
 // filterSuperseded removes claims that have been contradicted by a newer claim

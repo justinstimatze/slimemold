@@ -883,13 +883,13 @@ func TestExtractionCacheRoundtrip(t *testing.T) {
 func TestHookFireLogRoundtrip(t *testing.T) {
 	db := testDB(t)
 
-	if err := db.LogHookFire("test-project", "claim-a", "load_bearing_vibes"); err != nil {
+	if err := db.LogHookFire("test-project", "claim-a", "load_bearing_vibes", HookFireSnapshot{}); err != nil {
 		t.Fatalf("LogHookFire: %v", err)
 	}
-	if err := db.LogHookFire("test-project", "claim-b", "unchallenged_chain"); err != nil {
+	if err := db.LogHookFire("test-project", "claim-b", "unchallenged_chain", HookFireSnapshot{}); err != nil {
 		t.Fatalf("LogHookFire b: %v", err)
 	}
-	if err := db.LogHookFire("other-project", "claim-a", "load_bearing_vibes"); err != nil {
+	if err := db.LogHookFire("other-project", "claim-a", "load_bearing_vibes", HookFireSnapshot{}); err != nil {
 		t.Fatalf("LogHookFire other: %v", err)
 	}
 
@@ -1139,5 +1139,271 @@ func TestLastReferencedAtMigration_RefinesFromEdges(t *testing.T) {
 	} else if got := isolated.LastReferencedAt.Truncate(time.Second); !got.Equal(claimTime) {
 		t.Errorf("isolated: expected last_referenced_at = %v (claim time, Pass-1 fallback preserved), got %v",
 			claimTime, got)
+	}
+}
+
+// stopClassClaim seeds a doc-origin weak-basis claim that IsSTOPClass
+// recognizes. Stored claim text + basis match what a snapshot would
+// capture at fire time. The session_id prefix "doc:" is what marks it
+// as doc-origin in analysis.IsSTOPClass.
+func stopClassClaim(t *testing.T, db *DB, id, text string) *types.Claim {
+	t.Helper()
+	c := &types.Claim{
+		ID:        id,
+		Text:      text,
+		Basis:     types.BasisVibes,
+		SessionID: "doc:abc123",
+		Project:   "test-project",
+		Speaker:   types.SpeakerDocument,
+		CreatedAt: time.Now(),
+	}
+	if err := db.CreateClaim(c); err != nil {
+		t.Fatalf("CreateClaim %s: %v", id, err)
+	}
+	return c
+}
+
+// TestRefreshRate_SkipsLegacyFires asserts that fires logged without the
+// snapshot (stop_class=0) are excluded from both numerator and denominator.
+// Otherwise the metric would understate refresh rate for any DB that
+// existed before the snapshot columns landed.
+func TestRefreshRate_SkipsLegacyFires(t *testing.T) {
+	db := testDB(t)
+	c := stopClassClaim(t, db, "legacy-claim", "an unverified assertion")
+	// Legacy fire — stop_class=0 even though the claim is STOP-class.
+	if err := db.LogHookFire("test-project", c.ID, "load_bearing_vibes", HookFireSnapshot{}); err != nil {
+		t.Fatalf("LogHookFire legacy: %v", err)
+	}
+	// Refresh the claim post-fire — challenged.
+	if err := db.ChallengeClaim(c.ID, "weakened", "", "", "no source"); err != nil {
+		t.Fatalf("ChallengeClaim: %v", err)
+	}
+	result, err := db.RefreshRate("test-project", 0)
+	if err != nil {
+		t.Fatalf("RefreshRate: %v", err)
+	}
+	if result.Total != 0 {
+		t.Errorf("legacy fire counted in denominator: Total=%d, want 0", result.Total)
+	}
+}
+
+// TestRefreshRate_DetectsChallengeClose covers the two boolean-flag refresh
+// signals — the picked claim transitioning to challenged=1 or closed=1
+// counts as a refresh.
+func TestRefreshRate_DetectsChallengeClose(t *testing.T) {
+	db := testDB(t)
+	a := stopClassClaim(t, db, "claim-a", "text A")
+	bClaim := stopClassClaim(t, db, "claim-b", "text B")
+	cClaim := stopClassClaim(t, db, "claim-c", "text C")
+	for _, c := range []*types.Claim{a, bClaim, cClaim} {
+		snap := HookFireSnapshot{
+			StopClass: true, TextAtFire: c.Text, BasisAtFire: string(c.Basis), TurnAtFire: 1,
+		}
+		if err := db.LogHookFire("test-project", c.ID, "load_bearing_vibes", snap); err != nil {
+			t.Fatalf("LogHookFire %s: %v", c.ID, err)
+		}
+	}
+	if err := db.ChallengeClaim(a.ID, "weakened", "", "", "no source"); err != nil {
+		t.Fatalf("ChallengeClaim: %v", err)
+	}
+	if err := db.CloseClaim(bClaim.ID); err != nil {
+		t.Fatalf("CloseClaim: %v", err)
+	}
+	// cClaim stays untouched — not refreshed.
+
+	result, err := db.RefreshRate("test-project", 0)
+	if err != nil {
+		t.Fatalf("RefreshRate: %v", err)
+	}
+	if result.Total != 3 {
+		t.Errorf("Total=%d, want 3", result.Total)
+	}
+	if result.Refreshed != 2 {
+		t.Errorf("Refreshed=%d, want 2", result.Refreshed)
+	}
+	if result.SignalCounts[RefreshSignalChallenged] != 1 {
+		t.Errorf("challenged signal count = %d, want 1", result.SignalCounts[RefreshSignalChallenged])
+	}
+	if result.SignalCounts[RefreshSignalClosed] != 1 {
+		t.Errorf("closed signal count = %d, want 1", result.SignalCounts[RefreshSignalClosed])
+	}
+}
+
+// TestRefreshRate_DetectsTextAndBasisChange exercises the text_at_fire /
+// basis_at_fire comparisons: ChallengeClaim with revisedText/revisedBasis
+// rewrites the claim row, so the comparison against the fire-time snapshot
+// surfaces the change.
+func TestRefreshRate_DetectsTextAndBasisChange(t *testing.T) {
+	db := testDB(t)
+	c := stopClassClaim(t, db, "claim-r", "original text")
+	snap := HookFireSnapshot{
+		StopClass: true, TextAtFire: c.Text, BasisAtFire: string(c.Basis), TurnAtFire: 5,
+	}
+	if err := db.LogHookFire("test-project", c.ID, "load_bearing_vibes", snap); err != nil {
+		t.Fatalf("LogHookFire: %v", err)
+	}
+	// Revise text AND basis — both signals should trip on one fire.
+	if err := db.ChallengeClaim(c.ID, "revised", "post-revision text", "research", "found a paper"); err != nil {
+		t.Fatalf("ChallengeClaim with revisions: %v", err)
+	}
+	result, err := db.RefreshRate("test-project", 0)
+	if err != nil {
+		t.Fatalf("RefreshRate: %v", err)
+	}
+	if result.Refreshed != 1 {
+		t.Errorf("Refreshed=%d, want 1 (single claim, multiple signals)", result.Refreshed)
+	}
+	// All three signals fire for this one claim — challenged AND text AND basis.
+	if result.SignalCounts[RefreshSignalChallenged] != 1 {
+		t.Errorf("challenged count = %d, want 1", result.SignalCounts[RefreshSignalChallenged])
+	}
+	if result.SignalCounts[RefreshSignalTextChange] != 1 {
+		t.Errorf("text_changed count = %d, want 1", result.SignalCounts[RefreshSignalTextChange])
+	}
+	if result.SignalCounts[RefreshSignalBasisFix] != 1 {
+		t.Errorf("basis_changed count = %d, want 1", result.SignalCounts[RefreshSignalBasisFix])
+	}
+}
+
+// TestRefreshRate_WindowTurnsFilter restricts the metric to fires that have
+// had at least N turns elapse since fire time. Fires whose snapshot turn
+// is closer to currentMaxTurn than N are excluded — the model hasn't had
+// time to respond yet, so counting them as "unrefreshed" understates the
+// rate.
+func TestRefreshRate_WindowTurnsFilter(t *testing.T) {
+	db := testDB(t)
+	// Fresh fire at turn 9, current max claim turn is 10 → only 1 turn elapsed.
+	freshClaim := &types.Claim{
+		ID:         "fresh",
+		Text:       "fresh text",
+		Basis:      types.BasisVibes,
+		SessionID:  "doc:abc",
+		Project:    "test-project",
+		Speaker:    types.SpeakerDocument,
+		CreatedAt:  time.Now(),
+		TurnNumber: 10,
+	}
+	if err := db.CreateClaim(freshClaim); err != nil {
+		t.Fatalf("CreateClaim fresh: %v", err)
+	}
+	// Old fire at turn 1 — 9 turns elapsed.
+	oldClaim := &types.Claim{
+		ID:         "old",
+		Text:       "old text",
+		Basis:      types.BasisVibes,
+		SessionID:  "doc:abc",
+		Project:    "test-project",
+		Speaker:    types.SpeakerDocument,
+		CreatedAt:  time.Now(),
+		TurnNumber: 1,
+	}
+	if err := db.CreateClaim(oldClaim); err != nil {
+		t.Fatalf("CreateClaim old: %v", err)
+	}
+	if err := db.LogHookFire("test-project", freshClaim.ID, "load_bearing_vibes", HookFireSnapshot{
+		StopClass: true, TextAtFire: freshClaim.Text, BasisAtFire: string(freshClaim.Basis), TurnAtFire: 9,
+	}); err != nil {
+		t.Fatalf("LogHookFire fresh: %v", err)
+	}
+	if err := db.LogHookFire("test-project", oldClaim.ID, "load_bearing_vibes", HookFireSnapshot{
+		StopClass: true, TextAtFire: oldClaim.Text, BasisAtFire: string(oldClaim.Basis), TurnAtFire: 1,
+	}); err != nil {
+		t.Fatalf("LogHookFire old: %v", err)
+	}
+
+	// Window 5: only the old fire (9 - 1 = 8 elapsed) qualifies; fresh
+	// (10 - 9 = 1) is excluded.
+	result, err := db.RefreshRate("test-project", 5)
+	if err != nil {
+		t.Fatalf("RefreshRate windowed: %v", err)
+	}
+	if result.Total != 1 {
+		t.Errorf("windowed Total=%d, want 1 (fresh fire excluded)", result.Total)
+	}
+
+	// Without the window both fires count.
+	result, err = db.RefreshRate("test-project", 0)
+	if err != nil {
+		t.Fatalf("RefreshRate unwindowed: %v", err)
+	}
+	if result.Total != 2 {
+		t.Errorf("unwindowed Total=%d, want 2", result.Total)
+	}
+}
+
+// TestRefreshRate_EmptyProject — no fires recorded, no claims. RefreshRate
+// must return a zero-valued result, not error.
+func TestRefreshRate_EmptyProject(t *testing.T) {
+	db := testDB(t)
+	result, err := db.RefreshRate("test-project", 0)
+	if err != nil {
+		t.Fatalf("RefreshRate on empty: %v", err)
+	}
+	if result.Total != 0 || result.Refreshed != 0 {
+		t.Errorf("empty project: Total=%d Refreshed=%d, want 0/0", result.Total, result.Refreshed)
+	}
+}
+
+// TestRefreshRate_LegacyDBMigration spins up a DB with the pre-snapshot
+// hook_fire_log schema and verifies the migration adds the snapshot
+// columns so RefreshRate can run against an upgraded DB.
+func TestRefreshRate_LegacyDBMigration(t *testing.T) {
+	dir := t.TempDir()
+	projectDir := filepath.Join(dir, "test-project")
+	if err := os.MkdirAll(projectDir, 0700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	dbPath := filepath.Join(projectDir, "graph.sqlite")
+	dsn := dbPath + "?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=foreign_keys(ON)"
+
+	// Seed a pre-snapshot hook_fire_log schema.
+	{
+		raw, err := sql.Open("sqlite", dsn)
+		if err != nil {
+			t.Fatalf("raw open: %v", err)
+		}
+		_, err = raw.Exec(`CREATE TABLE hook_fire_log (
+			id              INTEGER PRIMARY KEY AUTOINCREMENT,
+			project         TEXT NOT NULL,
+			claim_id        TEXT NOT NULL,
+			finding_type    TEXT NOT NULL,
+			fired_at        TEXT NOT NULL
+		)`)
+		if err != nil {
+			t.Fatalf("create legacy hook_fire_log: %v", err)
+		}
+		_, err = raw.Exec(`INSERT INTO hook_fire_log (project, claim_id, finding_type, fired_at) VALUES (?, ?, ?, ?)`,
+			"test-project", "legacy-id", "load_bearing_vibes", time.Now().Format(time.RFC3339))
+		if err != nil {
+			t.Fatalf("insert legacy row: %v", err)
+		}
+		raw.Close()
+	}
+
+	// Open via the store — migrateHookFireSnapshot should add the four columns.
+	db, err := Open(dir, "test-project")
+	if err != nil {
+		t.Fatalf("Open after legacy schema: %v", err)
+	}
+	defer db.Close()
+
+	// New STOP-class fire writes cleanly through the upgraded schema.
+	c := stopClassClaim(t, db, "post-migration", "post-migration claim")
+	if err := db.LogHookFire("test-project", c.ID, "load_bearing_vibes", HookFireSnapshot{
+		StopClass: true, TextAtFire: c.Text, BasisAtFire: string(c.Basis), TurnAtFire: 1,
+	}); err != nil {
+		t.Fatalf("LogHookFire post-migration: %v", err)
+	}
+	if err := db.ChallengeClaim(c.ID, "weakened", "", "", ""); err != nil {
+		t.Fatalf("ChallengeClaim: %v", err)
+	}
+
+	result, err := db.RefreshRate("test-project", 0)
+	if err != nil {
+		t.Fatalf("RefreshRate post-migration: %v", err)
+	}
+	// Legacy fire skipped (stop_class=0), post-migration fire counted + refreshed.
+	if result.Total != 1 || result.Refreshed != 1 {
+		t.Errorf("post-migration: Total=%d Refreshed=%d, want 1/1", result.Total, result.Refreshed)
 	}
 }

@@ -63,6 +63,8 @@ func main() {
 		cmdViz(project)
 	case "audit":
 		cmdAudit(project)
+	case "refresh-rate":
+		cmdRefreshRate(project, args[1:])
 	case "calibrate":
 		cmdCalibrate(project)
 	case "status":
@@ -98,6 +100,8 @@ Usage:
   slimemold deliver                    UserPromptSubmit hook: deliver findings
   slimemold [--project NAME] viz       Render ASCII topology
   slimemold [--project NAME] audit     Run topology analysis and print findings
+  slimemold [--project NAME] refresh-rate [--min-turns-since N]
+                                       STOP-class fire refresh ratio (carry vs substitute test)
   slimemold [--project NAME] calibrate Per-session inventory-flag rates and saturation threshold sweep (Moore et al. 2026)
   slimemold [--project NAME] status     Check if the hook is working
   slimemold [--project NAME] reset     Clear all data for project
@@ -704,6 +708,82 @@ func cmdAudit(projectOverride string) {
 	topo, vulns := analysis.Analyze(claims, edges, queryProject)
 	summary := analysis.FormatAuditSummary(topo, vulns)
 	fmt.Print(summary)
+}
+
+// cmdRefreshRate reports the share of STOP-class hook fires whose underlying
+// claim has been refreshed (challenged / closed / text or basis changed) in
+// the project DB. This is the form-vs-content test for slimemold's hook:
+// the bright-pattern delivery is doing real work only if it shifts claims
+// toward reconciliation. Legacy fires (pre-v0.14) lack snapshots and are
+// excluded from both the numerator and denominator.
+func cmdRefreshRate(projectOverride string, args []string) {
+	minTurns := 0
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--min-turns-since":
+			if i+1 >= len(args) {
+				fmt.Fprintln(os.Stderr, "slimemold: refresh-rate: --min-turns-since needs a value")
+				os.Exit(2)
+			}
+			n, err := strconv.Atoi(args[i+1])
+			if err != nil || n < 0 {
+				fmt.Fprintf(os.Stderr, "slimemold: refresh-rate: --min-turns-since %q must be a non-negative integer\n", args[i+1])
+				os.Exit(2)
+			}
+			minTurns = n
+			i++
+		default:
+			fmt.Fprintf(os.Stderr, "slimemold: refresh-rate: unknown flag %q\n", args[i])
+			os.Exit(2)
+		}
+	}
+
+	cfg, err := config.Load()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "slimemold: config error: %s\n", err)
+		os.Exit(1)
+	}
+
+	dbProject, queryProject := resolveDBProject(projectOverride)
+	db, err := store.Open(cfg.DataDir, dbProject)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "slimemold: database error: %s\n", err)
+		os.Exit(1)
+	}
+	defer db.Close()
+
+	result, err := db.RefreshRate(queryProject, minTurns)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "slimemold: refresh-rate query failed: %s\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("Project: %s\n", queryProject)
+	if minTurns > 0 {
+		fmt.Printf("Window:  fires with >= %d turns since (denominator excludes fresh fires)\n", minTurns)
+	}
+	if result.Total == 0 {
+		fmt.Println("No STOP-class fires recorded in this project yet.")
+		fmt.Println("(Legacy fires from before snapshotting was added are excluded.)")
+		return
+	}
+	pct := 100.0 * float64(result.Refreshed) / float64(result.Total)
+	fmt.Printf("Refresh rate: %d / %d (%.1f%%)\n", result.Refreshed, result.Total, pct)
+	if result.Refreshed > 0 {
+		fmt.Println("By signal (a single fire may trigger multiple):")
+		// Stable ordering so repeated invocations diff cleanly.
+		order := []store.RefreshRateSignal{
+			store.RefreshSignalChallenged,
+			store.RefreshSignalClosed,
+			store.RefreshSignalTextChange,
+			store.RefreshSignalBasisFix,
+		}
+		for _, s := range order {
+			if n := result.SignalCounts[s]; n > 0 {
+				fmt.Printf("  %-14s %d\n", string(s), n)
+			}
+		}
+	}
 }
 
 // cmdCalibrate prints a per-session report of Moore et al. 2026 inventory-flag

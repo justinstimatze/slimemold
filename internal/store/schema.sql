@@ -76,9 +76,21 @@ CREATE TABLE IF NOT EXISTS hook_fire_log (
     project         TEXT NOT NULL,
     claim_id        TEXT NOT NULL,
     finding_type    TEXT NOT NULL,
-    fired_at        TEXT NOT NULL
+    fired_at        TEXT NOT NULL,
+    -- Snapshot fields populated when the picked anchor is STOP-class (weak
+    -- basis + doc-origin). Used by refresh-rate to ask: did the claim's
+    -- assertion change after the flag fired? stop_class=0 rows are legacy
+    -- or non-STOP fires and are excluded from refresh-rate.
+    stop_class      INTEGER DEFAULT 0,
+    text_at_fire    TEXT DEFAULT '',
+    basis_at_fire   TEXT DEFAULT '',
+    turn_at_fire    INTEGER DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_hook_fire_log_project_time ON hook_fire_log(project, fired_at);
+-- idx_hook_fire_log_stop_class is created in migrateHookFireSnapshot AFTER
+-- the stop_class column lands on legacy DBs. Placing the CREATE INDEX in
+-- schema.sql would fail with "no such column: stop_class" on those DBs,
+-- because db.Exec(schema) runs in full before migrate().
 
 -- session_claims tracks which sessions have "seen" each claim — including
 -- claims recognized via cross-batch dedup (which keep the original session_id

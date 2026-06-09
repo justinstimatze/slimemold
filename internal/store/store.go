@@ -689,13 +689,29 @@ func (d *DB) DeleteExtractionCache(contentHash, model string, promptVersion int)
 	return err
 }
 
+// HookFireSnapshot captures the picked claim's state at the moment a hook
+// fired. Zero value (stop_class=false) is the non-STOP-class case: the
+// fire is logged for cooldown but contributes nothing to refresh-rate.
+type HookFireSnapshot struct {
+	StopClass   bool
+	TextAtFire  string
+	BasisAtFire string
+	TurnAtFire  int
+}
+
 // LogHookFire records that the hook surfaced `findingType` for `claimID` in
 // `project`. Used by RecentHookFires to suppress repeat firings inside a
-// cooldown window.
-func (d *DB) LogHookFire(project, claimID, findingType string) error {
+// cooldown window; the snapshot fields are additionally used by RefreshRate
+// to detect whether the picked claim's assertion changed after the fire.
+func (d *DB) LogHookFire(project, claimID, findingType string, snap HookFireSnapshot) error {
+	stopClass := 0
+	if snap.StopClass {
+		stopClass = 1
+	}
 	_, err := d.q.Exec(
-		`INSERT INTO hook_fire_log (project, claim_id, finding_type, fired_at) VALUES (?, ?, ?, ?)`,
+		`INSERT INTO hook_fire_log (project, claim_id, finding_type, fired_at, stop_class, text_at_fire, basis_at_fire, turn_at_fire) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 		project, claimID, findingType, time.Now().Format(time.RFC3339),
+		stopClass, snap.TextAtFire, snap.BasisAtFire, snap.TurnAtFire,
 	)
 	return err
 }
@@ -799,6 +815,122 @@ func (d *DB) RecentHookFireTimes(project string, since time.Time) (map[string]ti
 	return out, rows.Err()
 }
 
+// RefreshRateSignal names one of the ways a STOP-class claim can refresh
+// after its hook fired. Mutually non-exclusive — a single fire may have
+// triggered any subset (e.g. both ChallengeClaim and a text revision).
+type RefreshRateSignal string
+
+const (
+	RefreshSignalChallenged RefreshRateSignal = "challenged"
+	RefreshSignalClosed     RefreshRateSignal = "closed"
+	RefreshSignalTextChange RefreshRateSignal = "text_changed"
+	RefreshSignalBasisFix   RefreshRateSignal = "basis_changed"
+)
+
+// RefreshRateResult is the per-project rollup returned by RefreshRate.
+// Refreshed/Total is the headline ratio; Signals breaks down which kinds
+// of refresh fired. SignalCounts can sum to more than Refreshed when a
+// single fire triggered multiple refresh signals.
+type RefreshRateResult struct {
+	Project      string
+	Total        int
+	Refreshed    int
+	SignalCounts map[RefreshRateSignal]int
+}
+
+// RefreshRate computes the per-project ratio of STOP-class hook fires whose
+// underlying claim has been refreshed since the fire. A refresh is any of:
+// challenged (ChallengeClaim called), closed (CloseClaim or auto-supersede),
+// text changed (ChallengeClaim with revisedText), or basis changed
+// (extractor reclassified the claim with stronger evidence).
+//
+// Legacy fires (stop_class=0) are skipped — they predate the snapshotting
+// code so we have no fire-time baseline to compare against.
+//
+// minTurnsSinceFire (when > 0) restricts the metric to fires whose
+// turn_at_fire is at least N turns behind the project's current max
+// claim.turn_number. Use this to answer "of fires that have had time to
+// refresh, how many did?" — without it, the ratio undercounts fresh
+// fires whose model hasn't yet had a chance to respond.
+func (d *DB) RefreshRate(project string, minTurnsSinceFire int) (*RefreshRateResult, error) {
+	// currentMaxTurn must be computed BEFORE the rows query opens — the
+	// SQLite connection pool in WAL mode hands out a small fixed number of
+	// connections, and an active Rows holds its connection until Close().
+	// Doing the QueryRow after Query would block waiting for a second
+	// connection that may never free (deadlocked on the same goroutine).
+	currentMaxTurn := 0
+	if minTurnsSinceFire > 0 {
+		if err := d.q.QueryRow(
+			`SELECT COALESCE(MAX(turn_number), 0) FROM claims WHERE project = ?`,
+			project,
+		).Scan(&currentMaxTurn); err != nil {
+			return nil, err
+		}
+	}
+
+	rows, err := d.q.Query(
+		`SELECT h.claim_id, h.text_at_fire, h.basis_at_fire, h.turn_at_fire,
+		        c.text, c.basis, c.challenged, c.closed
+		   FROM hook_fire_log h
+		   JOIN claims c ON c.id = h.claim_id
+		  WHERE h.project = ? AND h.stop_class = 1
+		    AND c.project = ?`,
+		project, project,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	result := &RefreshRateResult{
+		Project:      project,
+		SignalCounts: map[RefreshRateSignal]int{},
+	}
+	for rows.Next() {
+		var (
+			claimID     string
+			textAtFire  string
+			basisAtFire string
+			turnAtFire  int
+			textNow     string
+			basisNow    string
+			challenged  int
+			closed      int
+		)
+		if err := rows.Scan(&claimID, &textAtFire, &basisAtFire, &turnAtFire,
+			&textNow, &basisNow, &challenged, &closed); err != nil {
+			return nil, err
+		}
+		if minTurnsSinceFire > 0 && currentMaxTurn-turnAtFire < minTurnsSinceFire {
+			continue
+		}
+		result.Total++
+		var fired []RefreshRateSignal
+		if challenged != 0 {
+			fired = append(fired, RefreshSignalChallenged)
+		}
+		if closed != 0 {
+			fired = append(fired, RefreshSignalClosed)
+		}
+		if textAtFire != "" && textNow != textAtFire {
+			fired = append(fired, RefreshSignalTextChange)
+		}
+		if basisAtFire != "" && basisNow != basisAtFire {
+			fired = append(fired, RefreshSignalBasisFix)
+		}
+		if len(fired) > 0 {
+			result.Refreshed++
+			for _, s := range fired {
+				result.SignalCounts[s]++
+			}
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
 // migrate applies incremental schema changes to existing databases.
 // Each migration is idempotent — ALTER TABLE ADD COLUMN is ignored if the
 // column exists; CHECK rebuilds are gated on marker presence; the
@@ -855,6 +987,25 @@ func migrate(db *sql.DB) {
 	migrateSessionClaims(db)
 	migrateLastReferencedAt(db)
 	migrateArchivedFlag(db)
+	migrateHookFireSnapshot(db)
+}
+
+// migrateHookFireSnapshot adds the four snapshot columns to hook_fire_log
+// for legacy DBs. Used by RefreshRate to detect whether a STOP-class fire
+// later got refreshed (claim challenged/closed/text or basis changed).
+// Legacy rows have stop_class=0 by default and are excluded from the metric
+// — they predate the snapshotting code and we can't reconstruct their
+// fire-time state.
+func migrateHookFireSnapshot(db *sql.DB) {
+	for _, m := range []string{
+		`ALTER TABLE hook_fire_log ADD COLUMN stop_class INTEGER DEFAULT 0`,
+		`ALTER TABLE hook_fire_log ADD COLUMN text_at_fire TEXT DEFAULT ''`,
+		`ALTER TABLE hook_fire_log ADD COLUMN basis_at_fire TEXT DEFAULT ''`,
+		`ALTER TABLE hook_fire_log ADD COLUMN turn_at_fire INTEGER DEFAULT 0`,
+	} {
+		_, _ = db.Exec(m) // ignore "duplicate column" errors
+	}
+	_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_hook_fire_log_stop_class ON hook_fire_log(project, stop_class, fired_at)`)
 }
 
 // migrateArchivedFlag adds the archived column to claims for older DBs. New
