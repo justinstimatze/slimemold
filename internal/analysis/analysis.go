@@ -73,7 +73,7 @@ func AnalyzeWithProfile(claims []types.Claim, edges []types.Edge, project string
 		items = append(items, types.Vulnerability{
 			Severity:    "warning",
 			Type:        "orphan",
-			Description: fmt.Sprintf("Orphan claim (unconnected): %q", truncate(o.Text, 80)),
+			Description: fmt.Sprintf("Orphan claim (unconnected): %q%s", truncate(o.Text, 80), originTag(o)),
 			ClaimIDs:    []string{o.ID},
 		})
 	}
@@ -187,7 +187,7 @@ func findVulnerabilities(claims []types.Claim, edges []types.Edge, topo *types.T
 		items = append(items, types.Vulnerability{
 			Severity:    "warning",
 			Type:        "orphan",
-			Description: fmt.Sprintf("Orphan claim (unconnected): %q", truncate(o.Text, 80)),
+			Description: fmt.Sprintf("Orphan claim (unconnected): %q%s", truncate(o.Text, 80), originTag(o)),
 			ClaimIDs:    []string{o.ID},
 		})
 	}
@@ -1210,6 +1210,7 @@ func findPrematureClosure(claims []types.Claim, edges []types.Edge) []types.Vuln
 		if flaggedByLLM {
 			desc += " — flagged as thought-terminating cliche"
 		}
+		desc += originTag(*c)
 
 		vulns = append(vulns, types.Vulnerability{
 			Severity:    severity,
@@ -1454,35 +1455,60 @@ func FormatHookFindings(topo *types.Topology, vulns *types.Vulnerabilities, clai
 	// Inline external reconciled state for STOP-class findings — weak basis
 	// extracted from an authored document. Prefetch covers all STOP-class
 	// candidates in this fire so subsequent fires can resolve them; Lookup
-	// (synchronous, in-memory) inlines whatever the cache already holds for
-	// the priority anchor. Cold cache: finding renders as-is, prefetch
-	// kicks off, next fire (5 turns later) inlines reconciled state.
+	// (synchronous, in-memory) inlines whatever the cache already holds.
+	// Cold cache: finding renders as-is, prefetch kicks off, next fire (5
+	// turns later) inlines reconciled state. Secondary inlines are capped
+	// so a graph with many cached STOP-class anchors doesn't flood the
+	// hook prose past the model's signal-to-noise threshold.
+	const maxSecondaryExternalChecks = 2
+	stopAnchor := func(v types.Vulnerability) *types.Claim {
+		for _, cid := range v.ClaimIDs {
+			if anchor, ok := claimByID[cid]; ok && IsSTOPClass(*anchor) {
+				return anchor
+			}
+		}
+		return nil
+	}
 	if verifier != nil {
 		for _, f := range findings {
-			for _, cid := range f.item.ClaimIDs {
-				if anchor, ok := claimByID[cid]; ok && IsSTOPClass(*anchor) {
-					verifier.Prefetch(anchor.Text)
-				}
+			if anchor := stopAnchor(f.item); anchor != nil {
+				verifier.Prefetch(anchor.Text)
 			}
 		}
 		if pickedClaimID != "" {
 			if anchor, ok := claimByID[pickedClaimID]; ok && IsSTOPClass(*anchor) {
-				if snippet, source, hit := verifier.Lookup(anchor.Text); hit {
+				if snippet, source, hit := verifier.Lookup(anchor.Text); hit && snippet != "" {
 					fmt.Fprintf(&b, "External check (%s): %s\n", trimSource(source), truncate(snippet, 220))
 				}
 			}
 		}
 	}
 
-	// Include remaining findings as context (lower priority)
+	// Include remaining findings as context (lower priority). Each
+	// secondary STOP-class anchor with a fresh non-empty cache hit
+	// gets an inline external check below its bullet, up to the cap.
 	if len(findings) > 1 {
 		remaining := findings[1:]
 		if len(remaining) > maxFindings-1 {
 			remaining = remaining[:maxFindings-1]
 		}
 		b.WriteString("\nAdditional structural observations:\n")
+		secondaryChecks := 0
 		for _, f := range remaining {
 			fmt.Fprintf(&b, "- %s\n", f.item.Description)
+			if verifier == nil || secondaryChecks >= maxSecondaryExternalChecks {
+				continue
+			}
+			anchor := stopAnchor(f.item)
+			if anchor == nil {
+				continue
+			}
+			snippet, source, hit := verifier.Lookup(anchor.Text)
+			if !hit || snippet == "" {
+				continue
+			}
+			fmt.Fprintf(&b, "  External check (%s): %s\n", trimSource(source), truncate(snippet, 220))
+			secondaryChecks++
 		}
 	}
 
@@ -1664,11 +1690,21 @@ func findMaxDepth(claims []types.Claim, edges []types.Edge) int {
 	return maxD
 }
 
+// truncate caps a string at n display characters, suffixing "..." when
+// it had to cut. Operates on runes, not bytes, so a slice across a
+// multibyte boundary (curly quote, em-dash, accented letter — common
+// in real claim text) can't produce invalid UTF-8 in the hook output.
+// n is the maximum rune count of the returned string including the
+// suffix; n < 3 is treated as 3 so the suffix always fits.
 func truncate(s string, n int) string {
-	if len(s) <= n {
+	if n < 3 {
+		n = 3
+	}
+	runes := []rune(s)
+	if len(runes) <= n {
 		return s
 	}
-	return s[:n-3] + "..."
+	return string(runes[:n-3]) + "..."
 }
 
 // originTag returns a parenthesized origin hint when the claim was extracted

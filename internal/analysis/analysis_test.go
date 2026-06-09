@@ -1491,6 +1491,117 @@ func TestFormatHookFindings_InlineExternalCheckOnSTOPClass(t *testing.T) {
 	}
 }
 
+// stubMultiVerifier is the multi-claim variant of stubVerifier; lets
+// tests exercise the secondary-anchor Lookup path where more than one
+// STOP-class anchor has a cached hit.
+type stubMultiVerifier struct {
+	hits       map[string]struct{ snippet, source string }
+	prefetched []string
+}
+
+func (s *stubMultiVerifier) Lookup(claimText string) (string, string, bool) {
+	if h, ok := s.hits[claimText]; ok {
+		return h.snippet, h.source, true
+	}
+	return "", "", false
+}
+func (s *stubMultiVerifier) Prefetch(claimText string) {
+	s.prefetched = append(s.prefetched, claimText)
+}
+func (s *stubMultiVerifier) Enabled() bool { return true }
+
+// TestFormatHookFindings_NoInlineForEmptySnippet covers F10: even when
+// Lookup returns hit=true, an empty snippet must not produce a bare
+// "External check (domain): " line. The model would read that as a
+// content-free filler that costs prompt budget without adding signal.
+func TestFormatHookFindings_NoInlineForEmptySnippet(t *testing.T) {
+	now := time.Now()
+	claims := []types.Claim{
+		{ID: "doc-anchor", Text: "doc claim", Basis: types.BasisVibes, SessionID: "doc:abc123", CreatedAt: now},
+		{ID: "f1", Text: "f1", Basis: types.BasisDeduction, CreatedAt: now},
+		{ID: "f2", Text: "f2", Basis: types.BasisDeduction, CreatedAt: now},
+		{ID: "f3", Text: "f3", Basis: types.BasisDeduction, CreatedAt: now},
+	}
+	topo := &types.Topology{Project: "test", ClaimCount: len(claims)}
+	vulns := &types.Vulnerabilities{
+		Project: "test",
+		Items: []types.Vulnerability{
+			{Severity: "critical", Type: "load_bearing_vibes", Description: `Load-bearing vibes: "doc claim" supports 3 other claims (never challenged: true) [doc-origin]`, ClaimIDs: []string{"doc-anchor"}},
+		},
+	}
+	// Hit, but snippet is empty — gating must suppress the inline line.
+	stub := &stubVerifier{want: "doc claim", snippet: "", source: "https://example.com/empty"}
+	summary, _, _, _ := FormatHookFindings(topo, vulns, claims, nil, 0, 0, 5, stub)
+	if strings.Contains(summary, "External check") {
+		t.Errorf("empty snippet should suppress the External check line, got:\n%s", summary)
+	}
+}
+
+// TestFormatHookFindings_SecondaryAnchorGetsInlineCheck covers F7: when
+// a non-priority STOP-class finding also has a cached Lookup hit, the
+// renderer surfaces "External check (...)" under its bullet, up to the
+// cap. Lets the verify cache pay dividends for more than just the
+// priority slot.
+func TestFormatHookFindings_SecondaryAnchorGetsInlineCheck(t *testing.T) {
+	now := time.Now()
+	claims := []types.Claim{
+		{ID: "primary", Text: "primary claim", Basis: types.BasisVibes, SessionID: "doc:abc123", CreatedAt: now},
+		{ID: "secondary", Text: "secondary claim", Basis: types.BasisVibes, SessionID: "doc:def456", CreatedAt: now},
+		{ID: "f1", Text: "f1", Basis: types.BasisDeduction, CreatedAt: now},
+		{ID: "f2", Text: "f2", Basis: types.BasisDeduction, CreatedAt: now},
+		{ID: "f3", Text: "f3", Basis: types.BasisDeduction, CreatedAt: now},
+		{ID: "f4", Text: "f4", Basis: types.BasisDeduction, CreatedAt: now},
+		{ID: "f5", Text: "f5", Basis: types.BasisDeduction, CreatedAt: now},
+		{ID: "f6", Text: "f6", Basis: types.BasisDeduction, CreatedAt: now},
+	}
+	topo := &types.Topology{Project: "test", ClaimCount: len(claims)}
+	vulns := &types.Vulnerabilities{
+		Project: "test",
+		Items: []types.Vulnerability{
+			{Severity: "critical", Type: "load_bearing_vibes", Description: `Load-bearing vibes: "primary claim" supports 4 other claims (never challenged: true) [doc-origin]`, ClaimIDs: []string{"primary"}},
+			{Severity: "warning", Type: "fluency_trap", Description: `Fluency trap: "secondary claim" stated at confidence 0.9 but basis is vibes [doc-origin]`, ClaimIDs: []string{"secondary"}},
+		},
+	}
+	stub := &stubMultiVerifier{
+		hits: map[string]struct{ snippet, source string }{
+			"primary claim":   {snippet: "external disagrees with primary", source: "https://primary.example.com"},
+			"secondary claim": {snippet: "external disagrees with secondary", source: "https://secondary.example.com"},
+		},
+	}
+	summary, _, _, _ := FormatHookFindings(topo, vulns, claims, nil, 0, 0, 5, stub)
+	if !strings.Contains(summary, "primary.example.com") {
+		t.Errorf("primary external check missing, got:\n%s", summary)
+	}
+	if !strings.Contains(summary, "secondary.example.com") {
+		t.Errorf("secondary external check missing, got:\n%s", summary)
+	}
+}
+
+// TestTruncateRuneAware covers F5: truncate must cut at rune boundaries,
+// never bytes, so a slice through a multibyte glyph (curly quote,
+// em-dash, accented letter) never produces invalid UTF-8 in the hook
+// output.
+func TestTruncateRuneAware(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		n    int
+		want string
+	}{
+		{name: "passthrough short", in: "café", n: 80, want: "café"},
+		{name: "cut at rune boundary", in: "caféééééééé", n: 6, want: "caf..."},
+		{name: "all-multibyte content", in: "前提が間違っているこの主張", n: 7, want: "前提が間..."},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := truncate(tc.in, tc.n)
+			if got != tc.want {
+				t.Fatalf("truncate(%q, %d) = %q, want %q", tc.in, tc.n, got, tc.want)
+			}
+		})
+	}
+}
+
 // TestFormatHookFindings_NoExternalCheckOnTranscriptOrigin verifies that
 // a load-bearing vibes finding on a transcript-origin claim does NOT
 // trigger the inline External check, even with a verifier wired in.
