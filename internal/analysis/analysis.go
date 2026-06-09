@@ -1,6 +1,7 @@
 package analysis
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"slices"
@@ -1470,7 +1471,17 @@ func FormatHookFindings(topo *types.Topology, vulns *types.Vulnerabilities, clai
 		return nil
 	}
 	if verifier != nil {
-		for _, f := range findings {
+		// Cap fan-out to the same window the renderer prints: a
+		// graph with hundreds of STOP-class anchors shouldn't spawn
+		// hundreds of background fetches per hook fire (Kagi
+		// rate-limit, $$, log spam). Findings beyond maxFindings
+		// won't be rendered this fire anyway — let them be picked
+		// up on a subsequent fire after they've moved up.
+		prefetchCap := maxFindings
+		if prefetchCap > len(findings) {
+			prefetchCap = len(findings)
+		}
+		for _, f := range findings[:prefetchCap] {
 			if anchor := stopAnchor(f.item); anchor != nil {
 				verifier.Prefetch(anchor.Text)
 			}
@@ -1750,4 +1761,11 @@ type HookVerifier interface {
 	Lookup(claimText string) (snippet, source string, ok bool)
 	Prefetch(claimText string)
 	Enabled() bool
+	// Wait blocks until in-flight Prefetch goroutines drain or ctx
+	// expires — bounded by the caller. The one-shot Stop hook defers
+	// this so background fetches get a window to land in the cache
+	// before the process exits; long-lived callers (the MCP daemon)
+	// don't need to call it and the implementation must be a no-op
+	// when no goroutines are in flight.
+	Wait(ctx context.Context) error
 }

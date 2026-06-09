@@ -487,6 +487,21 @@ func cmdHook() {
 		if !v.Enabled() {
 			logf("verify: KAGI_API_KEY not set — STOP-class active verification disabled")
 		}
+		// One-shot hook process: defer a bounded drain so any
+		// Prefetch goroutines spawned during CoreParseTranscript
+		// have a window to land their cache entries before the
+		// process exits. 5s is comfortably above kagi's typical
+		// p95 (~1-2s) but small enough that a stuck endpoint
+		// doesn't stall hook completion past the user's
+		// patience. Without this, fetchAndStore is killed
+		// mid-flight and the cache stays cold across fires.
+		defer func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if err := v.Wait(ctx); err != nil {
+				logf("verify: prefetch drain timed out: %v", err)
+			}
+		}()
 	} else {
 		logf("verifier construction failed: %s", vErr)
 	}

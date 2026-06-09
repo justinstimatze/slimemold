@@ -21,6 +21,8 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -30,17 +32,33 @@ import (
 )
 
 // Reconciled is the cached verification result for a single claim.
+// Failed=true marks a negative-cache entry: the fetch errored or the
+// result set was empty, and the caller stored the failure stamp so
+// the next Prefetch can skip re-spawning the same losing call for
+// FailureTTL. Lookup must treat Failed entries as misses since there
+// is nothing to inline.
 type Reconciled struct {
 	Query     string    `json:"query"`
 	Source    string    `json:"source"`
 	Title     string    `json:"title"`
 	Snippet   string    `json:"snippet"`
+	Failed    bool      `json:"failed,omitempty"`
 	FetchedAt time.Time `json:"fetched_at"`
 }
 
 // Stale reports whether a Reconciled entry has aged past TTL.
 func (r Reconciled) Stale(ttl time.Duration) bool {
 	return time.Since(r.FetchedAt) > ttl
+}
+
+// effectiveTTL returns the freshness window appropriate to this
+// entry's nature: short for negative-cache failures so a flapping
+// endpoint heals quickly, long for genuine results.
+func (r Reconciled) effectiveTTL() time.Duration {
+	if r.Failed {
+		return FailureTTL
+	}
+	return CacheTTL
 }
 
 // CacheTTL is the disk-cache freshness window. Claim assertions on
@@ -57,6 +75,7 @@ type Verifier struct {
 
 	mu       sync.Mutex
 	inflight map[string]struct{} // hash → in-flight fetch
+	wg       sync.WaitGroup      // tracks fetchAndStore goroutines
 }
 
 // New constructs a Verifier rooted at dataDir/project. The cache file
@@ -103,7 +122,14 @@ func (v *Verifier) lookupReconciled(claimText string) (Reconciled, bool) {
 	if !ok {
 		return Reconciled{}, false
 	}
-	if r.Stale(CacheTTL) {
+	if r.Stale(r.effectiveTTL()) {
+		return Reconciled{}, false
+	}
+	// Negative-cache hits are intentionally a Lookup miss: there is
+	// no snippet/source to inline. The cache hit still benefits
+	// Prefetch's freshness check (it suppresses respawning the
+	// failed query within FailureTTL).
+	if r.Failed {
 		return Reconciled{}, false
 	}
 	return r, true
@@ -124,8 +150,10 @@ func (v *Verifier) Prefetch(claimText string) {
 	// the TOCTOU window where another goroutine's fetchAndStore
 	// finishes (writes cache + drops inflight) between an out-of-lock
 	// freshness check and the inflight check — the second caller
-	// would otherwise spawn a duplicate fetch.
-	if _, fresh := v.cache.get(key); fresh {
+	// would otherwise spawn a duplicate fetch. A negative-cache hit
+	// (Failed=true) within its effectiveTTL window also skips: a
+	// flapping endpoint shouldn't get hammered every fire.
+	if r, hit := v.cache.get(key); hit && !r.Stale(r.effectiveTTL()) {
 		v.mu.Unlock()
 		return
 	}
@@ -134,12 +162,42 @@ func (v *Verifier) Prefetch(claimText string) {
 		return
 	}
 	v.inflight[key] = struct{}{}
+	v.wg.Add(1)
 	v.mu.Unlock()
 
 	go v.fetchAndStore(claimText, key)
 }
 
+// Wait blocks until every in-flight Prefetch goroutine has finished
+// or ctx expires, whichever comes first. Returns nil on drain, ctx.Err()
+// on timeout. Lets a one-shot caller (the slimemold Stop hook) give
+// async fetches a bounded window to land their cache entries before
+// the process exits — without this, fetchAndStore can be killed
+// mid-flight and the cache stays cold across fires.
+func (v *Verifier) Wait(ctx context.Context) error {
+	done := make(chan struct{})
+	go func() {
+		v.wg.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+// FailureTTL is the freshness window for a negative-cache entry. Failed
+// fetches (network error, Kagi rate-limit, empty result set) get stamped
+// into the cache with Failed=true so the next hook fire's Prefetch can
+// skip re-spawning the same losing call. 1 hour is long enough to spare
+// the budget on a flapping endpoint but short enough that a genuine
+// transient (rate-limit, dns blip) heals before the next session.
+const FailureTTL = time.Hour
+
 func (v *Verifier) fetchAndStore(claimText, key string) {
+	defer v.wg.Done()
 	defer func() {
 		v.mu.Lock()
 		delete(v.inflight, key)
@@ -151,6 +209,16 @@ func (v *Verifier) fetchAndStore(claimText, key string) {
 
 	r, err := v.kagi.search(ctx, queryFromClaim(claimText))
 	if err != nil {
+		// Negative-cache the failure so the next fire's Prefetch
+		// skips this query for FailureTTL. Structured stderr log so
+		// a flapping endpoint is visible without surfacing to the
+		// model (which would just see "External check missing").
+		fmt.Fprintf(os.Stderr, "slimemold: verify: kagi fetch failed for %q: %v\n", queryFromClaim(claimText), err)
+		_ = v.cache.put(key, Reconciled{
+			Query:     queryFromClaim(claimText),
+			Failed:    true,
+			FetchedAt: time.Now(),
+		})
 		return
 	}
 	r.FetchedAt = time.Now()

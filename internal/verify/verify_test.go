@@ -1,6 +1,7 @@
 package verify
 
 import (
+	"context"
 	"testing"
 	"time"
 )
@@ -125,6 +126,43 @@ func TestVerifier_LookupSkipsStaleCachedEntry(t *testing.T) {
 	}
 	if _, _, ok := v.Lookup("an old claim"); ok {
 		t.Fatal("expected stale cache entry to be treated as miss")
+	}
+}
+
+func TestVerifier_WaitReturnsImmediatelyWhenIdle(t *testing.T) {
+	t.Setenv("KAGI_API_KEY", "")
+	v, err := New(t.TempDir(), "test-project")
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	// No prefetch ever issued — Wait should not block.
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	if err := v.Wait(ctx); err != nil {
+		t.Fatalf("Wait on idle verifier returned %v, want nil", err)
+	}
+}
+
+func TestVerifier_NegativeCacheSuppressesLookup(t *testing.T) {
+	t.Setenv("KAGI_API_KEY", "")
+	v, err := New(t.TempDir(), "test-project")
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	// Stamp a failed entry directly. Lookup must treat it as a miss
+	// (nothing to inline) but Prefetch's freshness check would
+	// suppress respawn — that path needs the verifier enabled, so
+	// is exercised via integration tests rather than here.
+	key := claimKey("a query that failed")
+	if err := v.cache.put(key, Reconciled{
+		Query:     "a query that failed",
+		Failed:    true,
+		FetchedAt: time.Now(),
+	}); err != nil {
+		t.Fatalf("cache.put: %v", err)
+	}
+	if _, _, ok := v.Lookup("a query that failed"); ok {
+		t.Fatal("expected Lookup on a negative-cache entry to miss")
 	}
 }
 

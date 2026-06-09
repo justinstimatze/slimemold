@@ -1,6 +1,7 @@
 package analysis
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"testing"
@@ -1441,7 +1442,8 @@ func (s *stubVerifier) Prefetch(claimText string) {
 	s.prefetched = append(s.prefetched, claimText)
 }
 
-func (s *stubVerifier) Enabled() bool { return true }
+func (s *stubVerifier) Enabled() bool                { return true }
+func (s *stubVerifier) Wait(_ context.Context) error { return nil }
 
 // TestFormatHookFindings_InlineExternalCheckOnSTOPClass verifies that a
 // STOP-class priority finding (weak basis + doc-origin SessionID) picks
@@ -1508,7 +1510,8 @@ func (s *stubMultiVerifier) Lookup(claimText string) (string, string, bool) {
 func (s *stubMultiVerifier) Prefetch(claimText string) {
 	s.prefetched = append(s.prefetched, claimText)
 }
-func (s *stubMultiVerifier) Enabled() bool { return true }
+func (s *stubMultiVerifier) Enabled() bool                { return true }
+func (s *stubMultiVerifier) Wait(_ context.Context) error { return nil }
 
 // TestFormatHookFindings_NoInlineForEmptySnippet covers F10: even when
 // Lookup returns hit=true, an empty snippet must not produce a bare
