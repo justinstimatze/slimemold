@@ -18,8 +18,9 @@ import (
 const kagiSearchEndpoint = "https://kagi.com/api/v0/search"
 
 // kagiClient wraps Kagi's search HTTP API. Token comes from
-// KAGI_API_TOKEN; absent token disables the client. The HTTP client
-// is reused so connections pool across calls.
+// KAGI_API_KEY (the canonical name kagiapi, kagimcp, and Kagi's own
+// docs use; absent key disables the client. The HTTP client is
+// reused so connections pool across calls.
 type kagiClient struct {
 	token string
 	http  *http.Client
@@ -27,7 +28,7 @@ type kagiClient struct {
 
 func newKagiClient() *kagiClient {
 	return &kagiClient{
-		token: strings.TrimSpace(os.Getenv("KAGI_API_TOKEN")),
+		token: strings.TrimSpace(os.Getenv("KAGI_API_KEY")),
 		http: &http.Client{
 			Timeout: 20 * time.Second,
 		},

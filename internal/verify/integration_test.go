@@ -6,7 +6,7 @@ package verify
 // HookVerifier interface dispatch -> FormatHookFindings injection —
 // without spending Kagi API credits. The remaining untested layer is
 // the Kagi HTTP shim itself, which is small, stateless, and tested
-// for real once KAGI_API_TOKEN is wired in.
+// for real once KAGI_API_KEY is wired in.
 
 import (
 	"strings"
@@ -18,7 +18,7 @@ import (
 )
 
 func TestIntegration_RealVerifierInlinesReconciledState(t *testing.T) {
-	t.Setenv("KAGI_API_TOKEN", "") // pure offline; no async fetch attempt
+	t.Setenv("KAGI_API_KEY", "") // pure offline; no async fetch attempt
 
 	v, err := New(t.TempDir(), "smoke-project")
 	if err != nil {
@@ -73,7 +73,7 @@ func TestIntegration_RealVerifierInlinesReconciledState(t *testing.T) {
 }
 
 func TestIntegration_RealVerifierPersistsCacheAcrossNew(t *testing.T) {
-	t.Setenv("KAGI_API_TOKEN", "")
+	t.Setenv("KAGI_API_KEY", "")
 	dir := t.TempDir()
 
 	v1, err := New(dir, "persist-smoke")

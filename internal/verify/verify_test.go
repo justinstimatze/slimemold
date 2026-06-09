@@ -45,13 +45,13 @@ func TestReconciled_Stale(t *testing.T) {
 }
 
 func TestVerifier_DisabledWhenNoToken(t *testing.T) {
-	t.Setenv("KAGI_API_TOKEN", "")
+	t.Setenv("KAGI_API_KEY", "")
 	v, err := New(t.TempDir(), "test-project")
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
 	if v.Enabled() {
-		t.Fatal("expected Enabled()=false when KAGI_API_TOKEN is empty")
+		t.Fatal("expected Enabled()=false when KAGI_API_KEY is empty")
 	}
 	// Lookup on cold cache returns miss.
 	if _, _, ok := v.Lookup("any claim"); ok {
@@ -63,7 +63,7 @@ func TestVerifier_DisabledWhenNoToken(t *testing.T) {
 }
 
 func TestVerifier_LookupReturnsCachedFresh(t *testing.T) {
-	t.Setenv("KAGI_API_TOKEN", "")
+	t.Setenv("KAGI_API_KEY", "")
 	v, err := New(t.TempDir(), "test-project")
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -89,7 +89,7 @@ func TestVerifier_LookupReturnsCachedFresh(t *testing.T) {
 }
 
 func TestVerifier_LookupSkipsStaleCachedEntry(t *testing.T) {
-	t.Setenv("KAGI_API_TOKEN", "")
+	t.Setenv("KAGI_API_KEY", "")
 	v, err := New(t.TempDir(), "test-project")
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -109,7 +109,7 @@ func TestVerifier_LookupSkipsStaleCachedEntry(t *testing.T) {
 }
 
 func TestCache_PersistsAcrossReopen(t *testing.T) {
-	t.Setenv("KAGI_API_TOKEN", "")
+	t.Setenv("KAGI_API_KEY", "")
 	dir := t.TempDir()
 	v1, err := New(dir, "persist-test")
 	if err != nil {
