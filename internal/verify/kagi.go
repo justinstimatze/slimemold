@@ -75,7 +75,14 @@ func (c *kagiClient) search(ctx context.Context, query string) (Reconciled, erro
 	if err != nil {
 		return Reconciled{}, fmt.Errorf("kagi: http: %w", err)
 	}
-	defer func() { _ = resp.Body.Close() }()
+	// Drain before close so HTTP/1.1 keep-alive can reuse the
+	// connection. The non-200 path reads only 1KB and json.Decoder
+	// may stop short of the closing brace; in both cases the
+	// remaining unread bytes leave the connection un-reusable.
+	defer func() {
+		_, _ = io.Copy(io.Discard, resp.Body)
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<10))

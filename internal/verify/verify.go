@@ -24,6 +24,9 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"golang.org/x/text/cases"
+	"golang.org/x/text/unicode/norm"
 )
 
 // Reconciled is the cached verification result for a single claim.
@@ -154,12 +157,25 @@ func (v *Verifier) fetchAndStore(claimText, key string) {
 	_ = v.cache.put(key, r)
 }
 
+// claimFolder casefolds in a unicode-aware way; constructed once at
+// package init since cases.Caser is safe for concurrent use after
+// construction. Fold() applies the unicode locale-independent
+// case-folding mapping — claim text can be any language and we want
+// stable keys regardless of the system locale.
+var claimFolder = cases.Fold()
+
 // claimKey produces the cache key for a claim text. Sha256 over the
-// normalized form (lowercased, whitespace-collapsed) so trivial
-// formatting differences don't fragment cache entries.
+// normalized form (NFC-composed, casefolded, whitespace-collapsed) so
+// trivial formatting differences — including decomposed-vs-composed
+// accented characters and ASCII-vs-unicode case variations — don't
+// fragment cache entries. Curly-vs-straight quotes still fragment;
+// catching those would need a heuristic that risks collapsing
+// genuinely-distinct claims.
 func claimKey(s string) string {
-	norm := strings.ToLower(strings.Join(strings.Fields(s), " "))
-	sum := sha256.Sum256([]byte(norm))
+	composed := norm.NFC.String(s)
+	folded := claimFolder.String(composed)
+	collapsed := strings.Join(strings.Fields(folded), " ")
+	sum := sha256.Sum256([]byte(collapsed))
 	return hex.EncodeToString(sum[:])[:24]
 }
 

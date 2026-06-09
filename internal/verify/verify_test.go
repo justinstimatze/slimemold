@@ -14,6 +14,26 @@ func TestClaimKey_NormalizesWhitespaceAndCase(t *testing.T) {
 	}
 }
 
+func TestClaimKey_NormalizesUnicode(t *testing.T) {
+	// é can be either U+00E9 (composed) or U+0065 U+0301 (decomposed);
+	// NFC collapses them. Casefold collapses ASCII case AND unicode
+	// case (ß → ss, İ → i̇).
+	cases := []struct {
+		name string
+		a, b string
+	}{
+		{"composed vs decomposed accented", "café", "café"},
+		{"unicode lowercase via casefold", "MÉTRO", "métro"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if claimKey(tc.a) != claimKey(tc.b) {
+				t.Fatalf("expected identical keys for %q and %q", tc.a, tc.b)
+			}
+		})
+	}
+}
+
 func TestClaimKey_Distinguishes(t *testing.T) {
 	a := claimKey("the sky is blue")
 	b := claimKey("the sky is red")
