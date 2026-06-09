@@ -426,7 +426,7 @@ func findLoadBearingVibes(claims []types.Claim, edges []types.Edge) []types.Vuln
 		vulns = append(vulns, types.Vulnerability{
 			Severity:           "critical",
 			Type:               "load_bearing_vibes",
-			Description:        fmt.Sprintf("Load-bearing %s: %q supports %d other claims (never challenged: %v)", c.Basis, truncate(c.Text, 60), deg, !c.Challenged),
+			Description:        fmt.Sprintf("Load-bearing %s: %q supports %d other claims (never challenged: %v)%s", c.Basis, truncate(c.Text, 60), deg, !c.Challenged, originTag(*c)),
 			ClaimIDs:           []string{c.ID},
 			FiredViaPersistent: firedViaPersistent[id],
 		})
@@ -599,7 +599,7 @@ func findBottlenecks(claims []types.Claim, edges []types.Edge) []types.Vulnerabi
 		vulns = append(vulns, types.Vulnerability{
 			Severity:    severity,
 			Type:        "bottleneck",
-			Description: fmt.Sprintf("Bottleneck (centrality %.1f): %q [%s] — many reasoning paths flow through this claim", s.score, truncate(c.Text, 60), c.Basis),
+			Description: fmt.Sprintf("Bottleneck (centrality %.1f): %q [%s] — many reasoning paths flow through this claim%s", s.score, truncate(c.Text, 60), c.Basis, originTag(*c)),
 			ClaimIDs:    []string{s.id},
 		})
 	}
@@ -851,7 +851,7 @@ func findFluencyTraps(claims []types.Claim, edges []types.Edge) []types.Vulnerab
 			vulns = append(vulns, types.Vulnerability{
 				Severity:           "critical",
 				Type:               "fluency_trap",
-				Description:        fmt.Sprintf("Fluency trap: %q stated at confidence %.1f but basis is %s — processing fluency may masquerade as truth", truncate(c.Text, 60), c.Confidence, c.Basis),
+				Description:        fmt.Sprintf("Fluency trap: %q stated at confidence %.1f but basis is %s — processing fluency may masquerade as truth%s", truncate(c.Text, 60), c.Confidence, c.Basis, originTag(c)),
 				ClaimIDs:           []string{c.ID},
 				FiredViaPersistent: firedViaPersistent[c.ID],
 			})
@@ -1632,4 +1632,18 @@ func truncate(s string, n int) string {
 		return s
 	}
 	return s[:n-3] + "..."
+}
+
+// originTag returns a parenthesized origin hint when the claim was extracted
+// from an ingested document rather than a transcript turn. Doc-origin claims
+// live in files outside the conversation — they persist, are externally
+// checkable, and are the right targets for STOP-class verification redirects
+// rather than ambient flag-and-continue handling. The structural signal is
+// the SessionID prefix: documentSessionID() prefixes ingested-doc sessions
+// with "doc:"; transcript sessions get a Claude Code UUID or session-TIMESTAMP.
+func originTag(c types.Claim) string {
+	if strings.HasPrefix(c.SessionID, "doc:") {
+		return " [doc-origin]"
+	}
+	return ""
 }
