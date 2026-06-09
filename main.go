@@ -189,8 +189,11 @@ func cmdMCP(projectOverride string) {
 	var verifier analysis.HookVerifier
 	if v, err := verify.New(cfg.DataDir, project); err == nil {
 		verifier = v
+		if !v.Enabled() {
+			fmt.Fprintln(os.Stderr, "slimemold: verify: KAGI_API_KEY not set — STOP-class active verification disabled. Set the key in ~/.config/slimemold/.env to enable inline reconciled state on doc-origin findings.")
+		}
 	} else {
-		fmt.Fprintf(os.Stderr, "slimemold: verifier disabled: %s\n", err)
+		fmt.Fprintf(os.Stderr, "slimemold: verifier construction failed: %s\n", err)
 	}
 
 	if err := mcp.RunMCP(db, extractor, verifier, project); err != nil {
@@ -481,8 +484,11 @@ func cmdHook() {
 	var verifier analysis.HookVerifier
 	if v, vErr := verify.New(cfg.DataDir, project); vErr == nil {
 		verifier = v
+		if !v.Enabled() {
+			logf("verify: KAGI_API_KEY not set — STOP-class active verification disabled")
+		}
 	} else {
-		logf("verifier disabled: %s", vErr)
+		logf("verifier construction failed: %s", vErr)
 	}
 	audit, err := mcp.CoreParseTranscript(ctx, db, extractor, verifier, project, input.TranscriptPath, sinceTurn, sessionID, turnCount)
 	if err != nil {
@@ -733,6 +739,17 @@ func cmdStatus(projectOverride string) {
 	eventsFile := filepath.Join(cfg.DataDir, "tmp", hookevents.EventsFilename)
 
 	fmt.Fprintf(os.Stderr, "Project: %s\n", project)
+
+	// Verification backend status — one line, on-demand. The startup
+	// warning surfaces this at session start; the status command is
+	// the pull-mode equivalent.
+	if v, err := verify.New(cfg.DataDir, project); err == nil {
+		if v.Enabled() {
+			fmt.Fprintf(os.Stderr, "Verify:  kagi (KAGI_API_KEY set)\n")
+		} else {
+			fmt.Fprintf(os.Stderr, "Verify:  disabled (KAGI_API_KEY not set)\n")
+		}
+	}
 
 	// Read last run status
 	if data, err := os.ReadFile(statusFile); err == nil {
