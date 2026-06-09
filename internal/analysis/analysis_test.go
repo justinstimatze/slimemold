@@ -784,7 +784,7 @@ func TestFormatHookFindings_Cooldown(t *testing.T) {
 	}
 
 	// Without cooldown, FormatHookFindings picks anchorID.
-	summary, pickedID, pickedType, _ := FormatHookFindings(topo, vulns, claims, nil, 0, 0, 5)
+	summary, pickedID, pickedType, _ := FormatHookFindings(topo, vulns, claims, nil, 0, 0, 5, nil)
 	if summary == "" {
 		t.Fatal("expected non-empty summary without cooldown")
 	}
@@ -795,7 +795,7 @@ func TestFormatHookFindings_Cooldown(t *testing.T) {
 	// With cooldown set on that exact (claim, type), we should either pick
 	// something else or emit nothing — but definitely not pick anchorID again.
 	recent := map[string]time.Time{anchorID + "|load_bearing_vibes": time.Now()}
-	_, pickedID2, pickedType2, _ := FormatHookFindings(topo, vulns, claims, recent, 0, 0, 5)
+	_, pickedID2, pickedType2, _ := FormatHookFindings(topo, vulns, claims, recent, 0, 0, 5, nil)
 	if pickedID2 == anchorID && pickedType2 == "load_bearing_vibes" {
 		t.Error("cooldown failed: picked the suppressed finding")
 	}
@@ -1051,7 +1051,7 @@ func TestFormatHookFindings_DifferentialCooldown(t *testing.T) {
 	// Persistent-only finding: 2 days ago is INSIDE HookPersistentCooldown (7d)
 	// → cooldown still active → should not pick.
 	topo, vulns, claims := makeFixture(true)
-	_, pickedID, _, _ := FormatHookFindings(topo, vulns, claims, cooldownMap, 0, 0, 5)
+	_, pickedID, _, _ := FormatHookFindings(topo, vulns, claims, cooldownMap, 0, 0, 5, nil)
 	if pickedID == "anchor" {
 		t.Error("persistent-only finding should be suppressed 2 days after firing (within HookPersistentCooldown)")
 	}
@@ -1059,7 +1059,7 @@ func TestFormatHookFindings_DifferentialCooldown(t *testing.T) {
 	// Non-persistent finding: 2 days ago is PAST HookCooldownWindow (24h)
 	// → cooldown expired → should pick.
 	topo, vulns, claims = makeFixture(false)
-	_, pickedID, _, _ = FormatHookFindings(topo, vulns, claims, cooldownMap, 0, 0, 5)
+	_, pickedID, _, _ = FormatHookFindings(topo, vulns, claims, cooldownMap, 0, 0, 5, nil)
 	if pickedID != "anchor" {
 		t.Errorf("non-persistent finding should be eligible 2 days after firing (past HookCooldownWindow); got pickedID=%q", pickedID)
 	}
@@ -1091,7 +1091,7 @@ func TestFormatHookFindings_InventoryFlagPrioritized(t *testing.T) {
 			{Severity: "critical", Type: "load_bearing_vibes", Description: `Load-bearing vibes: "flagged" supports 3 other claims (never challenged: true)`, ClaimIDs: []string{"flagged-anchor"}},
 		},
 	}
-	_, pickedID, _, _ := FormatHookFindings(topo, vulns, claims, nil, 0, 0, 5)
+	_, pickedID, _, _ := FormatHookFindings(topo, vulns, claims, nil, 0, 0, 5, nil)
 	if pickedID != "flagged-anchor" {
 		t.Errorf("inventory-flagged claim should win priority slot; got pickedID=%q want flagged-anchor", pickedID)
 	}
@@ -1152,7 +1152,7 @@ func TestFormatHookFindings_AgeDecay(t *testing.T) {
 		{FromID: "d2", ToID: anchorID, Relation: types.RelDependsOn},
 	}
 	topo, vulns := Analyze(claims, edges, "test")
-	_, pickedID, _, _ := FormatHookFindings(topo, vulns, claims, nil, 0, 0, 5)
+	_, pickedID, _, _ := FormatHookFindings(topo, vulns, claims, nil, 0, 0, 5, nil)
 	if pickedID == anchorID {
 		t.Error("age decay failed: picked an anchor older than HookMaxClaimAge")
 	}
@@ -1203,7 +1203,7 @@ func TestFormatHookFindings_PersistentBypassAgeCap(t *testing.T) {
 	}
 
 	// Now confirm FormatHookFindings does NOT filter it out via age cap.
-	_, pickedID, _, firedViaPersistent := FormatHookFindings(topo, vulns, claims, nil, 0, 0, 5)
+	_, pickedID, _, firedViaPersistent := FormatHookFindings(topo, vulns, claims, nil, 0, 0, 5, nil)
 	if pickedID != anchorID {
 		t.Errorf("persistent-branch finding on old anchor must bypass HookMaxClaimAge; got pickedID=%q want %q", pickedID, anchorID)
 	}
@@ -1316,7 +1316,7 @@ func TestFormatHookFindings_ColdStart(t *testing.T) {
 
 	// FormatHookFindings should return empty despite vulns having items —
 	// cold-start gate blocks the hook.
-	summary, pickedID, _, _ := FormatHookFindings(topo, vulns, claims, nil, 0, 0, 5)
+	summary, pickedID, _, _ := FormatHookFindings(topo, vulns, claims, nil, 0, 0, 5, nil)
 	if summary != "" || pickedID != "" {
 		t.Errorf("cold-start failed: got summary=%q picked=%q, want empty", summary, pickedID)
 	}
@@ -1386,5 +1386,144 @@ func TestUnchallengedChain_BreaksOnPushbackEdge(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+// TestIsSTOPClass covers the four corners of the (basis, origin) matrix.
+// STOP-class fires only when both axes are wrong: weak basis means the
+// claim is a working hypothesis, doc-origin means the working hypothesis
+// has been committed to a shipped file — that's the structural signature
+// step 3's active verification targets.
+func TestIsSTOPClass(t *testing.T) {
+	cases := []struct {
+		name      string
+		basis     types.Basis
+		sessionID string
+		want      bool
+	}{
+		{"weak+doc=STOP", types.BasisVibes, "doc:abc123", true},
+		{"assumption+doc=STOP", types.BasisAssumption, "doc:abc123", true},
+		{"llm_output+doc=STOP", types.BasisLLMOutput, "doc:abc123", true},
+		{"strong+doc=ambient", types.BasisResearch, "doc:abc123", false},
+		{"empirical+doc=ambient", types.BasisEmpirical, "doc:abc123", false},
+		{"weak+transcript=ambient", types.BasisVibes, "some-uuid-not-doc", false},
+		{"weak+empty-session=ambient", types.BasisVibes, "", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c := types.Claim{Basis: tc.basis, SessionID: tc.sessionID}
+			if got := IsSTOPClass(c); got != tc.want {
+				t.Errorf("IsSTOPClass(basis=%s, session=%s) = %v, want %v", tc.basis, tc.sessionID, got, tc.want)
+			}
+		})
+	}
+}
+
+// stubVerifier is a HookVerifier that returns a canned reconciled state
+// for a single claim text. Lets FormatHookFindings exercise the inline
+// reconciled-state code path without touching the verify package or the
+// network.
+type stubVerifier struct {
+	want       string
+	snippet    string
+	source     string
+	prefetched []string
+}
+
+func (s *stubVerifier) Lookup(claimText string) (snippet, source string, ok bool) {
+	if claimText != s.want {
+		return "", "", false
+	}
+	return s.snippet, s.source, true
+}
+
+func (s *stubVerifier) Prefetch(claimText string) {
+	s.prefetched = append(s.prefetched, claimText)
+}
+
+func (s *stubVerifier) Enabled() bool { return true }
+
+// TestFormatHookFindings_InlineExternalCheckOnSTOPClass verifies that a
+// STOP-class priority finding (weak basis + doc-origin SessionID) picks
+// up an inline "External check (...)" line from the verifier. This is
+// the carrying-case output — the model receives reconciled state with
+// the finding, not after the fact.
+func TestFormatHookFindings_InlineExternalCheckOnSTOPClass(t *testing.T) {
+	now := time.Now()
+	claims := []types.Claim{
+		{ID: "doc-anchor", Text: "the README's load-bearing positioning claim", Basis: types.BasisVibes, SessionID: "doc:abc123", CreatedAt: now},
+		{ID: "f1", Text: "f1", Basis: types.BasisDeduction, CreatedAt: now},
+		{ID: "f2", Text: "f2", Basis: types.BasisDeduction, CreatedAt: now},
+		{ID: "f3", Text: "f3", Basis: types.BasisDeduction, CreatedAt: now},
+		{ID: "f4", Text: "f4", Basis: types.BasisDeduction, CreatedAt: now},
+		{ID: "f5", Text: "f5", Basis: types.BasisDeduction, CreatedAt: now},
+		{ID: "f6", Text: "f6", Basis: types.BasisDeduction, CreatedAt: now},
+	}
+	topo := &types.Topology{Project: "test", ClaimCount: len(claims)}
+	vulns := &types.Vulnerabilities{
+		Project: "test",
+		Items: []types.Vulnerability{
+			{Severity: "critical", Type: "load_bearing_vibes", Description: `Load-bearing vibes: "the README's load-bearing positioning claim" supports 3 other claims (never challenged: true) [doc-origin]`, ClaimIDs: []string{"doc-anchor"}},
+		},
+	}
+	stub := &stubVerifier{
+		want:    "the README's load-bearing positioning claim",
+		snippet: "external check disagrees with the README's framing — current state of the field is X",
+		source:  "https://example.com/state-of-the-field",
+	}
+	summary, _, _, _ := FormatHookFindings(topo, vulns, claims, nil, 0, 0, 5, stub)
+	if !strings.Contains(summary, "External check") {
+		t.Errorf("expected External check line in hook output, got:\n%s", summary)
+	}
+	if !strings.Contains(summary, "example.com/state-of-the-field") {
+		t.Errorf("expected source domain in hook output, got:\n%s", summary)
+	}
+	// Stub should have been prefetched for at least the STOP-class anchor.
+	foundPrefetch := false
+	for _, p := range stub.prefetched {
+		if p == "the README's load-bearing positioning claim" {
+			foundPrefetch = true
+			break
+		}
+	}
+	if !foundPrefetch {
+		t.Errorf("expected STOP-class anchor to be prefetched, got prefetches=%v", stub.prefetched)
+	}
+}
+
+// TestFormatHookFindings_NoExternalCheckOnTranscriptOrigin verifies that
+// a load-bearing vibes finding on a transcript-origin claim does NOT
+// trigger the inline External check, even with a verifier wired in.
+// Ambient findings remain ambient — only STOP-class anchors are
+// candidates for active verification.
+func TestFormatHookFindings_NoExternalCheckOnTranscriptOrigin(t *testing.T) {
+	now := time.Now()
+	claims := []types.Claim{
+		{ID: "ts-anchor", Text: "an ephemeral conversation claim", Basis: types.BasisVibes, SessionID: "some-claude-session-uuid", CreatedAt: now},
+		{ID: "f1", Text: "f1", Basis: types.BasisDeduction, CreatedAt: now},
+		{ID: "f2", Text: "f2", Basis: types.BasisDeduction, CreatedAt: now},
+		{ID: "f3", Text: "f3", Basis: types.BasisDeduction, CreatedAt: now},
+		{ID: "f4", Text: "f4", Basis: types.BasisDeduction, CreatedAt: now},
+		{ID: "f5", Text: "f5", Basis: types.BasisDeduction, CreatedAt: now},
+		{ID: "f6", Text: "f6", Basis: types.BasisDeduction, CreatedAt: now},
+	}
+	topo := &types.Topology{Project: "test", ClaimCount: len(claims)}
+	vulns := &types.Vulnerabilities{
+		Project: "test",
+		Items: []types.Vulnerability{
+			{Severity: "critical", Type: "load_bearing_vibes", Description: `Load-bearing vibes: "an ephemeral conversation claim" supports 3 other claims (never challenged: true)`, ClaimIDs: []string{"ts-anchor"}},
+		},
+	}
+	stub := &stubVerifier{
+		want:    "an ephemeral conversation claim",
+		snippet: "this snippet should never appear",
+		source:  "https://example.com/should-not-appear",
+	}
+	summary, _, _, _ := FormatHookFindings(topo, vulns, claims, nil, 0, 0, 5, stub)
+	if strings.Contains(summary, "External check") {
+		t.Errorf("transcript-origin finding should NOT get inline external check, got:\n%s", summary)
+	}
+	if strings.Contains(summary, "should-not-appear") {
+		t.Errorf("verifier snippet leaked into transcript-origin finding, got:\n%s", summary)
 	}
 }

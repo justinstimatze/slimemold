@@ -46,7 +46,7 @@ func autoSweepDisabled() bool {
 // the criteria documented in internal/store/sweep.go. The sweep is a no-op
 // inside its debounce window. Set SLIMEMOLD_AUTO_SWEEP=off (or false/0/no)
 // to disable; SLIMEMOLD_SWEEP_CAP=N caps the per-fire archive count.
-func CoreParseTranscript(ctx context.Context, db *store.DB, extractor *extract.Extractor, project, transcriptPath string, sinceTurn int, sessionID string, preCountedTurns int) (*types.AuditResult, error) {
+func CoreParseTranscript(ctx context.Context, db *store.DB, extractor *extract.Extractor, verifier analysis.HookVerifier, project, transcriptPath string, sinceTurn int, sessionID string, preCountedTurns int) (*types.AuditResult, error) {
 	// Validate transcript path — restrict to JSONL files in expected locations
 	if err := validateTranscriptPath(transcriptPath); err != nil {
 		return nil, err
@@ -284,7 +284,7 @@ func CoreParseTranscript(ctx context.Context, db *store.DB, extractor *extract.E
 	// Query with the longest window so all potentially-suppressed fires are
 	// visible; FormatHookFindings picks the right threshold per candidate.
 	recentFires, _ := db.RecentHookFireTimes(project, time.Now().Add(-analysis.HookPersistentCooldown))
-	hookSummary, pickedClaimID, pickedFindingType, _ := analysis.FormatHookFindings(findingTopo, findingVulns, findingClaims, recentFires, newClaims, newEdges, 5)
+	hookSummary, pickedClaimID, pickedFindingType, _ := analysis.FormatHookFindings(findingTopo, findingVulns, findingClaims, recentFires, newClaims, newEdges, 5, verifier)
 	if pickedClaimID != "" && pickedFindingType != "" {
 		_ = db.LogHookFire(project, pickedClaimID, pickedFindingType)
 	}

@@ -169,7 +169,7 @@ func TestCoreParseTranscript_TriggersAutoSweep(t *testing.T) {
 	// but New() needs the model to construct properly.
 	ext := extract.New("test-key-unused", "claude-sonnet-4-6")
 
-	_, err = CoreParseTranscript(context.Background(), db, ext,
+	_, err = CoreParseTranscript(context.Background(), db, ext, nil,
 		"auto-sweep-test", transcriptPath, 0, "test-session", 0)
 	if err != nil {
 		t.Fatalf("CoreParseTranscript: %v", err)
@@ -226,7 +226,7 @@ func TestCoreParseTranscript_AutoSweepRespectsDisable(t *testing.T) {
 		t.Fatalf("write transcript: %v", err)
 	}
 	ext := extract.New("test-key-unused", "claude-sonnet-4-6")
-	_, err = CoreParseTranscript(context.Background(), db, ext,
+	_, err = CoreParseTranscript(context.Background(), db, ext, nil,
 		"disable-test", transcriptPath, 0, "test-session", 0)
 	if err != nil {
 		t.Fatalf("CoreParseTranscript: %v", err)

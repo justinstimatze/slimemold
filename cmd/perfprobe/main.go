@@ -98,7 +98,7 @@ func main() {
 	topo, vulns := analysis.Analyze(claims, edges, project)
 	recentFires, _ := db.RecentHookFireTimes(project, time.Now().Add(-1*time.Hour))
 	_ = timedRet("FormatHookFindings", func() {
-		_, _, _, _ = analysis.FormatHookFindings(topo, vulns, claims, recentFires, 0, 0, 5)
+		_, _, _, _ = analysis.FormatHookFindings(topo, vulns, claims, recentFires, 0, 0, 5, nil)
 	})
 
 	// Memory footprint snapshot.

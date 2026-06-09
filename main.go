@@ -23,6 +23,7 @@ import (
 	"github.com/justinstimatze/slimemold/internal/hookevents"
 	"github.com/justinstimatze/slimemold/internal/mcp"
 	"github.com/justinstimatze/slimemold/internal/store"
+	"github.com/justinstimatze/slimemold/internal/verify"
 	"github.com/justinstimatze/slimemold/internal/viz"
 	"github.com/justinstimatze/slimemold/types"
 )
@@ -181,7 +182,18 @@ func cmdMCP(projectOverride string) {
 		extractor.KnowledgeMode = cfg.KnowledgeMode
 	}
 
-	if err := mcp.RunMCP(db, extractor, project); err != nil {
+	// Active verification for STOP-class findings. nil is tolerated by
+	// FormatHookFindings — a failure here should never block MCP startup.
+	// Declared as the interface type so a construction failure leaves a
+	// genuine nil interface (not a typed-nil pointer wrapped in one).
+	var verifier analysis.HookVerifier
+	if v, err := verify.New(cfg.DataDir, project); err == nil {
+		verifier = v
+	} else {
+		fmt.Fprintf(os.Stderr, "slimemold: verifier disabled: %s\n", err)
+	}
+
+	if err := mcp.RunMCP(db, extractor, verifier, project); err != nil {
 		db.Close() // ensure WAL checkpoint before exit
 		fmt.Fprintf(os.Stderr, "slimemold: mcp error: %s\n", err)
 		os.Exit(1)
@@ -466,7 +478,13 @@ func cmdHook() {
 
 	logf("extracting [%s] from %s (since turn %d)", project, filepath.Base(input.TranscriptPath), sinceTurn)
 
-	audit, err := mcp.CoreParseTranscript(ctx, db, extractor, project, input.TranscriptPath, sinceTurn, sessionID, turnCount)
+	var verifier analysis.HookVerifier
+	if v, vErr := verify.New(cfg.DataDir, project); vErr == nil {
+		verifier = v
+	} else {
+		logf("verifier disabled: %s", vErr)
+	}
+	audit, err := mcp.CoreParseTranscript(ctx, db, extractor, verifier, project, input.TranscriptPath, sinceTurn, sessionID, turnCount)
 	if err != nil {
 		logf("extraction error: %s", err)
 		emit("error", map[string]any{"phase": "extract", "model": cfg.Model, "reason": err.Error()})

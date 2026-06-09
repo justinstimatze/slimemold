@@ -19,6 +19,7 @@ import (
 type mcpServer struct {
 	db        *store.DB
 	extractor *extract.Extractor
+	verifier  analysis.HookVerifier // nil-safe; FormatHookFindings tolerates nil
 	project   string
 }
 
@@ -95,10 +96,16 @@ var claimsSchema = json.RawMessage(`{
 }`)
 
 // RunMCP starts the MCP server on stdio.
-func RunMCP(db *store.DB, extractor *extract.Extractor, project string) error {
+//
+// verifier may be nil — FormatHookFindings tolerates that and falls
+// back to the pre-step-3 rendering. When non-nil it is shared across
+// the server lifetime so the in-memory cache persists across hook
+// fires and parse_transcript calls.
+func RunMCP(db *store.DB, extractor *extract.Extractor, verifier analysis.HookVerifier, project string) error {
 	s := &mcpServer{
 		db:        db,
 		extractor: extractor,
+		verifier:  verifier,
 		project:   project,
 	}
 
@@ -280,7 +287,7 @@ func (s *mcpServer) handleClaims(ctx context.Context, req sdkmcp.CallToolRequest
 		if args.TranscriptPath == "" {
 			return sdkmcp.NewToolResultError("transcript_path required"), nil
 		}
-		audit, err := CoreParseTranscript(ctx, s.db, s.extractor, project, args.TranscriptPath, args.SinceTurn, "", 0)
+		audit, err := CoreParseTranscript(ctx, s.db, s.extractor, s.verifier, project, args.TranscriptPath, args.SinceTurn, "", 0)
 		if err != nil {
 			return sdkmcp.NewToolResultError(err.Error()), nil
 		}

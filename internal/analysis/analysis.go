@@ -1344,7 +1344,7 @@ const (
 // HookColdStartMinClaims, return "". The hook is allowed to produce a
 // finding or be silent — it is not allowed to manufacture one because the
 // slot exists.
-func FormatHookFindings(topo *types.Topology, vulns *types.Vulnerabilities, claims []types.Claim, recentFires map[string]time.Time, newClaims, newEdges, maxFindings int) (string, string, string, bool) {
+func FormatHookFindings(topo *types.Topology, vulns *types.Vulnerabilities, claims []types.Claim, recentFires map[string]time.Time, newClaims, newEdges, maxFindings int, verifier HookVerifier) (string, string, string, bool) {
 	// Defensive: maxFindings < 1 would underflow the secondary-findings
 	// slice expression `remaining[:maxFindings-1]` and panic. Today's only
 	// caller passes 5; this guard makes the API safe for future callers
@@ -1451,6 +1451,29 @@ func FormatHookFindings(topo *types.Topology, vulns *types.Vulnerabilities, clai
 	}
 	pickedFindingType := top.Type
 
+	// Inline external reconciled state for STOP-class findings — weak basis
+	// extracted from an authored document. Prefetch covers all STOP-class
+	// candidates in this fire so subsequent fires can resolve them; Lookup
+	// (synchronous, in-memory) inlines whatever the cache already holds for
+	// the priority anchor. Cold cache: finding renders as-is, prefetch
+	// kicks off, next fire (5 turns later) inlines reconciled state.
+	if verifier != nil {
+		for _, f := range findings {
+			for _, cid := range f.item.ClaimIDs {
+				if anchor, ok := claimByID[cid]; ok && IsSTOPClass(*anchor) {
+					verifier.Prefetch(anchor.Text)
+				}
+			}
+		}
+		if pickedClaimID != "" {
+			if anchor, ok := claimByID[pickedClaimID]; ok && IsSTOPClass(*anchor) {
+				if snippet, source, hit := verifier.Lookup(anchor.Text); hit {
+					fmt.Fprintf(&b, "External check (%s): %s\n", trimSource(source), truncate(snippet, 220))
+				}
+			}
+		}
+	}
+
 	// Include remaining findings as context (lower priority)
 	if len(findings) > 1 {
 		remaining := findings[1:]
@@ -1464,6 +1487,20 @@ func FormatHookFindings(topo *types.Topology, vulns *types.Vulnerabilities, clai
 	}
 
 	return strings.TrimRight(b.String(), "\n"), pickedClaimID, pickedFindingType, top.FiredViaPersistent
+}
+
+// trimSource renders a URL compactly for inline display: scheme stripped,
+// trailing slash dropped, truncated to a readable length. Goal is "the
+// model can see what domain the snippet came from at a glance" without
+// dumping a long URL into the hook prose.
+func trimSource(u string) string {
+	s := strings.TrimPrefix(u, "https://")
+	s = strings.TrimPrefix(s, "http://")
+	s = strings.TrimSuffix(s, "/")
+	if i := strings.IndexByte(s, '?'); i >= 0 {
+		s = s[:i]
+	}
+	return truncate(s, 60)
 }
 
 // vulnerabilityHasInventoryFlag reports whether the anchor claim of a
@@ -1642,8 +1679,46 @@ func truncate(s string, n int) string {
 // the SessionID prefix: documentSessionID() prefixes ingested-doc sessions
 // with "doc:"; transcript sessions get a Claude Code UUID or session-TIMESTAMP.
 func originTag(c types.Claim) string {
-	if strings.HasPrefix(c.SessionID, "doc:") {
+	if isDocOrigin(c) {
 		return " [doc-origin]"
 	}
 	return ""
+}
+
+// isDocOrigin reports whether the claim was extracted via ingest_document.
+func isDocOrigin(c types.Claim) bool {
+	return strings.HasPrefix(c.SessionID, "doc:")
+}
+
+// IsSTOPClass reports whether a claim merits external verification rather
+// than ambient flag-and-continue handling: weak basis (the claim is a
+// working hypothesis, not grounded) AND doc-origin (it sits in a file
+// that ships outside the conversation). The combination is the structural
+// signature step 3's active verification targets — committed assertions
+// that nobody bothered to source. Transcript-origin claims with the same
+// basis are ambient by design (self-correcting as the conversation moves).
+// Strong-basis claims regardless of origin already earned their position.
+func IsSTOPClass(c types.Claim) bool {
+	if !isDocOrigin(c) {
+		return false
+	}
+	switch c.Basis {
+	case "vibes", "assumption", "llm_output":
+		return true
+	}
+	return false
+}
+
+// HookVerifier is the optional verification backend FormatHookFindings
+// consults when surfacing a STOP-class finding. The interface is defined
+// here so analysis does not import internal/verify directly; callers
+// (cmd/perfprobe, internal/mcp, tests) supply nil to disable. Lookup is
+// the synchronous path used to inline reconciled state in the hook
+// output; Prefetch is fire-and-forget and may kick off background work
+// (the hot path stays cheap). Enabled lets callers skip Prefetch when
+// the backend has no credentials.
+type HookVerifier interface {
+	Lookup(claimText string) (snippet, source string, ok bool)
+	Prefetch(claimText string)
+	Enabled() bool
 }
