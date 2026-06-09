@@ -98,7 +98,20 @@ import (
 // exclusion-by-category, not tone shift, and the recall metrics held.
 // If a future evaluation finds claims dropping >10pp from this
 // version's variance run, revert following the v9 → v10 precedent.
-const documentPromptVersion = 11
+//
+// v12: added execution-status reports to SCOPE EXCLUSIONS. Precision
+// adjudication of all 41 historical hook fires on the slimemold
+// project (2026-06-01 → 06-09) found ~68% anchored on claims like
+// "All tests pass" / "commit was pushed" — extracted from the
+// assistant's own end-of-turn execution summaries, true at utterance,
+// stale within hours. The exclusion carries an explicit mechanism
+// exception ("release was auto-created when the tag pushed" IS a
+// claim — it asserts external-system behavior) that the detector-level
+// regex filter (analysis.IsEphemeralStatus) cannot express. The two
+// layers are complementary: prompt-level stops new extraction; the
+// detector filter covers the ~1800 status claims already in graphs.
+// Variance-harness results recorded in the commit message.
+const documentPromptVersion = 12
 
 // DocumentPromptVersion exposes the version constant so outside packages
 // (e.g. the eval CLI) can label snapshots by prompt identity.
