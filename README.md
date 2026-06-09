@@ -530,6 +530,25 @@ export SLIMEMOLD_MODEL=claude-sonnet-4-6        # default
 export SLIMEMOLD_MODEL=claude-haiku-4-5-20251001  # cheapest, weaker edges
 ```
 
+Optional: set `KAGI_API_KEY` to enable active external verification of
+STOP-class findings — claims with weak basis (`vibes`, `assumption`,
+`llm_output`) extracted from authored documents rather than conversation
+transcripts. When set, slimemold runs a Kagi search against the anchor
+claim and inlines reconciled state ("External check (domain): snippet")
+with the hook output, so the agent receives verification data inline
+rather than relying on the agent to remember to search.
+
+```bash
+export KAGI_API_KEY=your-kagi-api-key  # optional, enables External-check
+```
+
+Without the key, STOP-class findings still get a `[doc-origin]` tag and
+the MCP server instructions prompt the agent to verify the claim itself.
+`slimemold status` will show `Verify: disabled (KAGI_API_KEY not set)`
+when no key is configured; the hook also writes a one-line notice at
+startup and to `hook.log` on each fire so the disabled state isn't
+silent.
+
 ### Quick Start (No Hooks)
 
 ```bash
@@ -616,6 +635,17 @@ vibes-heavy audit. The document-mode prompt now handles explicit recap /
 summary / conclusion sections (claims signaled by "as shown," "we have
 argued," "to summarize" get tagged as deduction rather than vibes), but the
 broader issue remains.
+
+Ingested-document claims are tagged structurally so the analysis layer
+can treat them differently from transcript-origin claims. A document
+ships outside the conversation — it persists, is externally checkable,
+gets quoted by readers, and cannot be silently revised. A transcript
+claim is ephemeral, self-correcting as the conversation moves. Slimemold
+encodes this with a `doc:`-prefixed SessionID on ingested claims and
+renders findings on those anchors with a `[doc-origin]` tag. When the
+basis is also weak (`vibes`/`assumption`/`llm_output`), the finding
+becomes STOP-class — a candidate for active external verification (see
+`KAGI_API_KEY` in Installation).
 
 ## Security Considerations
 
