@@ -1641,3 +1641,107 @@ func TestFormatHookFindings_NoExternalCheckOnTranscriptOrigin(t *testing.T) {
 		t.Errorf("verifier snippet leaked into transcript-origin finding, got:\n%s", summary)
 	}
 }
+
+// TestIsEphemeralStatus_HistoricalFireFixture pins the predicate against
+// the actual anchor texts of the hook fires recorded on the slimemold
+// project 2026-06-01 → 06-09 (mined from ~/.slimemold/slimemold —
+// public-safe per the fixture-mining provenance rule; all texts are
+// slimemold development chatter). The noise class must match (these fires
+// were pure friction); the warranted class must NOT match (real catches
+// the filter must never eat).
+func TestIsEphemeralStatus_HistoricalFireFixture(t *testing.T) {
+	noise := []string{
+		"The disable → push branch + tag → re-enable cycle completed: main pushed (fddef9e..18180f5, 20 commits), v0.8.0 tagged and pushed, branch protection disabled then re-enabled.",
+		"19 unit tests now exist in internal/store/ + internal/analysis/legacy_test.go covering sweep criteria, archive round-trip, project-scoped defense, cap+overflow, no-cap, debounce, edge-touch, edge-filter, plus 7 legacy_load_bearer scenarios.",
+		"All tests pass: 12 store + 7 legacy + 2 mcp auto-sweep + existing suite, all green; build is clean.",
+		"Both auto-sweep tests (TestCoreParseTranscript_TriggersAutoSweep and TestCoreParseTranscript_AutoSweepRespectsDisable) pass.",
+		"The commit was made as '0555232' — 21 files, +2798/-141 lines — using a subject + numbered body following the repo's established multi-section style.",
+		"A pre-commit hook was installed at '.git/hooks/pre-commit' → 'scripts/pre-commit.sh', committed in b7abb51 and pushed to main.",
+		"Smoke test confirms: noinput now writes `{\"cwd\":\"\",\"transcript_path\":\"\",\"kind\":\"noinput\",...}` (structured, no `<nil>`); skip/error/extract events all carry project and duration; status displays correctly",
+		"`gofmt -l .` clean, `go vet ./...` clean, and `go test ./...` all green with 14 new hookevents tests passing after the fixes",
+		"Commit fc9b8bd 'Tighten extraction prompt with v11 SCOPE EXCLUSIONS rule' was pushed to main",
+		"All four checks — build, tests, push, CI + CodeQL — came back green",
+		"CI + CodeQL are spinning up after the push; this is an in-version prompt iteration, not a release, so no tag was created",
+		"RESUME.md was reordered by impact: next session starts on #1 (delivery salience-decay) as the highest-impact remaining work, with #4 explicitly demoted and a note explaining the inversion from the prior ease-ordering",
+		"Tests pass green after fixture 0 was rewritten.",
+		"RESUME.md was flipped: #1 marked CLOSED, #4 (chunk-cap) promoted to top of the queue, down to 126 lines",
+		"After the pointer fix, the build is clean and all tests are green.",
+		"All new tests pass and the full suite plus golangci-lint came back clean after step 3 implementation.",
+		"The Verifier.Prefetch goroutine works end-to-end: a query about claude-opus-4-7 triggered a background fetch, populated the cache, and Lookup returned reconciled state sourced from anthropic.com news page about Opus 4.7",
+		"Both smoke tests pass against the real Kagi API",
+	}
+	for _, text := range noise {
+		if !IsEphemeralStatus(types.Claim{Text: text}) {
+			t.Errorf("noise fire not filtered: %q", truncate(text, 80))
+		}
+	}
+
+	// Warranted historical fires — the catches that justify the tool.
+	// None of these may ever match the filter.
+	warranted := []string{
+		"Per fire on a 13,989-claim graph, db.GetClaimsByProject(project) is called at least 4 times and db.GetEdgesByProject likewise 4 times.",
+		"GraderRubric appears in BOTH `buildGraderPrompt`'s user text AND the `System` block — the rubric ships twice on every per-claim call, partially defeating the cache_control optimization.",
+		"The top findings from the ultrathink review are real bugs introduced in the refactor, not just suspected issues.",
+		"`break` inside `select` inside `for` exits the select, not the loop — the ctx.Done() check is a no-op for stopping dispatch, so cancellation still queues every remaining claim instead of bailing.",
+		"At the user base slimemold is designed for (Claude Code installs, daily use), verification overhead would be $15-50k/year in API spend for verification alone",
+		"If severity stratification and STOP-class are built, the implicit target becomes 'STOP-class flags raised' — a Goodhart's-law trap — when the actual measure that matters is 'claims that were stale and got refreshed against current state'",
+		"The verifier REFUTED C2 (cache.put race) and C7 (Prefetch TOCTOU), but these were overridden by the reviewer based on detailed reasoning",
+		"The high-volume wallpaper engine is Bug B: every Stop hook fire writes pending-{hash}.txt and cmdDeliver re-emits it on every user prompt until next Stop fire overwrites, approximately 5 turns later, so a single finding gets delivered ~5x",
+	}
+	for _, text := range warranted {
+		if IsEphemeralStatus(types.Claim{Text: text}) {
+			t.Errorf("warranted fire wrongly filtered: %q", truncate(text, 80))
+		}
+	}
+
+	// KNOWN LOSS (documented on ephemeralStatusPatterns): "release was
+	// auto-created" reads as a status report but embeds a false mechanism
+	// belief. The filter eats it. If a future pattern refinement frees it,
+	// flip this assertion and delete the tradeoff note.
+	knownLoss := "v0.9.0 release was auto-created on GitHub when the tag pushed."
+	if !IsEphemeralStatus(types.Claim{Text: knownLoss}) {
+		t.Errorf("known-loss case unexpectedly NOT filtered — pattern set changed; update the tradeoff doc on ephemeralStatusPatterns: %q", knownLoss)
+	}
+}
+
+// TestFindLoadBearingVibes_SkipsEphemeralStatus verifies the detector-level
+// wiring: a weak-basis anchor with enough dependents fires normally, but an
+// equally-supported execution-status anchor does not.
+func TestAnalyze_SkipsEphemeralStatusAnchors(t *testing.T) {
+	now := time.Now()
+	claims := []types.Claim{
+		{ID: "status", Text: "All tests pass and the build is clean.", Basis: types.BasisVibes, Confidence: 0.95, SessionID: "s1", CreatedAt: now},
+		{ID: "real", Text: "the scheduler treats every queue as FIFO", Basis: types.BasisVibes, Confidence: 0.95, SessionID: "s1", CreatedAt: now},
+		{ID: "d1", Text: "d1", Basis: types.BasisDeduction, SessionID: "s1", CreatedAt: now},
+		{ID: "d2", Text: "d2", Basis: types.BasisDeduction, SessionID: "s1", CreatedAt: now},
+		{ID: "d3", Text: "d3", Basis: types.BasisDeduction, SessionID: "s1", CreatedAt: now},
+		{ID: "d4", Text: "d4", Basis: types.BasisDeduction, SessionID: "s1", CreatedAt: now},
+	}
+	edges := []types.Edge{
+		{FromID: "status", ToID: "d1", Relation: types.RelSupports},
+		{FromID: "status", ToID: "d2", Relation: types.RelSupports},
+		{FromID: "real", ToID: "d3", Relation: types.RelSupports},
+		{FromID: "real", ToID: "d4", Relation: types.RelSupports},
+	}
+	_, vulns := Analyze(claims, edges, "test")
+	var statusFired, realFired bool
+	for _, v := range vulns.Items {
+		if v.Type != "load_bearing_vibes" && v.Type != "fluency_trap" {
+			continue
+		}
+		for _, id := range v.ClaimIDs {
+			if id == "status" {
+				statusFired = true
+			}
+			if id == "real" {
+				realFired = true
+			}
+		}
+	}
+	if statusFired {
+		t.Error("ephemeral-status anchor fired a load-bearing/fluency finding — filter not applied")
+	}
+	if !realFired {
+		t.Error("non-status weak-basis anchor did not fire — filter is over-broad or detector broke")
+	}
+}

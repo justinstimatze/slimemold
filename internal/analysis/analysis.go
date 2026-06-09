@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"regexp"
 	"slices"
 	"sort"
 	"strings"
@@ -424,6 +425,13 @@ func findLoadBearingVibes(claims []types.Claim, edges []types.Edge) []types.Vuln
 		if !weakBases[c.Basis] {
 			continue
 		}
+		// Execution-status reports ("tests pass", "commit pushed") are
+		// structurally load-bearing but epistemically uninteresting —
+		// see IsEphemeralStatus. Filtering here (not just in the hook
+		// renderer) cleans audit and analyze_kb output too.
+		if IsEphemeralStatus(*c) {
+			continue
+		}
 		vulns = append(vulns, types.Vulnerability{
 			Severity:           "critical",
 			Type:               "load_bearing_vibes",
@@ -842,6 +850,12 @@ func findFluencyTraps(claims []types.Claim, edges []types.Edge) []types.Vulnerab
 	var vulns []types.Vulnerability
 	for _, c := range claims {
 		if c.Challenged || !hasDependents[c.ID] {
+			continue
+		}
+		// Same ephemeral-status filter as findLoadBearingVibes: a status
+		// report stated at confidence 0.95 isn't a fluency trap — the
+		// speaker just watched the tests pass.
+		if IsEphemeralStatus(c) {
 			continue
 		}
 		ceiling, ok := ceilings[c.Basis]
@@ -1747,6 +1761,64 @@ func isDocOrigin(c types.Claim) bool {
 // Strong-basis claims regardless of origin already earned their position.
 func IsSTOPClass(c types.Claim) bool {
 	return isDocOrigin(c) && c.Basis.IsWeak()
+}
+
+// ephemeralStatusPatterns recognize execution-status reports — past-tense
+// claims about an action just performed ("tests pass", "commit pushed",
+// "build is clean"). These are true at utterance, verifiable from output
+// already in the conversation context, and stale within hours. Flagging
+// them as load-bearing or fluency traps is the dominant precision failure:
+// in the 41 historical hook fires on the slimemold project (2026-06-01 to
+// 06-09), ~28 anchored on this claim class, and interrogating any of them
+// would have been pure friction.
+//
+// Patterns are matched case-insensitively with (?is) so multi-line claim
+// text and mid-sentence matches work. The bounded gaps (.{0,N}) keep
+// "tests ... pass" matching across parentheticals without letting the
+// pattern bridge unrelated sentences.
+//
+// KNOWN TRADEOFF: a claim like "the release was auto-created on GitHub
+// when the tag pushed" embeds a false mechanism belief in status-report
+// surface form, and this filter eats it (1 of the 9 warranted historical
+// fires). Text heuristics can't separate "reports an action" from
+// "asserts a mechanism" reliably; the extraction-prompt exclusion is
+// written more precisely for new claims, and accepted-loss here buys
+// removing ~two-thirds of all noise fires.
+var ephemeralStatusPatterns = []*regexp.Regexp{
+	// tests pass / tests are green / N tests now exist
+	regexp.MustCompile(`(?is)\btests?\b.{0,100}\b(pass(es|ed|ing)?|green|exist)\b`),
+	// build/lint/vet/gofmt clean or green
+	regexp.MustCompile(`(?is)\b(build|lint|golangci-lint|go vet|gofmt|vet)\b.{0,20}\b(clean|green)\b`),
+	// "came back green/clean" (CI checks)
+	regexp.MustCompile(`(?i)\bcame back (green|clean)\b`),
+	// was <execution verb> — the past-tense self-report signature
+	regexp.MustCompile(`(?i)\bwas\s+(pushed|committed|tagged|merged|installed|created|updated|reordered|rewritten|flipped|renamed|deleted|added|made|auto-created)\b`),
+	// pushed to main / tagged and pushed
+	regexp.MustCompile(`(?i)\b(pushed to (main|origin)|tagged and pushed|pushed and tagged)\b`),
+	// smoke test confirms/passes
+	regexp.MustCompile(`(?i)\bsmoke tests? (confirm|pass)`),
+	// works end-to-end (observed-behavior status)
+	regexp.MustCompile(`(?i)\bworks? end-to-end\b`),
+	// CI spinning up / running / green
+	regexp.MustCompile(`(?is)\bCI\b.{0,30}\b(spinning|running|green|passing)\b`),
+	// cycle/process completed
+	regexp.MustCompile(`(?i)\b(cycle|process) completed\b`),
+}
+
+// IsEphemeralStatus reports whether a claim is an execution-status report:
+// a self-report of an action just performed, verifiable from conversation
+// context at utterance time and stale shortly after. Detectors that anchor
+// on a single claim's believability (load_bearing_vibes, fluency_trap)
+// skip these — "All tests pass" supporting two other claims is structurally
+// true but epistemically uninteresting, and firing on it trains the
+// consumer to ignore the channel.
+func IsEphemeralStatus(c types.Claim) bool {
+	for _, p := range ephemeralStatusPatterns {
+		if p.MatchString(c.Text) {
+			return true
+		}
+	}
+	return false
 }
 
 // HookVerifier is the optional verification backend FormatHookFindings
