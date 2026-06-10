@@ -19,7 +19,7 @@ through this." The reasoning-topology layer doesn't care about the domain.
 - **Go binary** — `./slimemold mcp` starts the MCP server on stdio
 - **SQLite** — persistent graph at `~/.slimemold/{project}/graph.sqlite`
 - **Claude Sonnet 4.6** — extracts claims from transcript chunks via structured output
-- **Stop hook** — fires every 5th turn, calls parse_transcript, injects audit findings
+- **Stop hook** — fires every Nth turn (`SLIMEMOLD_INTERVAL`, default 3), calls parse_transcript, injects audit findings
 
 ## Two Analysis Patterns
 
@@ -90,9 +90,60 @@ a new prompt version meaningfully shifts it. Don't bury extraction-
 prompt changes that move metrics beyond noise without saying so in
 the commit message.
 
+## Extraction model & hook cost (measured 2026-06-10)
+
+Recurring question: "slimemold is my most expensive API project — switch the
+extractor to Haiku?" Answer: **no for the live hook, and the real lever is fire
+cadence, not the model.** This was measured, not guessed — re-run before
+re-deciding.
+
+**Rebench (Haiku vs Sonnet extraction, README fixture, same Haiku grader):**
+
+| | Sonnet 4.6 | Haiku 4.5 |
+|---|---|---|
+| Substantive rate (claim quality) | 0.51 | 0.51 — **tie** |
+| Total edges (README) | 489 | 167 — **~⅓** |
+| Edges per claim | 1.82 | 0.60 |
+| README chunks with 0 edges | 0 | 3 |
+
+Claim *recall/quality* is a tie; **topology is a blowout.** Haiku gives ~⅓ the
+edges and zeroes out whole chunks. Slimemold's detectors (load-bearing vibes,
+amplification cascades, hubs) all run on edges — the graph structure *is* the
+product — so Haiku guts the live hook's value for a 3× price cut (Sonnet
+$3/$15, Haiku $1/$5 per Mtok — not the ~10× an older mental model assumes).
+
+**Where the cost actually is:** the live Stop hook firing every N turns, on
+Sonnet, in *every* project you work in. Verified empirically — the big graphs
+(cupel, lexicon, lucida, …) are all `doc_cl = 0` (no document ingestion; they're
+live-hook graphs from long sessions) and all carry `audits ≈ hook_fires`, i.e.
+the edge-consuming detectors run on every one. There is **no batch-ingestion
+bucket** to safely downgrade, and per-fire cost is graph-size-independent
+(`selectRelevantClaims` caps injected context at 100 claims). Eval harnesses are
+the smallest bucket.
+
+**The lever — `SLIMEMOLD_INTERVAL` (default 3; set to 5 globally 2026-06-10).**
+Raising it cuts the *repeated* per-fire overhead — mainly the uncached ~100-claim
+context slab in the user prompt — not the extraction work itself (claims/output
+over a session are ~constant regardless of chunking). At interval 5 the
+live-hook bill drops ~30–45% with zero quality loss; only tradeoff is findings
+surface every 5 turns instead of 3. Levers deliberately *not* pulled: shrinking
+the 100-claim context cap (it feeds cross-batch edge resolution — the exact
+thing the rebench says to protect) and content-tiering to Haiku (no ingestion
+bucket exists).
+
+**Re-run the rebench** (~$1 for both, grader fixed at Haiku so only extraction
+varies):
+
+```bash
+go build -o /tmp/sm_quality ./cmd/quality
+/tmp/sm_quality -extract-model claude-sonnet-4-6          # baseline
+/tmp/sm_quality -extract-model claude-haiku-4-5-20251001  # candidate
+# compare substantive-rate AND per-chunk "N claims, M edges" lines — edges are the tell
+```
+
 ## Dependencies
 
 - mark3labs/mcp-go — MCP server
 - modernc.org/sqlite — SQLite (pure Go, no CGO)
-- anthropics/anthropic-sdk-go — Sonnet extraction (default; set SLIMEMOLD_MODEL=claude-haiku-4-5-20251001 for cheaper/faster)
+- anthropics/anthropic-sdk-go — Sonnet extraction (default). `SLIMEMOLD_MODEL=claude-haiku-4-5-20251001` is cheaper/faster but **halves edge recall** — fine for claim-only use, wrong for the live hook. See "Extraction model & hook cost" below before switching.
 - google/uuid — claim IDs
