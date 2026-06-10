@@ -67,6 +67,23 @@ ANTHROPIC_API_KEY=... SLIMEMOLD_INVENTORY_ONLINE=1 go test -tags=online \
   ./internal/analysis/ -run TestInventoryOnlineAccuracy -v
 ```
 
+## Hook binary freshness
+
+The Claude Code hooks invoke `./slimemold` (the binary in this repo). Nothing in
+the normal flow rebuilds it — `.git/hooks/pre-push` compiles to `/tmp` and
+deletes the artifact (compile check only), so editing source and committing can
+leave the **live hook running stale logic** (this silently ran a ~9h-old binary
+on 2026-06-10). Two guards:
+
+- **Runtime detection** — `staleBinaryCheck` (main.go) runs on every fire from a
+  source tree: if the binary is older than its newest non-test `.go`, it logs a
+  `STALE BINARY` warning to `hook.log` + stderr + a `stale_binary` event. Costs
+  installed binaries nothing (no adjacent `go.mod` → one stat, skip).
+- **Auto-rebuild** — `./scripts/install-dev-hooks.sh` installs `post-commit` +
+  `post-merge` hooks that `go build -o slimemold .`. Run it once per clone. With
+  it, committing/pulling keeps the hook binary in sync and you rarely see the
+  warning.
+
 ## Extraction-prompt change discipline
 
 When editing extraction prompts (`internal/extract/prompt.go`,

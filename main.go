@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"io"
+	"io/fs"
 
 	"github.com/justinstimatze/slimemold/internal/adapt"
 	"github.com/justinstimatze/slimemold/internal/analysis"
@@ -280,6 +281,57 @@ func cmdDeliver() {
 // top-level recover guarantees a rogue panic can't propagate. The Stop hook
 // returning non-zero to Claude Code is visible to the user; we'd rather
 // silently skip an extraction than leak a stack trace.
+// staleBinaryCheck reports whether the running hook binary is older than the
+// newest non-test .go source in its own directory tree — i.e. someone edited
+// slimemold and forgot to `go build`, so the live hook is executing stale
+// extraction/analysis logic. This is the exact failure that silently ran a
+// ~9h-old binary on 2026-06-10 (the .git/hooks/pre-push build emits to /tmp and
+// never refreshes ./slimemold, so committing/pushing does NOT keep the hook
+// binary in sync). Detection lives in the binary itself so it ships everywhere
+// and can't be forgotten.
+//
+// Only applicable when the binary sits next to a go.mod (a dev source tree);
+// for binaries installed elsewhere it returns applicable=false after a single
+// stat, so it costs end users nothing. _test.go files are excluded — they
+// aren't compiled into the binary, so a test-only edit isn't real staleness.
+func staleBinaryCheck(exePath string) (stale bool, sourceNewerBy time.Duration, applicable bool) {
+	dir := filepath.Dir(exePath)
+	if _, err := os.Stat(filepath.Join(dir, "go.mod")); err != nil {
+		return false, 0, false // not a source tree — installed binary, skip
+	}
+	exeInfo, err := os.Stat(exePath)
+	if err != nil {
+		return false, 0, false
+	}
+	exeMod := exeInfo.ModTime()
+
+	var newest time.Time
+	_ = filepath.WalkDir(dir, func(_ string, d fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return nil
+		}
+		if d.IsDir() {
+			switch d.Name() {
+			case ".git", "vendor", "node_modules", "testdata":
+				return fs.SkipDir
+			}
+			return nil
+		}
+		name := d.Name()
+		if !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			return nil
+		}
+		if info, err := d.Info(); err == nil && info.ModTime().After(newest) {
+			newest = info.ModTime()
+		}
+		return nil
+	})
+	if newest.IsZero() {
+		return false, 0, true
+	}
+	return newest.After(exeMod), newest.Sub(exeMod), true
+}
+
 func cmdHook() {
 	start := time.Now()
 
@@ -450,6 +502,20 @@ func cmdHook() {
 	fmt.Fprintf(f, "%d", os.Getpid())
 	f.Close()
 	defer os.Remove(lockFile)
+
+	// Stale-binary guard: if we're running from a source tree and the binary
+	// is older than its own .go source, the hook is executing stale logic.
+	// Warn loudly (log + stderr + structured event) but don't auto-rebuild —
+	// replacing a running binary mid-fire is worse than a warning, and the
+	// .git/hooks post-commit/post-merge installer handles the auto-rebuild.
+	if exe, err := os.Executable(); err == nil {
+		if stale, newerBy, ok := staleBinaryCheck(exe); ok && stale {
+			mins := int(newerBy.Minutes())
+			logf("STALE BINARY: source is ~%dm newer than this hook binary — run `go build -o slimemold .` (currently running stale extraction/analysis logic)", mins)
+			fmt.Fprintf(os.Stderr, "slimemold: STALE BINARY — source ~%dm newer than this hook binary; run `go build -o slimemold .`\n", mins)
+			emit("stale_binary", map[string]any{"source_newer_by_min": mins})
+		}
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)
 	defer cancel()
