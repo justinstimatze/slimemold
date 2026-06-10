@@ -308,7 +308,7 @@ func staleBinaryCheck(exePath string) (stale bool, sourceNewerBy time.Duration, 
 	var newest time.Time
 	_ = filepath.WalkDir(dir, func(_ string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
-			return nil
+			return nil //nolint:nilerr // best-effort scan: skip unreadable entries, don't abort the walk
 		}
 		if d.IsDir() {
 			switch d.Name() {
@@ -330,6 +330,25 @@ func staleBinaryCheck(exePath string) (stale bool, sourceNewerBy time.Duration, 
 		return false, 0, true
 	}
 	return newest.After(exeMod), newest.Sub(exeMod), true
+}
+
+// warnIfStaleBinary surfaces a stale-binary condition (see staleBinaryCheck)
+// via the hook log, stderr, and a structured event. It deliberately does not
+// auto-rebuild — replacing a running binary mid-fire is worse than a warning,
+// and scripts/install-dev-hooks.sh handles auto-rebuild on commit/merge.
+func warnIfStaleBinary(logf func(string, ...interface{}), emit func(string, map[string]any)) {
+	exe, err := os.Executable()
+	if err != nil {
+		return
+	}
+	stale, newerBy, ok := staleBinaryCheck(exe)
+	if !ok || !stale {
+		return
+	}
+	mins := int(newerBy.Minutes())
+	logf("STALE BINARY: source is ~%dm newer than this hook binary — run `go build -o slimemold .` (currently running stale extraction/analysis logic)", mins)
+	fmt.Fprintf(os.Stderr, "slimemold: STALE BINARY — source ~%dm newer than this hook binary; run `go build -o slimemold .`\n", mins)
+	emit("stale_binary", map[string]any{"source_newer_by_min": mins})
 }
 
 func cmdHook() {
@@ -503,19 +522,9 @@ func cmdHook() {
 	f.Close()
 	defer os.Remove(lockFile)
 
-	// Stale-binary guard: if we're running from a source tree and the binary
-	// is older than its own .go source, the hook is executing stale logic.
-	// Warn loudly (log + stderr + structured event) but don't auto-rebuild —
-	// replacing a running binary mid-fire is worse than a warning, and the
-	// .git/hooks post-commit/post-merge installer handles the auto-rebuild.
-	if exe, err := os.Executable(); err == nil {
-		if stale, newerBy, ok := staleBinaryCheck(exe); ok && stale {
-			mins := int(newerBy.Minutes())
-			logf("STALE BINARY: source is ~%dm newer than this hook binary — run `go build -o slimemold .` (currently running stale extraction/analysis logic)", mins)
-			fmt.Fprintf(os.Stderr, "slimemold: STALE BINARY — source ~%dm newer than this hook binary; run `go build -o slimemold .`\n", mins)
-			emit("stale_binary", map[string]any{"source_newer_by_min": mins})
-		}
-	}
+	// Stale-binary guard — warn (don't auto-rebuild) if the hook is running
+	// older logic than the source tree it lives in. See warnIfStaleBinary.
+	warnIfStaleBinary(logf, emit)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)
 	defer cancel()
