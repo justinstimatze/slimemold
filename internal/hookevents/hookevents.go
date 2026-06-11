@@ -19,7 +19,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"time"
 )
 
@@ -142,13 +141,12 @@ func write(logDir string, fields map[string]any) {
 // hook.log and by write() for hook-events.jsonl — same threshold and
 // policy for both.
 //
-// Concurrency: an advisory flock(2) on the source file makes the
-// rotation single-writer across processes. Unlike an O_EXCL ".rotating"
-// sidecar, flock is released by the kernel when the holding process
-// dies — so a SIGKILL between lock acquisition and rename does NOT
-// orphan the lock and permanently block future rotations. The trade-off
-// is a Linux/Unix-only build constraint; that's fine for slimemold,
-// which targets local Linux installs.
+// Concurrency: an advisory OS-level file lock on the source file makes
+// the rotation single-writer across processes (tryLockForRotation —
+// flock(2) on Unix, LockFileEx on Windows). Unlike an O_EXCL ".rotating"
+// sidecar, the kernel releases this lock when the holding process dies —
+// so a SIGKILL between lock acquisition and rename does NOT orphan the
+// lock and permanently block future rotations.
 //
 // Re-stat under the lock so we don't rotate a file that's already been
 // rotated by a sibling racer (its rename completed while we were waiting
@@ -167,10 +165,11 @@ func RotateLogIfLarge(logPath string) {
 		return
 	}
 	defer f.Close()
-	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+	unlock, ok := tryLockForRotation(f)
+	if !ok {
 		return
 	}
-	defer syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
+	defer unlock()
 	// Re-check under the lock — another racer may have rotated already.
 	if info, err := f.Stat(); err == nil && info.Size() < MaxLogBytes {
 		return
