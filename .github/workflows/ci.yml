@@ -31,4 +31,8 @@ jobs:
       - name: Lint
         uses: golangci/golangci-lint-action@v8
         with:
-          version: latest
+          # Pin, don't float. `latest` silently floats (e.g. 2.11.4 -> 2.12.2),
+          # which (a) makes CI un-reproducible against the local pre-push gate
+          # and (b) skews the restored analysis cache across versions, emitting
+          # phantom findings on code the commit never touched. Bump deliberately.
+          version: v2.12.2
