@@ -138,15 +138,36 @@ bucket** to safely downgrade, and per-fire cost is graph-size-independent
 (`selectRelevantClaims` caps injected context at 100 claims). Eval harnesses are
 the smallest bucket.
 
-**The lever — `SLIMEMOLD_INTERVAL` (default 3; set to 5 globally 2026-06-10).**
-Raising it cuts the *repeated* per-fire overhead — mainly the uncached ~100-claim
-context slab in the user prompt — not the extraction work itself (claims/output
-over a session are ~constant regardless of chunking). At interval 5 the
-live-hook bill drops ~30–45% with zero quality loss; only tradeoff is findings
-surface every 5 turns instead of 3. Levers deliberately *not* pulled: shrinking
-the 100-claim context cap (it feeds cross-batch edge resolution — the exact
-thing the rebench says to protect) and content-tiering to Haiku (no ingestion
-bucket exists).
+**The lever — `SLIMEMOLD_INTERVAL` (default 3; set to 10 globally 2026-06-12, was 5 on 2026-06-10).**
+The interval gates the **Stop hook** (`cmdHook`), which runs the expensive Sonnet
+extraction every Nth turn and writes one pending finding. The **UserPromptSubmit
+hook** (`cmdDeliver`) is cheap and *not* directly interval-gated — it fires every
+prompt but uses single-delivery semantics (inject the pending finding once, then
+delete it), so it emits nothing on the turns between extractions. Net: both the
+Sonnet $ cost and the injected-token carry scale ∝ 1/N, because injections can't
+exceed pending writes and pending writes are interval-gated. Raising N cuts the
+*repeated* per-fire overhead, not the per-extraction work itself (claims/output
+over a session are ~constant regardless of chunking).
+
+**Expected vs verified.** Both the Sonnet $ spend and the injected-token carry
+scale ∝ 1/N, so interval 10 *should* run the live hook at ~⅓ the cost of the
+original default 3 (and ~½ of interval 5), with zero quality loss — but treat
+those figures as **modeled, not yet measured.** A cross-agent transcript analysis (silt,
+2026-06-12) split the corpus at the 2026-06-10 bump and returned **null /
+confounded**: too few long post-bump sessions to clear the session-length noise
+floor (presence-carry is ~quadratic in session length, and pre-bump has a handful
+of 10k+-turn monster sessions dominating the total). The clean isolating metric is
+extraction-fires per assistant-turn on *long* post-bump sessions (≥~30 turns to
+amortize the always-fires turn-1 baseline); it should approach 1/N. **Confound:**
+single-delivery semantics (`f27b2b5`, 2026-06-09) landed one day before the bump
+and cut ~5 re-deliveries-per-finding down to 1 — a ~5× reduction that sits right at
+the split boundary and swamps the interval's 1.67×, so a 2026-06-10 split conflates
+the two. The value is configured in `~/.config/slimemold/.env`
+(`SLIMEMOLD_INTERVAL=10`), read by `config.Load()` → `loadDotenv` — not via the
+shell or `settings.json` env block, so check *that file* when verifying the live
+value. Levers deliberately *not* pulled: shrinking the 100-claim context cap (it
+feeds cross-batch edge resolution — the exact thing the rebench says to protect)
+and content-tiering to Haiku (no ingestion bucket exists).
 
 **Re-run the rebench** (~$1 for both, grader fixed at Haiku so only extraction
 varies):
