@@ -3,7 +3,7 @@ module github.com/justinstimatze/slimemold
 go 1.26
 
 require (
-	github.com/anthropics/anthropic-sdk-go v1.50.1
+	github.com/anthropics/anthropic-sdk-go v1.50.2
 	github.com/google/uuid v1.6.0
 	github.com/mark3labs/mcp-go v0.55.0
 	golang.org/x/sys v0.42.0
