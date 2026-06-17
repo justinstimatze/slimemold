@@ -5,7 +5,7 @@ go 1.26
 require (
 	github.com/anthropics/anthropic-sdk-go v1.50.1
 	github.com/google/uuid v1.6.0
-	github.com/mark3labs/mcp-go v0.54.1
+	github.com/mark3labs/mcp-go v0.55.0
 	golang.org/x/sys v0.42.0
 	golang.org/x/text v0.38.0
 	modernc.org/sqlite v1.52.0
