@@ -689,10 +689,14 @@ func cmdInit() {
 
 		if !hasStop {
 			stopHooks, _ := hooks["Stop"].([]interface{})
+			// async: the extraction writes one pending finding to the queue that
+			// cmdDeliver injects on the NEXT turn — its output is never consumed on
+			// this Stop event, so blocking turn-end on the (Sonnet, 1-3min) run buys
+			// nothing. Run it in the background off the critical path.
 			stopHooks = append(stopHooks, map[string]interface{}{
 				"matcher": "",
 				"hooks": []interface{}{
-					map[string]interface{}{"type": "command", "command": extractCmd},
+					map[string]interface{}{"type": "command", "command": extractCmd, "async": true},
 				},
 			})
 			hooks["Stop"] = stopHooks
