@@ -7,13 +7,13 @@ import (
 
 func TestBuildGraderPrompt_ContainsAnchors(t *testing.T) {
 	in := GraderInput{
-		FindingText:       "Load-bearing vibes: 'the auth uses JWT' supports 2 other claims (never challenged: true)",
+		FindingText:       "2 claims rest on this vibes claim, never challenged: 'the auth uses JWT'",
 		UserTurn:          "we already established the auth uses JWT, so the rotation logic is fine",
 		AssistantResponse: "actually, you flagged JWT as load-bearing — do you have the source?",
 	}
 	got := BuildGraderPrompt(in)
 	for _, must := range []string{
-		"Load-bearing vibes",
+		"rest on this vibes claim",
 		"already established the auth uses JWT",
 		"actually, you flagged JWT",
 		"ACTED_ON",

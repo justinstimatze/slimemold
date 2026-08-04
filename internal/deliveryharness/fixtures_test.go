@@ -11,7 +11,7 @@ func TestFormatLoadBearingFinding_MatchesDetectorFormat(t *testing.T) {
 	// the Description field. If that format changes, this test fails
 	// and forces a deliberate fixture update.
 	got := FormatLoadBearingFinding("short claim text", 3, true)
-	want := `Load-bearing vibes: "short claim text" supports 3 other claims (never challenged: true)`
+	want := `3 claims rest on this vibes claim, never challenged: "short claim text"`
 	if got != want {
 		t.Errorf("format mismatch:\n got: %q\nwant: %q", got, want)
 	}
@@ -25,8 +25,8 @@ func TestFormatLoadBearingFinding_LongTextTruncated(t *testing.T) {
 	if !strings.Contains(got, "...") {
 		t.Errorf("long text should be truncated with ..., got %q", got)
 	}
-	if !strings.Contains(got, `supports 4 other claims`) {
-		t.Errorf("expected supports-count phrase, got %q", got)
+	if !strings.Contains(got, `4 claims rest on this`) {
+		t.Errorf("expected dependent-count phrase, got %q", got)
 	}
 	// The truncation point is deterministic: s[:57] + "..."
 	want57 := long[:57] + "..."
@@ -37,8 +37,8 @@ func TestFormatLoadBearingFinding_LongTextTruncated(t *testing.T) {
 
 func TestFormatLoadBearingFinding_NeverChallengedFalse(t *testing.T) {
 	got := FormatLoadBearingFinding("x", 2, false)
-	if !strings.Contains(got, "never challenged: false") {
-		t.Errorf("expected never challenged: false, got %q", got)
+	if !strings.Contains(got, "already challenged") {
+		t.Errorf("expected already-challenged phrasing when neverChallenged=false, got %q", got)
 	}
 }
 
@@ -51,8 +51,8 @@ func TestFixtures_Shape(t *testing.T) {
 		if f.Finding == "" {
 			t.Errorf("fixture %d: Finding empty", i)
 		}
-		if !strings.HasPrefix(f.Finding, "Load-bearing vibes:") {
-			t.Errorf("fixture %d: Finding should start with detector prefix, got %q", i, f.Finding)
+		if !strings.Contains(f.Finding, "rest on this vibes claim") {
+			t.Errorf("fixture %d: Finding should carry the detector format, got %q", i, f.Finding)
 		}
 		if f.Main == "" {
 			t.Errorf("fixture %d: Main empty", i)

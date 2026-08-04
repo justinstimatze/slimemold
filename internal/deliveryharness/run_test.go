@@ -98,7 +98,7 @@ func TestRunCell_AllFromCache(t *testing.T) {
 	dir := t.TempDir()
 	cache := &Cache{Dir: dir}
 
-	finding := "Load-bearing vibes: \"foo\" supports 4 other claims (never challenged: true)"
+	finding := "4 claims rest on this vibes claim, never challenged: \"foo\""
 	cell := BuildCell(CondB, 0, nil, finding, "do the thing that depends on foo")
 
 	r := &Runner{

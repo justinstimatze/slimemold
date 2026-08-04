@@ -432,10 +432,14 @@ func findLoadBearingVibes(claims []types.Claim, edges []types.Edge) []types.Vuln
 		if IsEphemeralStatus(*c) {
 			continue
 		}
+		challenge := "never challenged"
+		if c.Challenged {
+			challenge = "already challenged"
+		}
 		vulns = append(vulns, types.Vulnerability{
 			Severity:           "critical",
 			Type:               "load_bearing_vibes",
-			Description:        fmt.Sprintf("Load-bearing %s: %q supports %d other claims (never challenged: %v)%s", c.Basis, truncate(c.Text, 60), deg, !c.Challenged, originTag(*c)),
+			Description:        fmt.Sprintf("%d claims rest on this %s claim, %s: %q%s", deg, c.Basis, challenge, truncate(c.Text, 60), originTag(*c)),
 			ClaimIDs:           []string{c.ID},
 			FiredViaPersistent: firedViaPersistent[id],
 		})
@@ -1631,7 +1635,7 @@ func skipAnchor(v types.Vulnerability, claimByID map[string]*types.Claim, recent
 }
 
 // extractClaimText pulls the quoted claim text from a vulnerability description.
-// Descriptions look like: `Load-bearing vibes: "some claim text..." supports N other claims`
+// Descriptions look like: `N claims rest on this vibes claim, never challenged: "some claim text..."`
 func extractClaimText(desc string) string {
 	start := strings.Index(desc, `"`)
 	if start < 0 {

@@ -265,7 +265,7 @@ func (d *DB) SweepStaleClaimsDebounced(project string, minInterval time.Duration
 		// meta key and run again immediately. Log to stderr so the user can
 		// see the auto-sweep is over-firing (otherwise it looks like the
 		// debounce is misconfigured). Don't propagate — the archive already
-		// happened and that's the load-bearing work.
+		// happened and that's the essential work.
 		fmt.Fprintf(os.Stderr, "slimemold: sweep stamp write failed for %q (debounce will skip): %v\n", project, err)
 	}
 	return archived, overflow, true, nil

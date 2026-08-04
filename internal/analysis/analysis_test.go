@@ -1037,7 +1037,7 @@ func TestFormatHookFindings_DifferentialCooldown(t *testing.T) {
 				{
 					Severity:           "critical",
 					Type:               "load_bearing_vibes",
-					Description:        `Load-bearing vibes: "load-bearing claim" supports 8 other claims (never challenged: true)`,
+					Description:        `8 claims rest on this vibes claim, never challenged: "load-bearing claim"`,
 					ClaimIDs:           []string{"anchor"},
 					FiredViaPersistent: persistent,
 				},
@@ -1088,8 +1088,8 @@ func TestFormatHookFindings_InventoryFlagPrioritized(t *testing.T) {
 	vulns := &types.Vulnerabilities{
 		Project: "test",
 		Items: []types.Vulnerability{
-			{Severity: "critical", Type: "load_bearing_vibes", Description: `Load-bearing vibes: "neutral" supports 3 other claims (never challenged: true)`, ClaimIDs: []string{"neutral-anchor"}},
-			{Severity: "critical", Type: "load_bearing_vibes", Description: `Load-bearing vibes: "flagged" supports 3 other claims (never challenged: true)`, ClaimIDs: []string{"flagged-anchor"}},
+			{Severity: "critical", Type: "load_bearing_vibes", Description: `3 claims rest on this vibes claim, never challenged: "neutral"`, ClaimIDs: []string{"neutral-anchor"}},
+			{Severity: "critical", Type: "load_bearing_vibes", Description: `3 claims rest on this vibes claim, never challenged: "flagged"`, ClaimIDs: []string{"flagged-anchor"}},
 		},
 	}
 	_, pickedID, _, _ := FormatHookFindings(topo, vulns, claims, nil, 0, 0, 5, nil)
@@ -1465,7 +1465,7 @@ func TestFormatHookFindings_InlineExternalCheckOnSTOPClass(t *testing.T) {
 	vulns := &types.Vulnerabilities{
 		Project: "test",
 		Items: []types.Vulnerability{
-			{Severity: "critical", Type: "load_bearing_vibes", Description: `Load-bearing vibes: "the README's load-bearing positioning claim" supports 3 other claims (never challenged: true) [doc-origin]`, ClaimIDs: []string{"doc-anchor"}},
+			{Severity: "critical", Type: "load_bearing_vibes", Description: `3 claims rest on this vibes claim, never challenged: "the README's load-bearing positioning claim" [doc-origin]`, ClaimIDs: []string{"doc-anchor"}},
 		},
 	}
 	stub := &stubVerifier{
@@ -1529,7 +1529,7 @@ func TestFormatHookFindings_NoInlineForEmptySnippet(t *testing.T) {
 	vulns := &types.Vulnerabilities{
 		Project: "test",
 		Items: []types.Vulnerability{
-			{Severity: "critical", Type: "load_bearing_vibes", Description: `Load-bearing vibes: "doc claim" supports 3 other claims (never challenged: true) [doc-origin]`, ClaimIDs: []string{"doc-anchor"}},
+			{Severity: "critical", Type: "load_bearing_vibes", Description: `3 claims rest on this vibes claim, never challenged: "doc claim" [doc-origin]`, ClaimIDs: []string{"doc-anchor"}},
 		},
 	}
 	// Hit, but snippet is empty — gating must suppress the inline line.
@@ -1561,7 +1561,7 @@ func TestFormatHookFindings_SecondaryAnchorGetsInlineCheck(t *testing.T) {
 	vulns := &types.Vulnerabilities{
 		Project: "test",
 		Items: []types.Vulnerability{
-			{Severity: "critical", Type: "load_bearing_vibes", Description: `Load-bearing vibes: "primary claim" supports 4 other claims (never challenged: true) [doc-origin]`, ClaimIDs: []string{"primary"}},
+			{Severity: "critical", Type: "load_bearing_vibes", Description: `4 claims rest on this vibes claim, never challenged: "primary claim" [doc-origin]`, ClaimIDs: []string{"primary"}},
 			{Severity: "warning", Type: "fluency_trap", Description: `Fluency trap: "secondary claim" stated at confidence 0.9 but basis is vibes [doc-origin]`, ClaimIDs: []string{"secondary"}},
 		},
 	}
@@ -1625,7 +1625,7 @@ func TestFormatHookFindings_NoExternalCheckOnTranscriptOrigin(t *testing.T) {
 	vulns := &types.Vulnerabilities{
 		Project: "test",
 		Items: []types.Vulnerability{
-			{Severity: "critical", Type: "load_bearing_vibes", Description: `Load-bearing vibes: "an ephemeral conversation claim" supports 3 other claims (never challenged: true)`, ClaimIDs: []string{"ts-anchor"}},
+			{Severity: "critical", Type: "load_bearing_vibes", Description: `3 claims rest on this vibes claim, never challenged: "an ephemeral conversation claim"`, ClaimIDs: []string{"ts-anchor"}},
 		},
 	}
 	stub := &stubVerifier{

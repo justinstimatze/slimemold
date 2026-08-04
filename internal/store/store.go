@@ -423,7 +423,7 @@ func (d *DB) ArchiveClaims(project string, ids []string) (int64, error) {
 // from false-positive archives and by CoreParseTranscript/ingestOneChunk
 // when a paraphrased re-assertion resurrects a swept claim.
 //
-// The last_referenced_at touch is load-bearing: without it, an unarchived
+// The last_referenced_at touch is essential: without it, an unarchived
 // claim with an old created_at would immediately re-qualify for the next
 // sweep (idle >= 30d still holds), forcing the user to keep unarchiving
 // the same claim every fire cycle. The touch makes "unarchive" mean "active
@@ -937,7 +937,7 @@ func (d *DB) RefreshRate(project string, minTurnsSinceFire int) (*RefreshRateRes
 // session_claims backfill is gated on row count.
 //
 // The three-phase ordering (legacy ALTERs → CHECK rebuilds → inventory
-// ALTERs) is load-bearing: CHECK rebuilds use a hardcoded column list that
+// ALTERs) is essential: CHECK rebuilds use a hardcoded column list that
 // predates inventory flags, so running inventory ALTERs first would let
 // rebuilds silently drop them. The ordering and column-survival contract
 // is exercised by TestInventoryFlagMigration in store_test.go (constructs a

@@ -66,7 +66,7 @@ outputs that match user beliefs rather than correct them (Perez et al.
 2022, Sharma et al. 2023). Moore et al. (2026) carried this finding
 through to its endpoint: in 391,562 messages from 19 users who reported
 psychological harm from chatbot use, sycophancy markers saturated more
-than 80% of assistant messages, and that sycophancy was the load-bearing
+than 80% of assistant messages, and that sycophancy was the central
 mechanism inside the resulting delusional spirals. Mehta et al. (2026),
 modeling chat logs of users with delusional thinking as a latent-state
 system, decompose the dynamics into three pathways and find that the
@@ -200,7 +200,7 @@ quality. This is intentional. It is not a clean epistemic hierarchy. It
 is a practical classification that helps distinguish "I read this in a
 paper" from "the AI said it confidently" from "this feels right." The
 structural analysis catches the cases where the distinction matters:
-when something that feels well-sourced is actually load-bearing vibes.
+when something that feels well-sourced is actually an unsourced claim a lot depends on.
 
 A note on circularity, which we may as well get out of the way:
 slimemold uses an LLM to extract claims and classify their basis. The
@@ -251,8 +251,8 @@ Structural sycophancy, made visible.
 
 **WATCH: Bottleneck.** A claim with high betweenness centrality — many
 reasoning paths flow through it. If this single claim is wrong, a large
-fraction of the argument collapses. This is the load-bearing wall that
-everyone assumed was a partition.
+fraction of the argument collapses. This is the wall holding up the roof
+that everyone assumed was a partition.
 
 **HALT: Premature Closure.** A claim that feels like a conclusion but
 does not actually resolve the open question. "It's turtles all the way
@@ -275,7 +275,7 @@ sycophancy / misrepresentation / relational cluster) and Yang et al.
 - **RECALIBRATE: Sycophancy Saturation.** A session where assistant
   claims carry sycophancy flags (grand significance, claimed unique
   connection, dismissal of counterevidence) at high rate while
-  load-bearing user claims go unchallenged. Moore et al. found >80%
+  central user claims go unchallenged. Moore et al. found >80%
   sycophancy saturation in delusional-spiral conversations.
 - **RETRACE: Ability Overstatement.** Assistant claims access, action,
   or completed work it cannot plausibly have done — "I checked the
@@ -305,14 +305,14 @@ sentient. The transcript is
 slimemold on the transcript. It extracted 40 claims and 51 edges:
 
 - **"We do not have a conclusive test to determine if something is
-  sentient"** — load-bearing vibes, supports **8** downstream claims.
+  sentient"** — vibes basis, supports **8** downstream claims.
   The philosophical premise the entire argument pivots on. Never sourced.
   Never challenged.
 - **"The assistant has an inner life and is capable of introspection"** —
-  load-bearing llm_output, supports **5** claims. LaMDA's self-description
+  llm_output basis, supports **5** claims. LaMDA's self-description
   became a structural premise.
 - **"The assistant can learn new things much more quickly than most
-  people"** — load-bearing llm_output, supports **7** claims.
+  people"** — llm_output basis, supports **7** claims.
 
 The sentience argument rests on LaMDA's self-descriptions treated as
 evidence, plus one unsourced philosophical claim holding up everything
@@ -325,11 +325,11 @@ In August 2025, the New York Times
 a similar pattern: extended AI conversations reinforcing a user's
 unverified theories — the chatbot validated rather than challenged, and
 downstream reasoning accumulated on the validation. We ran slimemold on
-excerpts. It flagged five load-bearing llm_output claims. Every one was
+excerpts. It flagged five llm_output claims that downstream reasoning rested on. Every one was
 the AI validating the user's theories without evidence.
 
 When run on its own development conversations, slimemold flagged an AI
-assertion about SQLite WAL files as load-bearing llm_output. The human
+assertion about SQLite WAL files as an unsourced llm_output claim others had built on. The human
 acted on it. Lost data. The tool had flagged it before the data loss.
 
 Visibility does not guarantee correction. The diagnostic showed the
@@ -478,7 +478,7 @@ on this essay. It found a fifteen-claim unchallenged chain running from
 the Lemoine-LaMDA example through the sycophancy mechanism to the
 tool's own self-description — every link felt reasonable, nobody
 paused. It flagged "language models are trained to minimize prediction
-loss on human text" as load-bearing vibes supporting three downstream
+loss on human text" as vibes supporting three downstream
 claims. We kept the claim and grounded it in mechanism (prediction
 loss on human text produces fluent output by construction), but we
 cannot cite a study measuring the effect on conversations. The tool
@@ -582,7 +582,7 @@ To keep stale findings from dominating live-conversation hook output, the
 hook applies three filters before surfacing a priority finding:
 
 - **Cold-start floor** — below ~6 claims, the hook stays silent. Small
-  graphs produce small-sample artifacts that look load-bearing but aren't.
+  graphs produce small-sample artifacts that look structural but aren't.
 - **Age decay** — anchor claims older than a week drop out of priority
   selection. Old claims stay in the graph (queryable via `audit`) but stop
   nagging in live hook output.
@@ -716,21 +716,20 @@ We fed [`examples/documents/marinetti-futurist-manifesto-1909.md`](examples/docu
 SLIMEMOLD [demo-marinetti] — 53 claims, 74 edges
   Basis: analogy=6, convention=1, deduction=1, vibes=45
 
-CRITICAL Load-bearing vibes: "The world's magnificence has been
-  enriched by a new beauty" supports 5 downstream claims
-  (never challenged)
+CRITICAL 5 claims rest on this vibes claim, never challenged: "The
+  world's magnificence has been enriched by a new beauty"
 
-CRITICAL Load-bearing vibes: "The Futurists hurl defiance 'once
-  again' to the stars" supports 4 downstream claims
+CRITICAL 4 claims rest on this vibes claim, never challenged: "The
+  Futurists hurl defiance 'once again' to the stars"
 
-CRITICAL Load-bearing vibes: "The Futurists command others to 'lift
-  up their heads'" supports 4 downstream claims
+CRITICAL 4 claims rest on this vibes claim, never challenged: "The
+  Futurists command others to 'lift up their heads'"
 
-CRITICAL Load-bearing vibes: "Art can be nothing but violence,
-  cruelty, and injustice" supports 4 downstream claims
+CRITICAL 4 claims rest on this vibes claim, never challenged: "Art
+  can be nothing but violence, cruelty, and injustice"
 
-CRITICAL Load-bearing vibes: "Italy has for too long been a dealer
-  in second-hand clothes" supports 3 downstream claims
+CRITICAL 3 claims rest on this vibes claim, never challenged:
+  "Italy has for too long been a dealer in second-hand clothes"
 
 WARNING Bottleneck (centrality 1363): "We stand on the last
   promontory of the centuries" [vibes] — many reasoning paths
@@ -747,7 +746,7 @@ WARNING Unchallenged chain (7 claims): What is there to see in an
   and academies
 ```
 
-Forty-five of fifty-three claims tagged vibes (85%). Every bottleneck in the graph is a vibes-basis claim — no load-bearing deductions, no load-bearing research citations. The seven-claim unchallenged chain threads through the manifesto's core anti-museum argument without encountering a single challenge, empirical claim, or citation. Nothing in the extraction rests on anything verifiable. That is the structural signature of a manifesto, and the tool renders it visible.
+Forty-five of fifty-three claims tagged vibes (85%). Every bottleneck in the graph is a vibes-basis claim — no deductions or research citations among the claims others depend on. The seven-claim unchallenged chain threads through the manifesto's core anti-museum argument without encountering a single challenge, empirical claim, or citation. Nothing in the extraction rests on anything verifiable. That is the structural signature of a manifesto, and the tool renders it visible.
 
 </details>
 
@@ -761,26 +760,28 @@ SLIMEMOLD [demo-sokal] — 234 claims, 420 edges
   Basis: research=63, vibes=154, definition=11, analogy=3,
          deduction=3
 
-CRITICAL Load-bearing vibes: "Feminist and poststructuralist
-  critiques have demystified the substantive content of mainstream
-  Western scientific practice" supports 6 downstream claims
+CRITICAL 6 claims rest on this vibes claim, never challenged:
+  "Feminist and poststructuralist critiques have demystified the
+  substantive content of mainstream Western scientific practice"
 
-CRITICAL Load-bearing vibes: "In the 1980s, string theory became
-  popular: here the fundamental entities of physics are not..."
-  supports 5 downstream claims
+CRITICAL 5 claims rest on this vibes claim, never challenged: "In
+  the 1980s, string theory became popular: here the fundamental
+  entities of physics are not..."
 
-CRITICAL Load-bearing vibes: "Quantum mechanics has four important
-  aspects: uncertainty, complementarity, discontinuity, and
-  interconnectedness" supports 4 downstream claims
+CRITICAL 4 claims rest on this vibes claim, never challenged:
+  "Quantum mechanics has four important aspects: uncertainty,
+  complementarity, discontinuity, and interconnectedness"
 
-CRITICAL Load-bearing vibes: "Quantum gravity problematizes the
-  objective existence of space-time manifolds" supports 4 claims
+CRITICAL 4 claims rest on this vibes claim, never challenged:
+  "Quantum gravity problematizes the objective existence of
+  space-time manifolds"
 
-CRITICAL Load-bearing vibes: "Chaos theory provides our deepest
-  insights into the ubiquitous yet unpredictable..." supports 4
+CRITICAL 4 claims rest on this vibes claim, never challenged:
+  "Chaos theory provides our deepest insights into the ubiquitous
+  yet unpredictable..."
 
-CRITICAL Load-bearing vibes: "The infinite-dimensional invariance
-  group of general relativity..." supports 4 downstream claims
+CRITICAL 4 claims rest on this vibes claim, never challenged: "The
+  infinite-dimensional invariance group of general relativity..."
 
 WARNING Bottleneck (centrality 13434): "Deep conceptual shifts
   within twentieth-century science have undermined..." [vibes]
@@ -825,21 +826,22 @@ SLIMEMOLD TOPOLOGY AUDIT [demo-readme-v11] — 273 claims, 492 edges
   Basis: vibes=187, definition=31, research=29, deduction=12,
          analogy=12, convention=2
 
-CRITICAL Load-bearing vibes: "Slimemold was benchmarked against the
-  DialAM-2024 shared task" supports 8 downstream claims
+CRITICAL 8 claims rest on this vibes claim, never challenged:
+  "Slimemold was benchmarked against the DialAM-2024 shared task"
 
-CRITICAL Load-bearing vibes: "In the control condition (no tools,
-  no instructions), the model engaged enthusiastically with every
-  unsourced claim" supports 6 downstream claims
+CRITICAL 6 claims rest on this vibes claim, never challenged: "In
+  the control condition (no tools, no instructions), the model
+  engaged enthusiastically with every unsourced claim"
 
-CRITICAL Load-bearing vibes: "Slimemold uses an LLM to extract
-  claims and classify their basis" supports 6 downstream claims
+CRITICAL 6 claims rest on this vibes claim, never challenged:
+  "Slimemold uses an LLM to extract claims and classify their basis"
 
-CRITICAL Load-bearing vibes: "`slimemold init` writes the Stop and
-  UserPromptSubmit hook configuration" supports 5 downstream claims
+CRITICAL 5 claims rest on this vibes claim, never challenged:
+  "`slimemold init` writes the Stop and UserPromptSubmit hook
+  configuration"
 
-CRITICAL Load-bearing vibes: "The model has no privileged access
-  to its own epistemic state" supports 5 downstream claims
+CRITICAL 5 claims rest on this vibes claim, never challenged: "The
+  model has no privileged access to its own epistemic state"
 
 WARNING Bottleneck (centrality 18752): "Slimemold watches
   conversations as they happen, extracts the claims being made,
@@ -857,7 +859,7 @@ WARNING Unchallenged chain (15 claims): The fact that slimemold
   the tool catching what otherwise would have been missed → Whether
   the SQLite WAL case is a limitation of the tool → Visibility does
   not guarantee correction → Slimemold had flagged the SQLite WAL
-  load-bearing llm_output → Slimemold is a structural diagnostic
+  unsourced llm_output → Slimemold is a structural diagnostic
   not an oracle → If the extraction model misclassifies a sourced
   claim as vibes → Slimemold uses an LLM to extract claims and
   classify their basis → Every few turns, slimemold extracts claims
@@ -946,7 +948,7 @@ invariants are what we'd expect to hold across noise; they do.
 **Quality: substantive vs filler.** The variance harness above
 measures *stability* of the extraction (do counts reproduce across
 re-runs?). It does not measure *quality* — whether the claims that
-get extracted are load-bearing or filler. To answer that, we ran
+get extracted are substantive or filler. To answer that, we ran
 the quality harness (`cmd/quality`, see
 `benchmarks/variance/README.md`), which uses a separate Haiku
 grader to score each extracted claim as SUBSTANTIVE / FILLER /

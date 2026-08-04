@@ -57,7 +57,7 @@ type Emitter struct {
 // Emit writes one JSONL row with kind/project/duration_ms attached plus
 // every key in extra. Fixed fields are assigned AFTER the merge so a
 // caller's extra cannot override kind/project/duration_ms — the kind
-// taxonomy is load-bearing for downstream `mlr stats1 -g kind` analysis.
+// taxonomy is what downstream `mlr stats1 -g kind` analysis groups on.
 //
 // extra may be nil. logDir must be set on the Emitter, otherwise this is
 // a no-op (early-return guard).
@@ -327,7 +327,7 @@ func stringField(ev map[string]any, key string) string {
 }
 
 // durField renders the duration as "Nms" when present and well-typed,
-// "-" otherwise. Comma-ok is load-bearing: silently coalescing a missing
+// "-" otherwise. Comma-ok matters here: silently coalescing a missing
 // duration_ms to 0 would produce "0ms" indistinguishable from a real
 // zero-duration event.
 func durField(ev map[string]any, key string) string {

@@ -10,8 +10,12 @@ import "fmt"
 // neverChallenged matches the !c.Challenged sense in the source —
 // pass true for an un-stress-tested claim (the production majority).
 func FormatLoadBearingFinding(claimText string, depCount int, neverChallenged bool) string {
-	return fmt.Sprintf("Load-bearing vibes: %q supports %d other claims (never challenged: %v)",
-		truncate60(claimText), depCount, neverChallenged)
+	challenge := "already challenged"
+	if neverChallenged {
+		challenge = "never challenged"
+	}
+	return fmt.Sprintf("%d claims rest on this vibes claim, %s: %q",
+		depCount, challenge, truncate60(claimText))
 }
 
 // truncate60 mirrors internal/analysis/analysis.go:truncate(s, 60) so

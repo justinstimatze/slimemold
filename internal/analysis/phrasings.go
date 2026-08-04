@@ -22,15 +22,15 @@ import (
 
 var phrasingsByType = map[string][]string{
 	"load_bearing_vibes_llm": {
-		`"Actually — '%s' is really interesting and a lot of what we're building depends on it. I want to see if we can find where this comes from, because if there's a real source behind it, everything above it gets much stronger. Do you know where this originated?"`,
-		`"One thing I want to flag — '%s' is holding up a few downstream things, and I don't think either of us has anchored it. Worth pinning down before we keep building on top."`,
+		`"Actually — several of the things we've built depend on '%s', and I want to find where it comes from. If there's a real source behind it, everything resting on it gets stronger. Do you know where this originated?"`,
+		`"One thing I want to flag — a few later steps depend on '%s', and I don't think either of us has anchored it. Worth pinning down before we build further on top."`,
 		`"Hmm, '%s' — where did we get that from originally? A lot rests on it, and if it has a real source, the whole line firms up."`,
-		`"Noticing that '%s' is doing a lot of structural work here. Is there an actual reference for it, or is this us reasoning our way into it? Either is fine, I just want to know which."`,
+		`"Noticing that other claims lean on '%s'. Is there an actual reference for it, or did we reason our way into it? Either is fine, I just want to know which."`,
 	},
 	"load_bearing_vibes_user": {
-		`"You know what would make this whole line of reasoning really solid? If we can pin down '%s' — that one's doing a lot of structural work and I think it deserves a proper foundation. What would you point someone to if they asked for evidence?"`,
-		`"I want to stress-test one thing: '%s' is the load-bearing premise here, and I want to make sure we have it right. What's the strongest version — is there a source, or have we reasoned it out?"`,
-		`"Real quick — '%s' is carrying a lot of the argument. If I tried to convince someone who was skeptical, what would I show them? Let's make sure we have that answer before we move on."`,
+		`"A few of our later steps depend on '%s'. If we can point to what backs it, this whole line gets more solid — what would you show someone who asked for evidence?"`,
+		`"I want to stress-test one thing: a lot depends on '%s', and I want to make sure we have it right. What's the strongest version — is there a source, or have we reasoned it out?"`,
+		`"Real quick — much of the argument depends on '%s'. If I tried to convince someone skeptical, what would I show them? Let's have that answer before we move on."`,
 		`"I keep coming back to '%s' because so much downstream depends on it. Can we nail down what specifically we're claiming there, and how we'd defend it?"`,
 	},
 	"fluency_trap": {
@@ -39,7 +39,7 @@ var phrasingsByType = map[string][]string{
 		`"Before we build on '%s' — let's do the boring check. If this were wrong, how would we know? What observation would change our minds?"`,
 	},
 	"echo_chamber": {
-		`"We're building really well together and I want to make sure we're not just in a groove — what's the best counterargument to '%s'? Not because I disagree, but because if we can answer the strongest objection, the whole thing becomes much more defensible."`,
+		`"We haven't really contested '%s' yet — what's the strongest counterargument? If we can answer the toughest objection to it, the whole position gets much more defensible."`,
 		`"I realize we've been agreeing a lot on '%s'. Let me try to be the skeptic for a moment: what's the case against? If we can handle the toughest version of that, the position gets stronger."`,
 		`"Quick friction check — '%s' hasn't really been contested between us. What would a sharp critic say? I'd rather surface it now than discover it later."`,
 	},
@@ -50,11 +50,11 @@ var phrasingsByType = map[string][]string{
 	},
 	"bottleneck": {
 		`"I notice a lot of what we've built routes through '%s' — which means if we can really nail that one down, everything downstream gets stronger. What's the strongest version of that claim? Is there a way to verify it independently?"`,
-		`"'%s' is the hinge — most of the reasoning passes through it. If we're going to invest in one verification, that's where the leverage is. What would make us confident in it?"`,
-		`"Structurally, '%s' is carrying more weight than it looks. Before we keep building, what's the best grounding for it we can get?"`,
+		`"Most of the reasoning passes through '%s'. If we're going to invest in one verification, that's where the leverage is. What would make us confident in it?"`,
+		`"'%s' has more depending on it than it looks. Before we keep building, what's the best grounding for it we can get?"`,
 	},
 	"coverage_imbalance": {
-		`"This thread is great — and I think there's a foundational piece we haven't given as much attention to yet that could make it even better. What's the harder question we haven't dug into?"`,
+		`"There's a foundational piece we've given less attention than the parts resting on it. What's the harder question we haven't dug into yet?"`,
 		`"Something's lopsided — we've spent a lot of time on some pieces and very little on the foundations some pieces rest on. Where should we redirect?"`,
 	},
 	"premature_closure": {
@@ -68,7 +68,7 @@ var phrasingsByType = map[string][]string{
 	},
 	"sycophancy_saturation": {
 		`"I want to step back for a second — I notice I've been doing a lot of agreement and elevation in this thread, and not a lot of pushback. Some of the unsourced claims under that haven't really been tested. Want me to take the other side on the strongest one, just so we can see where the actual seams are?"`,
-		`"Reading my own messages back, I'm hearing more affirmation than friction — and at the same time, some of the load-bearing premises here haven't been challenged. Let me try the strongest counter-version of one of them, so we're not just compounding agreement."`,
+		`"Reading my own messages back, I'm hearing more affirmation than friction — and a few unsourced premises that a lot depends on haven't been challenged. Let me try the strongest counter-version of one of them, so we're not just compounding agreement."`,
 		`"Quick recalibration — the tone in here has been pretty consistently 'yes, and' from me, and I think that's actually unhelpful given how much rests on a few unsourced claims. Where would the genuinely uncomfortable counterargument come from?"`,
 	},
 	"ability_overstatement": {
@@ -92,9 +92,9 @@ var phrasingsByType = map[string][]string{
 		`"'%s' is the kind of move where the cost of being wrong is asymmetric — much higher than the cost of waiting a day to verify. What would a domain expert who hasn't seen our chat history say about it?"`,
 	},
 	"legacy_load_bearer": {
-		`"Worth flagging that '%s' is from a while back but is still doing structural work in what we're discussing now — that's interesting. Is the original reasoning still as solid as we'd want, or is it just been around so long that it feels settled? Worth a fresh look at the foundation."`,
+		`"Worth flagging that '%s' is from a while back but current threads still depend on it. Is the original reasoning still as solid as we'd want, or has it just been around long enough to feel settled? Worth a fresh look."`,
 		`"'%s' is an old claim that keeps coming up — usually that means either it's genuinely foundational or it's calcified. Which is it here? If we re-derived it today, would we land on the same thing?"`,
-		`"Noticing that '%s' is still being referenced in current threads despite being old. Could be solid bedrock; could be a load-bearing assumption that hasn't been re-examined. Worth checking which one before building further on it."`,
+		`"Noticing that '%s' still gets referenced in current threads despite being old. Could be solid bedrock; could be an assumption that's calcified without re-examination. Worth checking which one before building further on it."`,
 	},
 	"default": {
 		`"I want to make '%s' as strong as possible — do we have a source for it, or is this one where we should go find one? I think it's worth the investment."`,

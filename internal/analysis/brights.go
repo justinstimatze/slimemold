@@ -57,7 +57,7 @@ func findWellSourcedLoadBearer(claims []types.Claim, edges []types.Edge) []types
 		out = append(out, types.Vulnerability{
 			Severity:    "info",
 			Type:        "strength_well_sourced_load_bearer",
-			Description: fmt.Sprintf("Well-sourced load-bearer: %q [%s] supports %d downstream claims — the argument rests on something verifiable", truncate(c.Text, 70), c.Basis, dependents[c.ID]),
+			Description: fmt.Sprintf("%d claims rest on this %s claim, verifiable: %q — the argument rests on something you can point to", dependents[c.ID], c.Basis, truncate(c.Text, 70)),
 			ClaimIDs:    []string{c.ID},
 		})
 	}

@@ -51,7 +51,7 @@ func TestIntegration_RealVerifierInlinesReconciledState(t *testing.T) {
 	vulns := &types.Vulnerabilities{
 		Project: "smoke",
 		Items: []types.Vulnerability{
-			{Severity: "critical", Type: "load_bearing_vibes", Description: `Load-bearing vibes: "the project's positioning claim that lives in the README" supports 3 other claims (never challenged: true) [doc-origin]`, ClaimIDs: []string{"doc-anchor"}},
+			{Severity: "critical", Type: "load_bearing_vibes", Description: `3 claims rest on this vibes claim, never challenged: "the project's positioning claim that lives in the README" [doc-origin]`, ClaimIDs: []string{"doc-anchor"}},
 		},
 	}
 

@@ -10,7 +10,7 @@ Designed against Claude Code first, but the threat model is generic: any agent
 harness with MCP support and a Stop/UserPromptSubmit-equivalent hook can install
 slimemold. People use coding agents for everything — debugging, decisions,
 journaling, philosophical work, emotional support — and the failure modes
-slimemold targets (sycophancy, load-bearing vibes, sentience drift) are
+slimemold targets (sycophancy, unsourced foundations, sentience drift) are
 agnostic to whether the surface task is "fix this build" or "help me think
 through this." The reasoning-topology layer doesn't care about the domain.
 
@@ -24,7 +24,7 @@ through this." The reasoning-topology layer doesn't care about the domain.
 ## Two Analysis Patterns
 
 - **Hooks** (live conversation): System observes the agent via `UserPromptSubmit`.
-  Agent can't control timing or opt out. This is load-bearing for the threat model.
+  Agent can't control timing or opt out. This is essential to the threat model.
 - **`analyze_kb` MCP action** (batch/offline): External callers analyze a knowledge
   graph. For CI pipelines, cross-project comparison, winze KB exports — not for the
   agent to self-analyze during the conversation hooks are already observing.
@@ -38,7 +38,7 @@ mutual trajectory, not to dunk on the user or announce that a tool found problem
 When findings appear, push back the way a good collaborator would — friendly,
 helpful, specific. The model is already trained to be helpful; the tool just gives
 it structural reasons to redirect rather than agree. "That's an interesting claim —
-do you have a source for it?" is better than "WARNING: load-bearing vibes detected."
+do you have a source for it?" is better than "WARNING: unsourced foundation detected."
 The model receives the structural diagnosis; the user receives better conversation.
 
 ## Behavioral contract
@@ -124,7 +124,7 @@ re-deciding.
 | README chunks with 0 edges | 0 | 3 |
 
 Claim *recall/quality* is a tie; **topology is a blowout.** Haiku gives ~⅓ the
-edges and zeroes out whole chunks. Slimemold's detectors (load-bearing vibes,
+edges and zeroes out whole chunks. Slimemold's detectors (unsourced foundations,
 amplification cascades, hubs) all run on edges — the graph structure *is* the
 product — so Haiku guts the live hook's value for a 3× price cut (Sonnet
 $3/$15, Haiku $1/$5 per Mtok — not the ~10× an older mental model assumes).
