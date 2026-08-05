@@ -673,11 +673,26 @@ func cmdInit() {
 	extractCmd := exe + " hook"    // Stop: runs extraction
 	deliverCmd := exe + " deliver" // UserPromptSubmit: delivers findings
 
+	dirty := false
+
+	// Migrate a stale binary path before the "already registered" check.
+	// Re-running init from a NEW binary location (e.g. after moving from the
+	// repo working tree to ~/go/bin) must repoint the hooks — otherwise the
+	// registered-check below sees the old slimemold command, declares victory,
+	// and leaves the hooks pointing at a path that no longer exists. Rewrites
+	// only the binary prefix and preserves each command's subcommand/args.
+	if migrateHookBinaryPath(settings, "Stop", exe) {
+		dirty = true
+		fmt.Fprintf(os.Stderr, "    Stop path migrated → %s\n", extractCmd)
+	}
+	if migrateHookBinaryPath(settings, "UserPromptSubmit", exe) {
+		dirty = true
+		fmt.Fprintf(os.Stderr, "    UserPromptSubmit path migrated → %s\n", deliverCmd)
+	}
+
 	// Check which hooks are already registered
 	hasStop := hookRegistered(settings, "Stop")
 	hasSubmit := hookRegistered(settings, "UserPromptSubmit")
-
-	dirty := false
 
 	if hasStop && hasSubmit {
 		fmt.Fprintf(os.Stderr, "  settings.json: slimemold hooks already registered, skipping\n")
@@ -1577,6 +1592,57 @@ func cleanStaleLocks(logDir string) {
 }
 
 // hookRegistered checks if a slimemold hook is registered for the given event type.
+// migrateHookBinaryPath rewrites the binary prefix of any slimemold hook
+// command under eventType to exe, preserving the subcommand and args. Returns
+// true if it changed anything. A command is "slimemold's" when its first field
+// is a path whose basename is "slimemold"; the check is by basename so a move
+// between directories (repo working tree → ~/go/bin) is caught while unrelated
+// tools are left alone. No-op when the path already equals exe.
+func migrateHookBinaryPath(settings map[string]interface{}, eventType, exe string) bool {
+	hooks, ok := settings["hooks"].(map[string]interface{})
+	if !ok {
+		return false
+	}
+	arr, ok := hooks[eventType].([]interface{})
+	if !ok {
+		return false
+	}
+	changed := false
+	for _, h := range arr {
+		hm, ok := h.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		inner, ok := hm["hooks"].([]interface{})
+		if !ok {
+			continue
+		}
+		for _, ih := range inner {
+			im, ok := ih.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			cmd, ok := im["command"].(string)
+			if !ok {
+				continue
+			}
+			fields := strings.Fields(cmd)
+			if len(fields) == 0 {
+				continue
+			}
+			bin := fields[0]
+			if filepath.Base(bin) != "slimemold" || bin == exe {
+				continue
+			}
+			// Preserve everything after the binary path verbatim (spacing,
+			// subcommand, any args) by splicing exe in for the prefix only.
+			im["command"] = exe + cmd[len(bin):]
+			changed = true
+		}
+	}
+	return changed
+}
+
 func hookRegistered(settings map[string]interface{}, eventType string) bool {
 	hooks, ok := settings["hooks"].(map[string]interface{})
 	if !ok {

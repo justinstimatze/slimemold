@@ -67,22 +67,33 @@ ANTHROPIC_API_KEY=... SLIMEMOLD_INVENTORY_ONLINE=1 go test -tags=online \
   ./internal/analysis/ -run TestInventoryOnlineAccuracy -v
 ```
 
-## Hook binary freshness
+## Hook binary location & freshness
 
-The Claude Code hooks invoke `./slimemold` (the binary in this repo). Nothing in
-the normal flow rebuilds it — `.git/hooks/pre-push` compiles to `/tmp` and
-deletes the artifact (compile check only), so editing source and committing can
-leave the **live hook running stale logic** (this silently ran a ~9h-old binary
-on 2026-06-10). Two guards:
+The Claude Code hooks invoke **`~/go/bin/slimemold`** — the `go install`ed
+binary, matching every sibling hook-tool on the machine (hindcast, weir, bmg,
+inkling, nowcast, basanite all run from `~/go/bin`). It deliberately does NOT
+run from a binary in the repo working tree: a stray 24MB executable sitting in a
+repo root reads as cruft, and a sibling agent cleaned it up on 2026-08-05,
+breaking the hooks machine-wide (`slimemold: not found` in every session). The
+`init` command registers whatever `os.Executable()` reports, so `go install`
+then `~/go/bin/slimemold init` wires the right path; re-running `init` from a new
+location migrates the registered path (`migrateHookBinaryPath` in main.go).
 
-- **Runtime detection** — `staleBinaryCheck` (main.go) runs on every fire from a
-  source tree: if the binary is older than its newest non-test `.go`, it logs a
-  `STALE BINARY` warning to `hook.log` + stderr + a `stale_binary` event. Costs
-  installed binaries nothing (no adjacent `go.mod` → one stat, skip).
-- **Auto-rebuild** — `./scripts/install-dev-hooks.sh` installs `post-commit` +
-  `post-merge` hooks that `go build -o slimemold .`. Run it once per clone. With
-  it, committing/pulling keeps the hook binary in sync and you rarely see the
-  warning.
+`./slimemold` at the repo root (gitignored via `/slimemold`) is still fine for
+local `viz`/`audit`/testing — it's just no longer the hook target, so deleting
+it is harmless.
+
+Freshness: nothing in the normal flow reinstalls the hook binary —
+`.git/hooks/pre-push` compiles to `/tmp` and deletes it (compile check only), so
+editing source and committing can leave the **live hook running stale logic**
+(silently ran a ~9h-old binary on 2026-06-10). The guard:
+
+- **Reinstall-on-commit** — `./scripts/install-dev-hooks.sh` installs
+  `post-commit` + `post-merge` hooks that `go install .`. Run it once per clone.
+  With it, committing/pulling keeps `~/go/bin/slimemold` in sync. This IS the
+  freshness mechanism now: `staleBinaryCheck` (main.go) keys on a `go.mod` beside
+  the binary, so it no longer applies to a `~/go/bin` install (it still warns for
+  a source-tree `./slimemold` you run by hand).
 
 ## Extraction-prompt change discipline
 
