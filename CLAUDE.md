@@ -196,3 +196,27 @@ go build -o /tmp/sm_quality ./cmd/quality
 - modernc.org/sqlite — SQLite (pure Go, no CGO)
 - anthropics/anthropic-sdk-go — Sonnet extraction (default). `SLIMEMOLD_MODEL=claude-haiku-4-5-20251001` is cheaper/faster but **halves edge recall** — fine for claim-only use, wrong for the live hook. See "Extraction model & hook cost" below before switching.
 - google/uuid — claim IDs
+
+## Asks
+
+```ask
+not-in: **/CLAUDE*.md
+when: (?i)(\bmcp\b|\.mcp\.json)[^\n]{0,80}((un|not )available|not configured|not connected|no such (tool|server)|is ?n.t (there|set up))|((un|not )available|not configured|not connected|no such (tool|server))[^\n]{0,80}(\bmcp\b|\.mcp\.json)
+
+This writes off an MCP server. `.mcp.json` is gitignored in this repo, so it is
+per-worktree: the server can be configured and working in another checkout and
+simply absent from this one, and "the tool never appeared" looks identical
+either way. Check whether `.mcp.json` exists here and what it lists before
+routing around it — copying it across is usually the fix, and a workaround
+written on this assumption outlives the worktree that justified it. If you have
+looked and it is genuinely unconfigured here, say which of the two you found
+and continue.
+```
+
+No `in:` on that block on purpose — the precondition is a property of the repo
+rather than of any path in it, so placement carries it. Proximity is in one
+regex rather than two `when:` lines because on a Write `when:` sees the whole
+file, and two ANDed conditions matched unrelated halves of long documents:
+`errJWKSUnavailable` in one paragraph and an MCP mention in another. Measured
+2.3% that way against 175 real markdown files with every hit wrong, 0.6% with
+the proximity bound and the one hit real.
