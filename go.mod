@@ -1,12 +1,12 @@
 module github.com/justinstimatze/slimemold
 
-go 1.26
+go 1.26.0
 
 require (
 	github.com/anthropics/anthropic-sdk-go v1.68.0
 	github.com/google/uuid v1.6.0
 	github.com/mark3labs/mcp-go v0.58.0
-	golang.org/x/sys v0.47.0
+	golang.org/x/sys v0.48.0
 	golang.org/x/text v0.41.0
 	modernc.org/sqlite v1.57.0
 )
