@@ -44,8 +44,8 @@ func run() int {
 	fixturePath := flag.String("fixture", "README.md", "main fixture to grade")
 	posFixture := flag.String("pos-fixture", "benchmarks/variance/fixtures/positive_control.md", "positive control fixture")
 	negFixture := flag.String("neg-fixture", "benchmarks/variance/fixtures/negative_control.md", "negative control fixture")
-	graderModel := flag.String("grader-model", "claude-haiku-4-5-20251001", "model used for per-claim grading")
-	extractModel := flag.String("extract-model", "", "extraction model (defaults to SLIMEMOLD_MODEL or claude-sonnet-4-6)")
+	graderModel := flag.String("grader-model", "claude-haiku-4-5", "model used for per-claim grading")
+	extractModel := flag.String("extract-model", "", "extraction model (defaults to SLIMEMOLD_MODEL or claude-sonnet-5)")
 	concurrency := flag.Int("concurrency", 10, "max concurrent grader calls (must be >= 1)")
 	posMin := flag.Float64("pos-min", qualityharness.DefaultPosMin, "positive-control substantive rate must be >= this")
 	negMax := flag.Float64("neg-max", qualityharness.DefaultNegMax, "negative-control substantive rate must be <= this")
@@ -67,7 +67,7 @@ func run() int {
 	if *extractModel == "" {
 		*extractModel = os.Getenv("SLIMEMOLD_MODEL")
 		if *extractModel == "" {
-			*extractModel = "claude-sonnet-4-6"
+			*extractModel = "claude-sonnet-5"
 		}
 	}
 

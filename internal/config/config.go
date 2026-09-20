@@ -11,7 +11,7 @@ import (
 // Config holds runtime configuration.
 type Config struct {
 	AnthropicAPIKey string
-	Model           string // extraction model, default claude-sonnet-4-6
+	Model           string // extraction model, default claude-sonnet-5
 	DataDir         string // ~/.slimemold
 	KnowledgeMode   bool   // shifts extraction toward knowledge gaps
 	HookInterval    int    // run extraction every N turns, default 3
@@ -29,7 +29,7 @@ func Load() (*Config, error) {
 
 	model := os.Getenv("SLIMEMOLD_MODEL")
 	if model == "" {
-		model = "claude-sonnet-4-6"
+		model = "claude-sonnet-5"
 	}
 
 	dataDir := os.Getenv("SLIMEMOLD_DATA_DIR")

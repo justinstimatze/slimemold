@@ -185,8 +185,8 @@ varies):
 
 ```bash
 go build -o /tmp/sm_quality ./cmd/quality
-/tmp/sm_quality -extract-model claude-sonnet-4-6          # baseline
-/tmp/sm_quality -extract-model claude-haiku-4-5-20251001  # candidate
+/tmp/sm_quality -extract-model claude-sonnet-5   # baseline
+/tmp/sm_quality -extract-model claude-haiku-4-5  # candidate
 # compare substantive-rate AND per-chunk "N claims, M edges" lines — edges are the tell
 ```
 
@@ -194,7 +194,7 @@ go build -o /tmp/sm_quality ./cmd/quality
 
 - mark3labs/mcp-go — MCP server
 - modernc.org/sqlite — SQLite (pure Go, no CGO)
-- anthropics/anthropic-sdk-go — Sonnet extraction (default). `SLIMEMOLD_MODEL=claude-haiku-4-5-20251001` is cheaper/faster but **halves edge recall** — fine for claim-only use, wrong for the live hook. See "Extraction model & hook cost" below before switching.
+- anthropics/anthropic-sdk-go — Sonnet extraction (default). `SLIMEMOLD_MODEL=claude-haiku-4-5` is cheaper/faster but **halves edge recall** — fine for claim-only use, wrong for the live hook. See "Extraction model & hook cost" below before switching.
 - google/uuid — claim IDs
 
 ## Asks

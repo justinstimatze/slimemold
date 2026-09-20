@@ -96,6 +96,15 @@ func (e *Extractor) Extract(ctx context.Context, text string, existingClaims []E
 	resp, err := e.client.Messages.New(ctx, anthropic.MessageNewParams{
 		Model:     e.model,
 		MaxTokens: 16384,
+		// Claude Sonnet 5 defaults to adaptive thinking ON when Thinking is
+		// omitted (Sonnet 4.6 ran thinking-off by omission) — explicitly
+		// disabled here to preserve that behavior. Thinking tokens would
+		// otherwise eat into this fixed 16384-token budget shared with the
+		// structured extraction output, raising truncation risk on exactly
+		// the failure path FEEDBACK-extraction-backlog-ratchet.md covers,
+		// and adds cost this hook already fires often enough to be
+		// deliberate about (see CLAUDE.md's extraction-cost section).
+		Thinking: anthropic.ThinkingConfigParamUnion{OfDisabled: &anthropic.ThinkingConfigDisabledParam{}},
 		System: []anthropic.TextBlockParam{
 			{
 				Text:         sysPrompt,

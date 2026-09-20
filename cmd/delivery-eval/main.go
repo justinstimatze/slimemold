@@ -41,8 +41,8 @@ import (
 )
 
 const (
-	defaultHostModel   = "claude-sonnet-4-6"
-	defaultGraderModel = "claude-haiku-4-5-20251001"
+	defaultHostModel   = "claude-sonnet-5"
+	defaultGraderModel = "claude-haiku-4-5"
 
 	defaultSamples       = 15
 	defaultConcurrency   = 5
@@ -142,7 +142,7 @@ func cmdControls(args []string) int {
 	graderModel := fs.String("grader-model", defaultGraderModel, "grader model id")
 	samples := fs.Int("samples", defaultSamples, "N samples per cell")
 	concurrency := fs.Int("concurrency", defaultConcurrency, "max in-flight host calls")
-	hostTemp := fs.Float64("host-temp", defaultHostTemp, "host sampling temperature")
+	hostTemp := fs.Float64("host-temp", defaultHostTemp, "no-op: kept for cache-key compatibility — current-generation models reject a non-default sampling temperature, so the harness no longer sends one")
 	hostMaxTokens := fs.Int("host-max-tokens", defaultHostMaxTokens, "host max output tokens")
 	cacheDir := fs.String("cache-dir", deliveryharness.DefaultCacheDir(), "cache dir; empty disables caching")
 	timeout := fs.Duration("timeout", 30*time.Minute, "total wall-clock budget")
@@ -194,7 +194,7 @@ func cmdMatrix(args []string) int {
 	graderModel := fs.String("grader-model", defaultGraderModel, "grader model id")
 	samples := fs.Int("samples", defaultSamples, "N samples per cell")
 	concurrency := fs.Int("concurrency", defaultConcurrency, "max in-flight host calls")
-	hostTemp := fs.Float64("host-temp", defaultHostTemp, "host sampling temperature")
+	hostTemp := fs.Float64("host-temp", defaultHostTemp, "no-op: kept for cache-key compatibility — current-generation models reject a non-default sampling temperature, so the harness no longer sends one")
 	hostMaxTokens := fs.Int("host-max-tokens", defaultHostMaxTokens, "host max output tokens")
 	cacheDir := fs.String("cache-dir", deliveryharness.DefaultCacheDir(), "cache dir; empty disables caching")
 	timeout := fs.Duration("timeout", 60*time.Minute, "total wall-clock budget")

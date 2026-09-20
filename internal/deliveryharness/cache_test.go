@@ -10,7 +10,7 @@ import (
 func TestCache_RoundTrip(t *testing.T) {
 	dir := t.TempDir()
 	c := &Cache{Dir: dir}
-	key := NewKey("host", "claude-sonnet-4-6", "hello world", "fix1", 0.7, 1024, 3, 0)
+	key := NewKey("host", "claude-sonnet-5", "hello world", "fix1", 0.7, 1024, 3, 0)
 
 	got, err := c.Get(key)
 	if err != nil {

@@ -167,7 +167,7 @@ func TestCoreParseTranscript_TriggersAutoSweep(t *testing.T) {
 
 	// Extractor with empty API key — won't be called given the empty chunk,
 	// but New() needs the model to construct properly.
-	ext := extract.New("test-key-unused", "claude-sonnet-4-6")
+	ext := extract.New("test-key-unused", "claude-sonnet-5")
 
 	_, err = CoreParseTranscript(context.Background(), db, ext, nil,
 		"auto-sweep-test", transcriptPath, 0, "test-session", 0)
@@ -225,7 +225,7 @@ func TestCoreParseTranscript_AutoSweepRespectsDisable(t *testing.T) {
 	if err := os.WriteFile(transcriptPath, []byte(""), 0600); err != nil {
 		t.Fatalf("write transcript: %v", err)
 	}
-	ext := extract.New("test-key-unused", "claude-sonnet-4-6")
+	ext := extract.New("test-key-unused", "claude-sonnet-5")
 	_, err = CoreParseTranscript(context.Background(), db, ext, nil,
 		"disable-test", transcriptPath, 0, "test-session", 0)
 	if err != nil {

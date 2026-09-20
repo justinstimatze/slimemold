@@ -61,7 +61,7 @@ type metrics struct {
 func main() {
 	fixturePath := flag.String("fixture", "README.md", "path to document fixture")
 	runs := flag.Int("runs", 5, "number of extraction runs")
-	model := flag.String("model", "", "extraction model (defaults to SLIMEMOLD_MODEL or claude-sonnet-4-6)")
+	model := flag.String("model", "", "extraction model (defaults to SLIMEMOLD_MODEL or claude-sonnet-5)")
 	flag.Parse()
 
 	apiKey := os.Getenv("ANTHROPIC_API_KEY")
@@ -72,7 +72,7 @@ func main() {
 	if *model == "" {
 		*model = os.Getenv("SLIMEMOLD_MODEL")
 		if *model == "" {
-			*model = "claude-sonnet-4-6"
+			*model = "claude-sonnet-5"
 		}
 	}
 

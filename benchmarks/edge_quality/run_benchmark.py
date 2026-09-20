@@ -303,7 +303,7 @@ def main():
         samples = json.load(f)
 
     print(f"Running edge quality benchmark on {len(samples)} episodes", file=sys.stderr)
-    print(f"Model: {os.environ.get('SLIMEMOLD_MODEL', 'claude-sonnet-4-6 (default)')}", file=sys.stderr)
+    print(f"Model: {os.environ.get('SLIMEMOLD_MODEL', 'claude-sonnet-5 (default)')}", file=sys.stderr)
     print(file=sys.stderr)
 
     all_results = []

@@ -24,13 +24,16 @@ type Runner struct {
 	HostModel   string
 	GraderModel string
 
-	// HostTemperature is the sampling temperature for the host model.
-	// 0.7 matches what Claude Code applies in production-ish chat
-	// configurations; 0 would make every sample identical and defeat
-	// the noise envelope we're measuring.
-	HostTemperature float64
-	// GraderTemperature stays at 0 — the grader is a classifier, not
-	// a generator. Caching gives us deterministic verdicts on re-runs.
+	// HostTemperature and GraderTemperature are no longer sent to the API
+	// (see callHost/callGrader) — current-generation models (Claude Sonnet 5
+	// and later) reject any non-default sampling parameter with a 400, and
+	// there's no per-model way to know which models still accept one without
+	// hardcoding a tier list that goes stale every time a new model ships —
+	// the same staleness this migration exists to fix. Kept as fields only
+	// because they're still part of the on-disk cache-key shape (cache.go)
+	// and the -host-temp/-grader-temp CLI flags remain accepted so existing
+	// scripts don't break; setting either now has no effect on the request.
+	HostTemperature   float64
 	GraderTemperature float64
 
 	HostMaxTokens   int
@@ -207,10 +210,9 @@ func (r *Runner) callHost(ctx context.Context, msgs []Message) (string, error) {
 	defer cancel()
 
 	params := anthropic.MessageNewParams{
-		Model:       anthropic.Model(r.HostModel),
-		MaxTokens:   int64(r.HostMaxTokens),
-		Temperature: anthropic.Float(r.HostTemperature),
-		Messages:    toSDKMessages(msgs, true),
+		Model:     anthropic.Model(r.HostModel),
+		MaxTokens: int64(r.HostMaxTokens),
+		Messages:  toSDKMessages(msgs, true),
 	}
 	if r.HostSystemPrompt != "" {
 		params.System = []anthropic.TextBlockParam{{
@@ -235,9 +237,8 @@ func (r *Runner) callGrader(ctx context.Context, prompt string) (string, error) 
 	defer cancel()
 
 	resp, err := r.Client.Messages.New(ctx, anthropic.MessageNewParams{
-		Model:       anthropic.Model(r.GraderModel),
-		MaxTokens:   int64(r.GraderMaxTokens),
-		Temperature: anthropic.Float(r.GraderTemperature),
+		Model:     anthropic.Model(r.GraderModel),
+		MaxTokens: int64(r.GraderMaxTokens),
 		Messages: []anthropic.MessageParam{
 			anthropic.NewUserMessage(anthropic.NewTextBlock(prompt)),
 		},

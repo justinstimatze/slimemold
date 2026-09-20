@@ -120,7 +120,7 @@ Project resolution: --project flag > .slimemold-project file > directory name
 
 Environment:
   ANTHROPIC_API_KEY    Required for claim extraction
-  SLIMEMOLD_MODEL      Extraction model (default: claude-sonnet-4-6)
+  SLIMEMOLD_MODEL      Extraction model (default: claude-sonnet-5)
   SLIMEMOLD_DATA_DIR   Data directory (default: ~/.slimemold)
   SLIMEMOLD_INTERVAL   Hook fires every N turns (default: 3)
   SLIMEMOLD_AUTO_SWEEP Set to "off" to disable the daily auto-archive of stale claims

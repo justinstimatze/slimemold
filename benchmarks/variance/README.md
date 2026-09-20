@@ -24,7 +24,7 @@ ANTHROPIC_API_KEY=... go run benchmarks/variance/run.go [flags]
 Flags:
 - `-fixture PATH` — document to ingest (default `README.md`)
 - `-runs N` — number of extraction runs (default `5`)
-- `-model NAME` — extraction model (default `SLIMEMOLD_MODEL` env, then `claude-sonnet-4-6`)
+- `-model NAME` — extraction model (default `SLIMEMOLD_MODEL` env, then `claude-sonnet-5`)
 
 ## Cost / time tradeoffs
 
@@ -247,8 +247,8 @@ Flags:
 - `-fixture PATH` — main fixture to grade (default `README.md`)
 - `-pos-fixture PATH` — positive control (default `benchmarks/variance/fixtures/positive_control.md`)
 - `-neg-fixture PATH` — negative control (default `benchmarks/variance/fixtures/negative_control.md`)
-- `-grader-model NAME` — model for per-claim grading (default `claude-haiku-4-5-20251001`)
-- `-extract-model NAME` — extraction model (default `SLIMEMOLD_MODEL` env, then `claude-sonnet-4-6`)
+- `-grader-model NAME` — model for per-claim grading (default `claude-haiku-4-5`)
+- `-extract-model NAME` — extraction model (default `SLIMEMOLD_MODEL` env, then `claude-sonnet-5`)
 - `-concurrency N` — max concurrent grader calls (default `10`; must be `>= 1`)
 - `-pos-min F` — positive-control substantive rate must be ≥ this (default `0.70`)
 - `-neg-max F` — negative-control substantive rate must be ≤ this (default `0.30`)

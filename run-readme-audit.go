@@ -21,7 +21,7 @@ func main() {
 	}
 	model := os.Getenv("SLIMEMOLD_MODEL")
 	if model == "" {
-		model = "claude-sonnet-4-6"
+		model = "claude-sonnet-5"
 	}
 	dir, _ := os.MkdirTemp("", "readme-audit-*")
 	defer os.RemoveAll(dir)

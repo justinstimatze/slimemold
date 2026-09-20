@@ -525,9 +525,9 @@ export SLIMEMOLD_INTERVAL=10   # every 10th turn (cheaper)
 Set `SLIMEMOLD_MODEL` to override the extraction model:
 
 ```bash
-export SLIMEMOLD_MODEL=claude-opus-4-6          # best quality, ~10x cost
-export SLIMEMOLD_MODEL=claude-sonnet-4-6        # default
-export SLIMEMOLD_MODEL=claude-haiku-4-5-20251001  # cheapest, weaker edges
+export SLIMEMOLD_MODEL=claude-opus-5            # best quality, ~10x cost
+export SLIMEMOLD_MODEL=claude-sonnet-5          # default
+export SLIMEMOLD_MODEL=claude-haiku-4-5         # cheapest, weaker edges
 ```
 
 Optional: set `KAGI_API_KEY` to enable active external verification of
