@@ -251,29 +251,13 @@ func cmdDeliver() {
 	logDir := filepath.Join(cfg.DataDir, "tmp")
 	pendingFile := filepath.Join(logDir, "pending-"+hash+".txt")
 
-	// Staleness self-announcement. status-<hash>.json (project-scoped, written
-	// by cmdHook only on a SUCCESSFUL fire) is the one honest freshness signal
-	// slimemold has, but it's opt-in — visible only to someone who runs
-	// `slimemold status`. cmdDeliver runs on every UserPromptSubmit, the only
-	// path that reaches the model in-conversation, so it's the place to make
-	// silence self-report instead of looking identical to "all clear." This
-	// check runs unconditionally, ahead of the pending-file early-return below,
-	// because staleness needs to surface even on a turn with no fresh finding
-	// (that's the whole failure mode — see FEEDBACK-extraction-backlog-ratchet.md).
-	projectHash := fmt.Sprintf("%x", md5.Sum([]byte(project)))[:8]
-	if data, err := os.ReadFile(filepath.Join(logDir, "status-"+projectHash+".json")); err == nil {
-		var status struct {
-			Timestamp string `json:"timestamp"`
-		}
-		if json.Unmarshal(data, &status) == nil {
-			if t, err := time.Parse(time.RFC3339, status.Timestamp); err == nil {
-				const staleExtractionThreshold = 24 * time.Hour
-				if age := time.Since(t); age > staleExtractionThreshold {
-					fmt.Printf("[slimemold] No successful extraction in %s — the reasoning-topology graph is stale and findings may be silently missing. `slimemold status` shows why.\n", age.Round(time.Hour))
-				}
-			}
-		}
-	}
+	// Staleness self-announcement: cmdDeliver is the only hook path that
+	// reaches the model in-conversation, so it's the place to make silence
+	// self-report instead of looking identical to "all clear." Runs
+	// unconditionally, ahead of the pending-file early-return below, because
+	// staleness needs to surface even on a turn with no fresh finding —
+	// see printStaleExtractionWarning and FEEDBACK-extraction-backlog-ratchet.md.
+	printStaleExtractionWarning(logDir, project)
 
 	// Skip stale pending files — a session that ended more than 12h ago
 	// can't ground the finding it was going to deliver, so don't.
@@ -293,6 +277,36 @@ func cmdDeliver() {
 		// again (or rotate to a different anchor).
 		fmt.Print(string(data))
 		_ = os.Remove(pendingFile)
+	}
+}
+
+// printStaleExtractionWarning prints a line to stdout (reaching the model,
+// same as a delivered finding) when the last successful extraction is older
+// than staleExtractionThreshold. status-<projectHash>.json is project-scoped
+// and written by cmdHook only on a successful fire — the one honest
+// freshness signal slimemold has, but normally opt-in (visible only to
+// someone who runs `slimemold status`). Silent by design when the status
+// file is missing or unparseable — a brand-new project with no extraction
+// history yet isn't "stale," it just hasn't run.
+func printStaleExtractionWarning(logDir, project string) {
+	projectHash := fmt.Sprintf("%x", md5.Sum([]byte(project)))[:8]
+	data, err := os.ReadFile(filepath.Join(logDir, "status-"+projectHash+".json"))
+	if err != nil {
+		return
+	}
+	var status struct {
+		Timestamp string `json:"timestamp"`
+	}
+	if json.Unmarshal(data, &status) != nil {
+		return
+	}
+	t, err := time.Parse(time.RFC3339, status.Timestamp)
+	if err != nil {
+		return
+	}
+	const staleExtractionThreshold = 24 * time.Hour
+	if age := time.Since(t); age > staleExtractionThreshold {
+		fmt.Printf("[slimemold] No successful extraction in %s — the reasoning-topology graph is stale and findings may be silently missing. `slimemold status` shows why.\n", age.Round(time.Hour))
 	}
 }
 
@@ -629,30 +643,7 @@ func cmdHook() {
 	if err != nil {
 		logf("extraction error: %s", err)
 		emit("error", map[string]any{"phase": "extract", "model": cfg.Model, "reason": err.Error()})
-
-		fails := 1
-		if data, ferr := os.ReadFile(failCountFile); ferr == nil {
-			if n, aerr := strconv.Atoi(strings.TrimSpace(string(data))); aerr == nil {
-				fails = n + 1
-			}
-		}
-
-		// After maxConsecutiveExtractFailures fires have failed at the same
-		// sinceTurn, stop retrying the identical chunk and force the cursor
-		// past it. This sacrifices that span's extraction — better than
-		// staying dark indefinitely (the observed incident: 6.5 days, zero
-		// recovery). Only worth forcing if there's actually somewhere to
-		// skip to (turnCount > sinceTurn); a baseline (sinceTurn == 0)
-		// failure has no "past it" to skip to and just retries next fire.
-		const maxConsecutiveExtractFailures = 3
-		if fails >= maxConsecutiveExtractFailures && turnCount > sinceTurn {
-			logf("extraction failed %d times at turn %d — forcing cursor to %d to break the stall", fails, sinceTurn, turnCount)
-			emit("skip_forward", map[string]any{"from_turn": sinceTurn, "to_turn": turnCount, "consecutive_failures": fails})
-			_ = os.WriteFile(lastTurnFile, []byte(strconv.Itoa(turnCount)), 0600)
-			_ = os.Remove(failCountFile)
-		} else {
-			_ = os.WriteFile(failCountFile, []byte(strconv.Itoa(fails)), 0600)
-		}
+		recordExtractionFailure(logf, emit, lastTurnFile, failCountFile, sinceTurn, turnCount)
 		return
 	}
 	_ = os.Remove(failCountFile) // reset on any successful fire
@@ -696,6 +687,35 @@ func cmdHook() {
 	} else {
 		_ = os.Remove(pendingFile)
 	}
+}
+
+// recordExtractionFailure tracks consecutive extraction failures at the
+// current cursor position and, once maxConsecutiveExtractFailures is hit,
+// force-advances the cursor past the chunk that keeps failing. A chunk
+// blowing the extraction deadline fails identically on every retry —
+// nothing about it changes between fires — so without a forced skip a
+// single bad chunk stalls extraction forever. See
+// FEEDBACK-extraction-backlog-ratchet.md.
+func recordExtractionFailure(logf func(string, ...interface{}), emit func(string, map[string]any), lastTurnFile, failCountFile string, sinceTurn, turnCount int) {
+	fails := 1
+	if data, err := os.ReadFile(failCountFile); err == nil {
+		if n, err := strconv.Atoi(strings.TrimSpace(string(data))); err == nil {
+			fails = n + 1
+		}
+	}
+
+	// Only worth forcing if there's somewhere to skip to (turnCount >
+	// sinceTurn) — a baseline (sinceTurn == 0) failure has no "past it" and
+	// just retries next fire.
+	const maxConsecutiveExtractFailures = 3
+	if fails >= maxConsecutiveExtractFailures && turnCount > sinceTurn {
+		logf("extraction failed %d times at turn %d — forcing cursor to %d to break the stall", fails, sinceTurn, turnCount)
+		emit("skip_forward", map[string]any{"from_turn": sinceTurn, "to_turn": turnCount, "consecutive_failures": fails})
+		_ = os.WriteFile(lastTurnFile, []byte(strconv.Itoa(turnCount)), 0600)
+		_ = os.Remove(failCountFile)
+		return
+	}
+	_ = os.WriteFile(failCountFile, []byte(strconv.Itoa(fails)), 0600)
 }
 
 // cmdInit registers slimemold globally in ~/.claude/settings.json: the Stop
