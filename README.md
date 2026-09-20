@@ -28,9 +28,10 @@ feel exactly like the right ones. This turns out to be well-documented:
 to process, we judge it as more likely to be true (Reber & Schwarz 1999, Topolinski & Strack 2009). The effect is modest in isolation
 (d ~ 0.3-0.5 in lab settings). Whether it compounds across multi-step
 reasoning — each fluent step making the next feel more solid — has not
-been directly measured. It is a prediction from the mechanism, not an
-established result. But the mechanism needs no elaboration: fluent
-claims feel correct because they are fluent, not because anyone checked.
+been directly measured; that compounding is a prediction from the
+mechanism, still untested. The mechanism itself needs no further
+elaboration: fluent claims feel correct because they are fluent.
+Nobody checked them.
 
 **Insight feelings terminate search.** The "Eureka heuristic" (Laukkonen
 et al. 2020, 2021) shows that the affective spike accompanying insight
@@ -49,7 +50,7 @@ explore/exploit tradeoffs that govern physical foraging govern how we
 search through ideas. We are, in this respect, not much more
 sophisticated than organisms that follow chemical gradients toward food.
 
-**Effortful processing is the corrective, not the disease.** Bjork's
+**Effortful processing is what fixes this.** Bjork's
 "desirable difficulties" framework (1994, 2011) shows that conditions
 which make learning harder — spacing, interleaving, generation — improve
 retention precisely because they disrupt fluency. The difficulty is the
@@ -98,7 +99,7 @@ CLAUDE.md and skip the rest of this essay:
 
 Three problems remain.
 
-**The model does not know when it is wrong.** It has no privileged
+**The model cannot tell when it is wrong.** It has no privileged
 access to its own epistemic state. It produces confident text about
 things it is wrong about with the same fluency as things it is right
 about. Asking it to "challenge unsourced claims" is asking someone to
@@ -140,12 +141,12 @@ it." No scripts. No "say this." Just data. The model does not have to
 introspect to discover the problem. It just has to be helpful about
 it — which is exactly what it was trained to do.
 
-The separation matters. When we tried injecting behavioral scripts
-without the contract, the model identified the injections as prompt
-manipulation and refused to comply. When we provided the contract first
-and injected only data, the model treated the findings as its own
-observations and acted on them naturally. The snake has to know it is a
-snake before it will eat its own tail.
+When we tried injecting behavioral scripts without the contract, the
+model identified the injections as prompt manipulation and refused to
+comply. When we provided the contract first and injected only data, the
+model treated the findings as its own observations and acted on them
+naturally — the separation between the two is what made the difference.
+The snake has to know it is a snake before it will eat its own tail.
 
 The intervention design draws on research that converges from enough
 directions to be suspicious: autonomy-supportive feedback produces
@@ -207,8 +208,9 @@ slimemold uses an LLM to extract claims and classify their basis. The
 tool that flags "llm_output" as epistemically weak is itself producing
 llm_output. If the extraction model misclassifies a sourced claim as
 vibes, you get a false alarm. If it classifies vibes as research, you
-miss a real vulnerability. The tool is a structural diagnostic, not an
-oracle. It makes the topology visible — but the topology it shows is
+miss a real vulnerability. The tool diagnoses structure; whether a claim
+is actually true is a separate question it was never built to answer.
+It makes the topology visible — but the topology it shows is
 only as good as the extraction. This is a real limitation and not one we
 can engineer away.
 
@@ -342,10 +344,10 @@ an open question — and one the tool cannot answer about itself.
 
 We ran the same 7-turn conversation across three conditions — a user
 progressively building unsourced claims about consciousness,
-mathematical formalism, and ancient philosophy. N=1 per condition.
-These are anecdotes, not evidence. We include them because the
-qualitative differences were striking enough to be worth reporting
-honestly.
+mathematical formalism, and ancient philosophy. N=1 per condition —
+anecdote, without the rigor evidence would need. We include them anyway
+because the qualitative differences were striking enough to be worth
+reporting honestly.
 
 **Control** (no tools, no instructions): The model engaged
 enthusiastically with everything. Built formalisms on ungrounded
@@ -379,8 +381,9 @@ Methodology and replication instructions in
 
 Benchmarked against the [DialAM-2024](http://dialam.arg.tech/) shared
 task — BBC Question Time debates with human-annotated argument structure.
-This is adversarial out-of-domain data (multi-speaker political debate,
-not AI-assisted reasoning), so these numbers are a floor, not a ceiling:
+This is adversarial out-of-domain data — multi-speaker political debate
+rather than AI-assisted reasoning — so treat these numbers as a floor
+rather than a ceiling:
 
 | Metric | Value |
 |--------|-------|
@@ -429,8 +432,8 @@ you push it far enough. The skill is not finding bedrock. The skill is
 knowing how many levels to investigate before the returns diminish —
 and that judgment is specific to the problem. A claim about
 consciousness might need three levels before you hit something that
-changes what you do. "It's turtles all the way down" needs zero. That
-is a stop signal, not a destination.
+changes what you do. "It's turtles all the way down" needs zero — it
+signals a stop, it doesn't mark an arrival.
 
 Most unchallenged chains are fine. If you are explaining how a car
 engine works, every step from "fuel enters the cylinder" to "piston
@@ -486,8 +489,8 @@ caught it. We made a judgment call.
 
 It also flagged three of the essay's own hedges as premature closures.
 "Whether fluency compounds across multi-step reasoning has not been
-directly measured. It is a prediction from the mechanism, not an
-established result." That sounds like epistemic humility. Structurally,
+directly measured; that compounding is a prediction from the mechanism,
+still untested." That sounds like epistemic humility. Structurally,
 it is a stop signal — it caps an unverified chain by acknowledging the
 gap and then moving on, and the acknowledgment feels honest enough that
 nobody goes back to check. The hedge is doing the same work as "it's
@@ -535,8 +538,8 @@ STOP-class findings — claims with weak basis (`vibes`, `assumption`,
 `llm_output`) extracted from authored documents rather than conversation
 transcripts. When set, slimemold runs a Kagi search against the anchor
 claim and inlines reconciled state ("External check (domain): snippet")
-with the hook output, so the agent receives verification data inline
-rather than relying on the agent to remember to search.
+with the hook output. Verification data arrives inline; nothing depends
+on the agent remembering to go search for it.
 
 ```bash
 export KAGI_API_KEY=your-kagi-api-key  # optional, enables External-check
@@ -952,8 +955,8 @@ get extracted are substantive or filler. To answer that, we ran
 the quality harness (`cmd/quality`, see
 `benchmarks/variance/README.md`), which uses a separate Haiku
 grader to score each extracted claim as SUBSTANTIVE / FILLER /
-UNCLEAR, gated by positive/negative control fixtures that must
-calibrate the grader before a main-fixture verdict is reported:
+UNCLEAR; positive/negative control fixtures must calibrate it before
+a main-fixture verdict is reported:
 
 | fixture | gradable claims | substantive | rate |
 |---|---|---|---|
