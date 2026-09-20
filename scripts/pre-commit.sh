@@ -28,3 +28,16 @@ echo "→ go vet"
 go vet ./...
 
 echo "✓ pre-commit checks passed"
+
+# >>> codescene-precommit (managed) >>>
+# CodeScene delta analysis on staged changes. Non-blocking: findings are
+# printed, the commit proceeds. --error-on-warnings is required for cs to
+# signal at all; without it cs delta exits 0 unconditionally and the warning
+# below is unreachable.
+if command -v cs >/dev/null 2>&1; then
+  if ! cs delta --staged --error-on-warnings; then
+    echo ""
+    echo "CodeScene flagged code-health findings above (warning only, commit proceeds)."
+  fi
+fi
+# <<< codescene-precommit (managed) <<<
