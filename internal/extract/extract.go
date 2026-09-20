@@ -41,7 +41,7 @@ func (e *Extractor) Model() string {
 // ExtractFromTranscript reads a transcript file and extracts claims.
 // existingClaims provides context for cross-batch edge resolution.
 func (e *Extractor) ExtractFromTranscript(ctx context.Context, transcriptPath string, sinceTurn int, existingClaims []ExistingClaimRef) (*types.ExtractionResult, error) {
-	chunk, err := ReadTranscriptChunk(transcriptPath, sinceTurn)
+	chunk, _, err := ReadTranscriptChunk(transcriptPath, sinceTurn)
 	if err != nil {
 		return nil, fmt.Errorf("reading transcript: %w", err)
 	}
@@ -58,7 +58,19 @@ func (e *Extractor) ExtractFromTranscript(ctx context.Context, transcriptPath st
 // or basis validation) can read once and share — historically CoreParseTranscript
 // called readRecentTranscript indirectly via the extractor AND readTranscriptText
 // directly, doing two full-file scans per fire on multi-MB transcripts.
-func ReadTranscriptChunk(transcriptPath string, sinceTurn int) (string, error) {
+//
+// readThroughTurn reports the raw turn number the scan actually reached —
+// the caller MUST use this (not a full-file turn count) to advance an
+// incremental (sinceTurn > 0) cursor. When a backlog exceeds the 50-message
+// cap, the scan stops well short of the transcript's end; advancing the
+// cursor to the current total instead silently discards every turn between
+// the cap and the end, once per fire, forever — the graph looks like it's
+// keeping up while it's actually dropping data. See
+// FEEDBACK-extraction-backlog-ratchet.md. readThroughTurn is 0 for baseline
+// reads (sinceTurn == 0) — that path intentionally seeks to the tail rather
+// than scanning from turn 1, so it has no meaningful boundary to report; the
+// caller should fall back to a full-file count there, as before.
+func ReadTranscriptChunk(transcriptPath string, sinceTurn int) (chunk string, readThroughTurn int, err error) {
 	return readRecentTranscript(transcriptPath, sinceTurn)
 }
 
@@ -219,11 +231,12 @@ func CountTranscriptTurns(path string) (int, error) {
 const maxTailBytes = 2 * 1024 * 1024
 
 // readRecentTranscript reads a Claude Code transcript (.jsonl) and extracts
-// recent conversation turns.
-func readRecentTranscript(path string, sinceTurn int) (string, error) {
+// recent conversation turns. See ReadTranscriptChunk for the meaning of the
+// returned turn boundary.
+func readRecentTranscript(path string, sinceTurn int) (chunk string, readThroughTurn int, err error) {
 	f, err := os.Open(path)
 	if err != nil {
-		return "", err
+		return "", 0, err
 	}
 	defer func() { _ = f.Close() }()
 
@@ -295,7 +308,16 @@ func readRecentTranscript(path string, sinceTurn int) (string, error) {
 		messages = messages[len(messages)-50:]
 	}
 
-	return strings.Join(messages, "\n\n"), nil
+	// turnCount is only a meaningful cursor boundary for incremental reads —
+	// it counts raw turns scanned from turn 1 in that branch. The sinceTurn
+	// == 0 tail-seek starts counting from wherever the seek landed, an
+	// arbitrary offset with no relation to sinceTurn or preCountedTurns;
+	// report 0 there and let the caller fall back to a full-file count.
+	if sinceTurn == 0 {
+		turnCount = 0
+	}
+
+	return strings.Join(messages, "\n\n"), turnCount, nil
 }
 
 func extractTextContent(entry map[string]interface{}) string {

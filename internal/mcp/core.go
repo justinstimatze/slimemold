@@ -80,7 +80,7 @@ func CoreParseTranscript(ctx context.Context, db *store.DB, extractor *extract.E
 	// chunk is fine (no API call needed) and the function continues to the
 	// extract path; a real IO error should fail loudly rather than silently
 	// skip extraction.
-	chunk, err := extract.ReadTranscriptChunk(transcriptPath, sinceTurn)
+	chunk, readThroughTurn, err := extract.ReadTranscriptChunk(transcriptPath, sinceTurn)
 	if err != nil {
 		return nil, fmt.Errorf("reading transcript: %w", err)
 	}
@@ -308,8 +308,19 @@ func CoreParseTranscript(ctx context.Context, db *store.DB, extractor *extract.E
 		CriticalCount: vulns.CriticalCount,
 	})
 
+	// The cursor MUST reflect what this fire actually read, not the
+	// transcript's current total — sinceTurn > 0 reads are capped at 50
+	// messages (extract.ReadTranscriptChunk), so a backlog bigger than that
+	// only gets partially processed. Advancing to preCountedTurns anyway
+	// would silently skip every turn between the cap and the end on every
+	// single fire, forever — see FEEDBACK-extraction-backlog-ratchet.md.
+	// readThroughTurn is the raw turn the scan actually reached; it equals
+	// the transcript total when the backlog fit inside one read, so this is
+	// a strict improvement over preCountedTurns, never a regression.
 	lastTurn := preCountedTurns
-	if lastTurn <= 0 {
+	if sinceTurn > 0 && readThroughTurn > 0 {
+		lastTurn = readThroughTurn
+	} else if lastTurn <= 0 {
 		lastTurn, _ = extract.CountTranscriptTurns(transcriptPath)
 	}
 
