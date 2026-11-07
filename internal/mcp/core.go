@@ -452,7 +452,11 @@ func selectRelevantClaims(claims []types.Claim, edges []types.Edge, transcriptCh
 		selected[c.ID] = true
 	}
 
-	// 2. Structural hubs: claims with 3+ dependents (load-bearing nodes)
+	// 2. Structural hubs: claims with 3+ dependents (load-bearing nodes),
+	// strongest first. Capped at maxHubs: on 10k-claim graphs the uncapped
+	// hub set was 500-800 claims (~40k input tokens per extraction call),
+	// blowing through maxContext, which only bounded step 3.
+	const maxHubs = 30
 	dependents := make(map[string]int)
 	for _, e := range edges {
 		switch e.Relation {
@@ -462,10 +466,20 @@ func selectRelevantClaims(claims []types.Claim, edges []types.Edge, transcriptCh
 			dependents[e.ToID]++
 		}
 	}
+	var hubs []types.Claim
 	for _, c := range claims {
 		if dependents[c.ID] >= 3 && !selected[c.ID] {
-			selected[c.ID] = true
+			hubs = append(hubs, c)
 		}
+	}
+	slices.SortStableFunc(hubs, func(a, b types.Claim) int {
+		return cmp.Compare(dependents[b.ID], dependents[a.ID])
+	})
+	if len(hubs) > maxHubs {
+		hubs = hubs[:maxHubs]
+	}
+	for _, c := range hubs {
+		selected[c.ID] = true
 	}
 
 	// 3. Topical relevance: claims similar to the current transcript chunk.
