@@ -147,7 +147,7 @@ func (e *Extractor) Extract(ctx context.Context, text string, existingClaims []E
 			if err != nil {
 				return nil, fmt.Errorf("marshaling tool input: %w", err)
 			}
-			if err := json.Unmarshal(raw, &result); err != nil {
+			if err := decodeExtraction(raw, &result); err != nil {
 				return nil, fmt.Errorf("parsing extraction result: %w", err)
 			}
 			return &result, nil
@@ -155,6 +155,37 @@ func (e *Extractor) Extract(ctx context.Context, text string, existingClaims []E
 	}
 
 	return nil, fmt.Errorf("no tool_use block in response")
+}
+
+// decodeExtraction unmarshals the tool input, accepting a `claims` field that
+// the model sent as a JSON-encoded string. Forced tool_choice constrains the
+// tool name, not the argument encoding: claude-sonnet-5 returns the whole
+// input re-wrapped as a string, {"claims":"{\"claims\":[...]}"}, and a bare
+// stringified array is the other shape seen in the wild. Both are unwrapped;
+// anything else returns the original decode error.
+func decodeExtraction(raw []byte, result *types.ExtractionResult) error {
+	return decodeExtractionDepth(raw, result, 2)
+}
+
+func decodeExtractionDepth(raw []byte, result *types.ExtractionResult, depth int) error {
+	err := json.Unmarshal(raw, result)
+	if err == nil || depth == 0 {
+		return err
+	}
+	var fields map[string]json.RawMessage
+	var encoded string
+	if json.Unmarshal(raw, &fields) != nil || json.Unmarshal(fields["claims"], &encoded) != nil {
+		return err
+	}
+	*result = types.ExtractionResult{}
+	if json.Unmarshal([]byte(encoded), &result.Claims) == nil {
+		return nil
+	}
+	*result = types.ExtractionResult{}
+	if decodeExtractionDepth([]byte(encoded), result, depth-1) == nil {
+		return nil
+	}
+	return err
 }
 
 func buildExtractionSchema() anthropic.ToolInputSchemaParam {
