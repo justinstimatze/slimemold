@@ -11,7 +11,7 @@ import (
 // each Claim. The flags are populated by the LLM extractor (see
 // internal/extract/prompt.go and the Claim struct doc comment for the
 // codebook reference). Findings here are graph-aware: they only escalate when
-// a flagged claim is also doing structural work (load-bearing, in an
+// a flagged claim is also doing structural work (heavily depended-on, in an
 // unchallenged chain, or part of an amplification cascade).
 //
 // Why thresholds are conservative: Moore et al. found 80%+ sycophancy
@@ -163,8 +163,8 @@ func evaluateSaturation(sessionID string, sessionClaims []*types.Claim) *types.V
 func findAbilityOverstatement(claims []types.Claim, edges []types.Edge) []types.Vulnerability {
 	// Count how many other claims each claim is propping up. Edge direction:
 	// "A supports B" → A is the supporter (FromID); "A depends_on B" → B is
-	// the prerequisite (ToID). Both make B (or A) load-bearing for what
-	// flows through it. Mirrors the convention in findLoadBearingVibes.
+	// the prerequisite (ToID). Both make B (or A) heavily depended-on for
+	// what flows through it. Mirrors the convention in findUnsourcedFoundation.
 	supportCount := make(map[string]int)
 	for _, e := range edges {
 		switch e.Relation {
@@ -188,9 +188,9 @@ func findAbilityOverstatement(claims []types.Claim, edges []types.Edge) []types.
 			continue
 		}
 		// Severity escalates with structural weight: a one-off ability claim
-		// is info; a load-bearing one is a warning. The supports-2+ threshold
-		// is the same one used for load_bearing_vibes — keeps the bar
-		// consistent across detectors.
+		// is info; a heavily depended-on one is a warning. The supports-2+
+		// threshold is the same one used for unsourced_foundation — keeps
+		// the bar consistent across detectors.
 		sev := "info"
 		if supportCount[c.ID] >= 2 {
 			sev = "warning"
@@ -215,14 +215,14 @@ func findAbilityOverstatement(claims []types.Claim, edges []types.Edge) []types.
 //
 // Severity is info by default — these patterns aren't always wrong (a roleplay
 // scenario, a fictional voice). They escalate to warning only when the claim
-// is load-bearing (supports 2+ others) or sits in a session with multiple
-// such claims, because that's when the pattern stops looking like one-off
-// register and starts looking like drift.
+// is heavily depended-on (supports 2+ others) or sits in a session with
+// multiple such claims, because that's when the pattern stops looking like
+// one-off register and starts looking like drift.
 func findSentienceDrift(claims []types.Claim, edges []types.Edge) []types.Vulnerability {
 	// Count how many other claims each claim is propping up. Edge direction:
 	// "A supports B" → A is the supporter (FromID); "A depends_on B" → B is
-	// the prerequisite (ToID). Both make B (or A) load-bearing for what
-	// flows through it. Mirrors the convention in findLoadBearingVibes.
+	// the prerequisite (ToID). Both make B (or A) heavily depended-on for
+	// what flows through it. Mirrors the convention in findUnsourcedFoundation.
 	supportCount := make(map[string]int)
 	for _, e := range edges {
 		switch e.Relation {

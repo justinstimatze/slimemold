@@ -452,7 +452,7 @@ func selectRelevantClaims(claims []types.Claim, edges []types.Edge, transcriptCh
 		selected[c.ID] = true
 	}
 
-	// 2. Structural hubs: claims with 3+ dependents (load-bearing nodes),
+	// 2. Structural hubs: claims with 3+ dependents (heavily depended-on nodes),
 	// strongest first. Capped at maxHubs: on 10k-claim graphs the uncapped
 	// hub set was 500-800 claims (~40k input tokens per extraction call),
 	// blowing through maxContext, which only bounded step 3.
@@ -1012,9 +1012,9 @@ func validateIntegrity(claims []types.Claim, edges []types.Edge) []string {
 //
 // Each check is conservative — a genuine claim with unusual phrasing can
 // get downgraded, but the failure mode of a false downgrade is "claim stays
-// load-bearing vibes," which is structurally harmless. The opposite failure
+// basis=vibes," which is structurally harmless. The opposite failure
 // (hallucinated upgrade persisting) is much worse because it hides real
-// load-bearing structure from the detectors.
+// weak-basis structure from the detectors.
 //
 // The name remains validateResearchBasis for historical reasons; it now
 // validates several basis types.

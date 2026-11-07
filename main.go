@@ -1541,7 +1541,7 @@ func cmdSweep(projectOverride string, args []string) {
 // --all is asymmetric to cmdSweep --apply: sweep defaults to dry-run and
 // requires explicit --apply, whereas unarchive --all mutates immediately
 // once entered. To avoid a misclick on a lucida-class graph (~5k archived
-// claims that the legacy_load_bearer detector would then flood), --all
+// claims that the legacy_unsourced_foundation detector would then flood), --all
 // shows the count and requires --confirm in the same invocation. Per-ID
 // unarchive doesn't need this guard — the user typed the IDs.
 func cmdUnarchive(projectOverride string, args []string) {

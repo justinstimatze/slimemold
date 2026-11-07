@@ -38,17 +38,17 @@ import (
 
 // metrics captures the per-run measurements we aggregate across runs.
 type metrics struct {
-	Claims        int
-	Edges         int
-	BasisCounts   map[types.Basis]int
-	CriticalFinds int
-	WarningFinds  int
-	InfoFinds     int
-	LoadBearing   int
-	Bottleneck    int
-	UnchallChain  int
-	OrphanCount   int
-	MaxChainDepth int
+	Claims              int
+	Edges               int
+	BasisCounts         map[types.Basis]int
+	CriticalFinds       int
+	WarningFinds        int
+	InfoFinds           int
+	UnsourcedFoundation int
+	Bottleneck          int
+	UnchallChain        int
+	OrphanCount         int
+	MaxChainDepth       int
 
 	// FindingClaimIDs records anchor claim IDs per finding type per run, so
 	// across-run comparison can answer "are the same claims surfaced?" not
@@ -92,7 +92,7 @@ func main() {
 			os.Exit(1)
 		}
 		allMetrics = append(allMetrics, m)
-		fmt.Printf("    claims=%d edges=%d critical=%d load_bearing=%d bottleneck=%d\n", m.Claims, m.Edges, m.CriticalFinds, m.LoadBearing, m.Bottleneck)
+		fmt.Printf("    claims=%d edges=%d critical=%d unsourced_foundation=%d bottleneck=%d\n", m.Claims, m.Edges, m.CriticalFinds, m.UnsourcedFoundation, m.Bottleneck)
 	}
 
 	fmt.Println()
@@ -148,8 +148,8 @@ func singleRun(apiKey, model, fixturePath, project string) (metrics, error) {
 			m.InfoFinds++
 		}
 		switch v.Type {
-		case "load_bearing_vibes":
-			m.LoadBearing++
+		case "unsourced_foundation":
+			m.UnsourcedFoundation++
 		case "bottleneck":
 			m.Bottleneck++
 		case "unchallenged_chain":
@@ -162,7 +162,7 @@ func singleRun(apiKey, model, fixturePath, project string) (metrics, error) {
 		// because text is reproducible (modulo small phrasing variance);
 		// UUIDs are not.
 		switch v.Type {
-		case "bottleneck", "load_bearing_vibes", "unchallenged_chain", "fluency_trap":
+		case "bottleneck", "unsourced_foundation", "unchallenged_chain", "fluency_trap":
 			if len(v.ClaimIDs) > 0 {
 				text := claimText[v.ClaimIDs[0]]
 				if len(text) > 80 {
@@ -220,7 +220,7 @@ func printFindingStability(ms []metrics) {
 	}
 	fmt.Println("\n=== Finding stability across runs (claim ID intersection) ===")
 	fmt.Println("type                 per-run-mean   intersection   stable?")
-	types := []string{"bottleneck", "load_bearing_vibes", "unchallenged_chain", "fluency_trap"}
+	types := []string{"bottleneck", "unsourced_foundation", "unchallenged_chain", "fluency_trap"}
 	for _, t := range types {
 		// Intersect claim ID sets across runs.
 		var inter map[string]bool
@@ -275,7 +275,7 @@ func printAggregates(ms []metrics) {
 		{"critical findings", func(m metrics) int { return m.CriticalFinds }},
 		{"warning findings", func(m metrics) int { return m.WarningFinds }},
 		{"info findings", func(m metrics) int { return m.InfoFinds }},
-		{"load_bearing", func(m metrics) int { return m.LoadBearing }},
+		{"unsourced_foundation", func(m metrics) int { return m.UnsourcedFoundation }},
 		{"bottleneck", func(m metrics) int { return m.Bottleneck }},
 		{"unchallenged_chain", func(m metrics) int { return m.UnchallChain }},
 	}

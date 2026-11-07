@@ -28,8 +28,8 @@ CREATE TABLE IF NOT EXISTS claims (
     consequential_action      INTEGER DEFAULT 0,
     -- last_referenced_at tracks when this claim was most recently touched —
     -- updated when an edge is created involving it (from or to), or when the
-    -- claim is created. Used by the legacy_load_bearer detector and by the
-    -- archival sweep to distinguish "stale" claims (no recent references)
+    -- claim is created. Used by the legacy_unsourced_foundation detector and
+    -- by the archival sweep to distinguish "stale" claims (no recent references)
     -- from "old but still active" ones. Defaults to created_at on first write.
     last_referenced_at        TEXT,
     -- archived is set by the stale-claim sweep when a claim is old, idle,

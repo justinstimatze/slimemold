@@ -51,7 +51,7 @@ func TestTruncateClaim_PreservesMeaningReversingClause(t *testing.T) {
 // far end of the input leaks into the output and this test catches it.
 func TestRenderPhrasing_LongClaimGetsTruncated(t *testing.T) {
 	long := strings.Repeat("filler ", 50) + "ZZZ_END_SENTINEL_ZZZ"
-	out := renderPhrasing("load_bearing_vibes", "basis=vibes", long)
+	out := renderPhrasing("unsourced_foundation", "basis=vibes", long)
 	if strings.Contains(out, "ZZZ_END_SENTINEL_ZZZ") {
 		t.Errorf("renderPhrasing did not truncate long claim; end-of-input leaked into output: %q", out)
 	}

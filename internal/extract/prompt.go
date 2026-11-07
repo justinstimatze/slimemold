@@ -157,7 +157,7 @@ const userPromptTemplate = `Extract all substantive claims from this conversatio
 
 %s
 
-Extract every claim, connection, assumption, and assertion. Be thorough — missing a load-bearing assumption is worse than including a marginal claim. Use index numbers for intra-batch references and existing claim IDs (in brackets) for cross-batch references.`
+Extract every claim, connection, assumption, and assertion. Be thorough — missing an assumption other claims depend on is worse than including a marginal claim. Use index numbers for intra-batch references and existing claim IDs (in brackets) for cross-batch references.`
 
 // formatExistingClaims builds the context block showing existing claims for cross-batch edge resolution.
 func formatExistingClaims(existing []ExistingClaimRef) string {

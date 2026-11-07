@@ -46,7 +46,7 @@ func TestRenderASCIIWithClusters(t *testing.T) {
 	vulns := &types.Vulnerabilities{
 		Project: "test",
 		Items: []types.Vulnerability{
-			{Severity: "critical", Type: "load_bearing_vibes", Description: "vibes claim supports 3", ClaimIDs: []string{"b"}},
+			{Severity: "critical", Type: "unsourced_foundation", Description: "vibes claim supports 3", ClaimIDs: []string{"b"}},
 		},
 		CriticalCount: 1,
 	}
@@ -60,7 +60,7 @@ func TestRenderASCIIWithClusters(t *testing.T) {
 		"vibes",
 		"test cluster",
 		"Smith 2024",
-		"LOAD-BEARING",
+		"UNSOURCED FOUNDATION",
 		"Orphans",
 		"orphan claim",
 		"● = research/empirical",

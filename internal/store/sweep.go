@@ -21,7 +21,7 @@ import (
 //
 // SweepStructuralMin and internal/analysis.LegacyMinDeps are paired thresholds
 // that together partition "structurally inert" (sweep candidate) from
-// "load-bearing" (legacy_load_bearer candidate) at the same value. Bump one,
+// "still doing structural work" (legacy_unsourced_foundation candidate) at the same value. Bump one,
 // bump the other — otherwise old claims at deps=2 either fall through both
 // buckets (gap) or fire both (overlap). The intentional invariant:
 //
@@ -127,7 +127,7 @@ func SweepCandidatesWithDeps(claims []types.Claim, edges []types.Edge) ([]string
 	idleThreshold := time.Duration(SweepIdleDays) * 24 * time.Hour
 
 	// Count incoming structural edges per claim. supports + depends_on
-	// only — contradicts and questions don't make a claim load-bearing.
+	// only — contradicts and questions don't make a claim depended-on.
 	deps := make(map[string]int)
 	for _, e := range edges {
 		switch e.Relation {

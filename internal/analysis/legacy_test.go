@@ -8,10 +8,10 @@ import (
 	"github.com/justinstimatze/slimemold/types"
 )
 
-// TestLegacyLoadBearer_FiresOnOldAndActive constructs a claim that's 45 days
+// TestLegacyUnsourcedFoundation_FiresOnOldAndActive constructs a claim that's 45 days
 // old, was last referenced yesterday, and has 3 incoming structural edges.
 // All three criteria are met → finding must fire.
-func TestLegacyLoadBearer_FiresOnOldAndActive(t *testing.T) {
+func TestLegacyUnsourcedFoundation_FiresOnOldAndActive(t *testing.T) {
 	now := time.Now()
 	anchor := types.Claim{
 		ID:               "anchor",
@@ -33,12 +33,12 @@ func TestLegacyLoadBearer_FiresOnOldAndActive(t *testing.T) {
 		{ID: "e3", FromID: "d3", ToID: "anchor", Relation: types.RelSupports, CreatedAt: now.Add(-1 * time.Hour)},
 	}
 
-	findings := findLegacyLoadBearers(claims, edges)
+	findings := findLegacyUnsourcedFoundations(claims, edges)
 	if len(findings) != 1 {
-		t.Fatalf("expected exactly 1 legacy_load_bearer finding, got %d", len(findings))
+		t.Fatalf("expected exactly 1 legacy_unsourced_foundation finding, got %d", len(findings))
 	}
-	if findings[0].Type != "legacy_load_bearer" {
-		t.Errorf("expected type=legacy_load_bearer, got %q", findings[0].Type)
+	if findings[0].Type != "legacy_unsourced_foundation" {
+		t.Errorf("expected type=legacy_unsourced_foundation, got %q", findings[0].Type)
 	}
 	if findings[0].ClaimIDs[0] != "anchor" {
 		t.Errorf("expected anchor claim, got %q", findings[0].ClaimIDs[0])
@@ -48,10 +48,10 @@ func TestLegacyLoadBearer_FiresOnOldAndActive(t *testing.T) {
 	}
 }
 
-// TestLegacyLoadBearer_SuppressesYoungClaims confirms the age threshold:
+// TestLegacyUnsourcedFoundation_SuppressesYoungClaims confirms the age threshold:
 // a claim that's only 5 days old is excluded even if recently referenced
 // and well-supported. We have other detectors for young load-bearers.
-func TestLegacyLoadBearer_SuppressesYoungClaims(t *testing.T) {
+func TestLegacyUnsourcedFoundation_SuppressesYoungClaims(t *testing.T) {
 	now := time.Now()
 	youngAnchor := types.Claim{
 		ID:               "young",
@@ -70,15 +70,15 @@ func TestLegacyLoadBearer_SuppressesYoungClaims(t *testing.T) {
 		{ID: "e2", FromID: "d2", ToID: "young", Relation: types.RelDependsOn, CreatedAt: now},
 		{ID: "e3", FromID: "d3", ToID: "young", Relation: types.RelSupports, CreatedAt: now},
 	}
-	if findings := findLegacyLoadBearers(claims, edges); len(findings) != 0 {
+	if findings := findLegacyUnsourcedFoundations(claims, edges); len(findings) != 0 {
 		t.Errorf("expected 0 findings on young anchor, got %d", len(findings))
 	}
 }
 
-// TestLegacyLoadBearer_SuppressesStaleClaims: claim is old AND has deps,
+// TestLegacyUnsourcedFoundation_SuppressesStaleClaims: claim is old AND has deps,
 // but hasn't been referenced in months. That's the "no longer relevant"
 // case — let the archive sweep handle it, don't surface here.
-func TestLegacyLoadBearer_SuppressesStaleClaims(t *testing.T) {
+func TestLegacyUnsourcedFoundation_SuppressesStaleClaims(t *testing.T) {
 	now := time.Now()
 	staleAnchor := types.Claim{
 		ID:               "stale",
@@ -95,15 +95,15 @@ func TestLegacyLoadBearer_SuppressesStaleClaims(t *testing.T) {
 		{ID: "e2", FromID: "d2", ToID: "stale", Relation: types.RelDependsOn, CreatedAt: now.Add(-60 * 24 * time.Hour)},
 		{ID: "e3", FromID: "d3", ToID: "stale", Relation: types.RelSupports, CreatedAt: now.Add(-60 * 24 * time.Hour)},
 	}
-	if findings := findLegacyLoadBearers(claims, edges); len(findings) != 0 {
+	if findings := findLegacyUnsourcedFoundations(claims, edges); len(findings) != 0 {
 		t.Errorf("expected 0 findings on stale anchor (last referenced 60d ago), got %d", len(findings))
 	}
 }
 
-// TestLegacyLoadBearer_SkipsClosed: a claim explicitly closed by the model
+// TestLegacyUnsourcedFoundation_SkipsClosed: a claim explicitly closed by the model
 // (e.g. "feature X is missing" after X was implemented) is not a finding.
 // Once closed, the claim is resolved — keeping it would surface noise.
-func TestLegacyLoadBearer_SkipsClosed(t *testing.T) {
+func TestLegacyUnsourcedFoundation_SkipsClosed(t *testing.T) {
 	now := time.Now()
 	closedAnchor := types.Claim{
 		ID:               "closed",
@@ -121,15 +121,15 @@ func TestLegacyLoadBearer_SkipsClosed(t *testing.T) {
 		{ID: "e2", FromID: "d2", ToID: "closed", Relation: types.RelDependsOn, CreatedAt: now},
 		{ID: "e3", FromID: "d3", ToID: "closed", Relation: types.RelSupports, CreatedAt: now},
 	}
-	if findings := findLegacyLoadBearers(claims, edges); len(findings) != 0 {
+	if findings := findLegacyUnsourcedFoundations(claims, edges); len(findings) != 0 {
 		t.Errorf("expected 0 findings on closed anchor, got %d", len(findings))
 	}
 }
 
-// TestLegacyLoadBearer_RequiresMinDeps: an old, recently-referenced claim
-// with only 1 incoming edge isn't load-bearing. Threshold is intentionally
-// >=2 — anything below that is too noisy to surface.
-func TestLegacyLoadBearer_RequiresMinDeps(t *testing.T) {
+// TestLegacyUnsourcedFoundation_RequiresMinDeps: an old, recently-referenced claim
+// with only 1 incoming edge doesn't have enough dependents to fire. Threshold
+// is intentionally >=2 — anything below that is too noisy to surface.
+func TestLegacyUnsourcedFoundation_RequiresMinDeps(t *testing.T) {
 	now := time.Now()
 	anchor := types.Claim{
 		ID:               "anchor",
@@ -141,15 +141,15 @@ func TestLegacyLoadBearer_RequiresMinDeps(t *testing.T) {
 	edges := []types.Edge{
 		{ID: "e1", FromID: "d1", ToID: "anchor", Relation: types.RelDependsOn, CreatedAt: now},
 	}
-	if findings := findLegacyLoadBearers(claims, edges); len(findings) != 0 {
+	if findings := findLegacyUnsourcedFoundations(claims, edges); len(findings) != 0 {
 		t.Errorf("expected 0 findings with only 1 incoming dep, got %d", len(findings))
 	}
 }
 
-// TestLegacyLoadBearer_ContradictsAndQuestionsDontCount: 5 incoming
+// TestLegacyUnsourcedFoundation_ContradictsAndQuestionsDontCount: 5 incoming
 // contradicts edges + 5 incoming questions edges should NOT count toward
-// LegacyMinDeps. Being argued with is not load-bearing.
-func TestLegacyLoadBearer_ContradictsAndQuestionsDontCount(t *testing.T) {
+// LegacyMinDeps. Being argued with doesn't make a claim depended-on.
+func TestLegacyUnsourcedFoundation_ContradictsAndQuestionsDontCount(t *testing.T) {
 	now := time.Now()
 	anchor := types.Claim{
 		ID:               "anchor",
@@ -165,15 +165,15 @@ func TestLegacyLoadBearer_ContradictsAndQuestionsDontCount(t *testing.T) {
 			types.Edge{ID: "q" + string(rune('0'+i)), FromID: "y", ToID: "anchor", Relation: types.RelQuestions, CreatedAt: now},
 		)
 	}
-	if findings := findLegacyLoadBearers(claims, edges); len(findings) != 0 {
+	if findings := findLegacyUnsourcedFoundations(claims, edges); len(findings) != 0 {
 		t.Errorf("expected 0 findings (only contradicts/questions edges), got %d", len(findings))
 	}
 }
 
-// TestLegacyLoadBearer_DescriptionMentionsAge confirms the description
+// TestLegacyUnsourcedFoundation_DescriptionMentionsAge confirms the description
 // includes the age info — important so the model can reason about
 // "how old" without re-querying the timestamp itself.
-func TestLegacyLoadBearer_DescriptionMentionsAge(t *testing.T) {
+func TestLegacyUnsourcedFoundation_DescriptionMentionsAge(t *testing.T) {
 	now := time.Now()
 	anchor := types.Claim{
 		ID:               "anchor",
@@ -190,7 +190,7 @@ func TestLegacyLoadBearer_DescriptionMentionsAge(t *testing.T) {
 		{ID: "e2", FromID: "d2", ToID: "anchor", Relation: types.RelDependsOn, CreatedAt: now},
 		{ID: "e3", FromID: "d3", ToID: "anchor", Relation: types.RelSupports, CreatedAt: now},
 	}
-	findings := findLegacyLoadBearers(claims, edges)
+	findings := findLegacyUnsourcedFoundations(claims, edges)
 	if len(findings) != 1 {
 		t.Fatalf("expected 1 finding, got %d", len(findings))
 	}

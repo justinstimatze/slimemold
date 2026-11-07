@@ -22,7 +22,7 @@ const (
 )
 
 // IsWeak reports whether the basis is a working hypothesis rather than
-// a grounded source. Used by structural detectors (load-bearing-vibes,
+// a grounded source. Used by structural detectors (unsourced-foundation,
 // fluency-trap, STOP-class verification gate, stale-claim sweep) — any
 // place a check needs "this claim is unsupported." Centralizing here so
 // the set of weak bases is defined once; adding or demoting a basis
@@ -108,7 +108,7 @@ type Claim struct {
 
 	// LastReferencedAt tracks when this claim was most recently touched —
 	// updated on edge insert (from or to endpoint) and on claim creation.
-	// Drives the legacy_load_bearer detector and the archival sweep: an old
+	// Drives the legacy_unsourced_foundation detector and the archival sweep: an old
 	// claim with recent references is structural; an old claim with no
 	// recent references is stale. Zero-valued if backfill hasn't run yet
 	// (treat as equal to CreatedAt in that case).
@@ -146,7 +146,7 @@ type Audit struct {
 // Vulnerability is a structural weakness in the reasoning graph.
 type Vulnerability struct {
 	Severity    string   `json:"severity"` // critical, warning, info
-	Type        string   `json:"type"`     // load_bearing_vibes, bottleneck, orphan, unchallenged_chain
+	Type        string   `json:"type"`     // unsourced_foundation, bottleneck, orphan, unchallenged_chain
 	Description string   `json:"description"`
 	ClaimIDs    []string `json:"claim_ids"`
 

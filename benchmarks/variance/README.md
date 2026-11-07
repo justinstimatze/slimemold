@@ -55,7 +55,7 @@ Five runs of the slimemold README ingest into fresh temp graphs.
 | critical findings | 247.4 | 16.38 | 6.6% | stable |
 | warning findings | 15.2 | 1.94 | 13% | borderline |
 | info findings | 50.6 | 8.59 | 17% | noisy |
-| load_bearing_vibes | 87.8 | 10.91 | 12% | borderline |
+| unsourced_foundation | 87.8 | 10.91 | 12% | borderline |
 | bottleneck | 5.0 | 0.00 | 0% | **degenerate (capped)** |
 | unchallenged_chain | 1.0 | 0.00 | 0% | deterministic-after-extraction |
 
@@ -105,7 +105,7 @@ intersection across runs is small — bottleneck identities churn
 within the same fixture. Count is misleading; identity is the
 informative signal. Documented in the harness output's "stable?"
 column, which currently reads `churns (count is misleading)` for
-bottleneck, load_bearing_vibes, unchallenged_chain, and fluency_trap.
+bottleneck, unsourced_foundation, unchallenged_chain, and fluency_trap.
 
 ### Definition count is the noisiest basis
 
@@ -208,7 +208,7 @@ Slimemold's extractor uses a deliberately aggressive-recall prompt: missing
 a real claim is worse than emitting a filler claim (because the downstream
 graph analysis is blind to absent nodes, while ignoring filler is just
 cost). That trade-off is correct *up to a content-dependent threshold* —
-beyond which filler dilutes the load-bearing signal and the analysis
+beyond which filler dilutes the structural signal and the analysis
 layer pays full DFS cost for zero detection value. Without a quality
 number you can't tell when the threshold's been crossed; you can only
 see the variance floor stay calm while the precision quietly tanks.

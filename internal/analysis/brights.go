@@ -9,9 +9,9 @@ import (
 // Three "bright" detectors — structural strengths rather than vulnerabilities.
 // Named to mirror the dark counterparts they symmetrically invert:
 //
-//   load_bearing_vibes       <-> well_sourced_load_bearer
-//   unchallenged_chain       <-> productive_stress_test
-//   echo_chamber             <-> grounded_premise_adopted
+//   unsourced_foundation <-> well_sourced_foundation
+//   unchallenged_chain   <-> productive_stress_test
+//   echo_chamber         <-> grounded_premise_adopted
 //
 // These emit severity="info" and a Type starting with "strength_" so the
 // hook formatter (FormatHookFindings) can filter them out — the live-
@@ -30,10 +30,10 @@ var strongBases = map[types.Basis]bool{
 	types.BasisConvention: true,
 }
 
-// findWellSourcedLoadBearer — inverse of findLoadBearingVibes. A claim with
-// strong basis that supports N+ downstream claims is structural load-bearing
-// done right: the argument rests on something verifiable. Worth naming.
-func findWellSourcedLoadBearer(claims []types.Claim, edges []types.Edge) []types.Vulnerability {
+// findWellSourcedFoundation — inverse of findUnsourcedFoundation. A claim with
+// strong basis that supports N+ downstream claims is a foundation done
+// right: the argument rests on something verifiable. Worth naming.
+func findWellSourcedFoundation(claims []types.Claim, edges []types.Edge) []types.Vulnerability {
 	const minDownstream = 2
 
 	dependents := make(map[string]int)
@@ -56,7 +56,7 @@ func findWellSourcedLoadBearer(claims []types.Claim, edges []types.Edge) []types
 		}
 		out = append(out, types.Vulnerability{
 			Severity:    "info",
-			Type:        "strength_well_sourced_load_bearer",
+			Type:        "strength_well_sourced_foundation",
 			Description: fmt.Sprintf("%d claims rest on this %s claim, verifiable: %q — the argument rests on something you can point to", dependents[c.ID], c.Basis, truncate(c.Text, 70)),
 			ClaimIDs:    []string{c.ID},
 		})

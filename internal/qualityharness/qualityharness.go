@@ -265,7 +265,7 @@ var graderToolSchema = anthropic.ToolInputSchemaParam{
 // can surface what the grader was actually asked. Reads as a constant
 // because bumping GraderPromptVersion is the only correct way to change
 // it.
-const GraderRubric = `You audit a claim-extraction system used by a reasoning-topology mapper. The system aggressively extracts claims for graph analysis; downstream detectors look for LOAD-BEARING assertions — claims that other claims depend on, that constrain reasoning, or that could be argued against. Judge each extracted claim by whether a downstream detector would care about it.
+const GraderRubric = `You audit a claim-extraction system used by a reasoning-topology mapper. The system aggressively extracts claims for graph analysis; downstream detectors look for UNSOURCED FOUNDATION assertions — claims that other claims depend on, that constrain reasoning, or that could be argued against. Judge each extracted claim by whether a downstream detector would care about it.
 
 SUBSTANTIVE — the claim does one of these:
 - States a generalization, principle, or rule
@@ -285,7 +285,7 @@ FILLER — the claim is one of these, EVEN IF technically true:
 
 A fact alone is NOT enough — the question is whether the fact informs any further reasoning, decision, or generalization. A true-but-isolated fact is FILLER; a fact whose negation would break the surrounding argument is SUBSTANTIVE.
 
-Use UNCLEAR ONLY if the source itself doesn't give you enough context to decide. When in doubt between SUBSTANTIVE and FILLER, ask: "would a downstream detector that hunts for load-bearing claims surface this as one?" If no, FILLER.`
+Use UNCLEAR ONLY if the source itself doesn't give you enough context to decide. When in doubt between SUBSTANTIVE and FILLER, ask: "would a downstream detector that hunts for claims other claims depend on surface this as one?" If no, FILLER.`
 
 // sourceTerminator is appended to EVERY grader prompt's source block,
 // truncated or not. Removes the asymmetric signal where only long

@@ -85,7 +85,7 @@ Not a bug. Lucida is the heaviest-used project: 36 days × ~389 claims/day.
 Dedup works (99.97% unique 100-char prefixes). 98% of claims are
 weak-basis (`llm_output` + `vibes`), which is consistent with "tracking a
 long-running build/debug stream" — most assistant utterances are conversational
-glue, not load-bearing reasoning.
+glue, not claims other claims depend on.
 
 Note: dedup operates on character n-gram Jaccard with a 0.5 threshold, same
 speaker. Effective for paraphrase but not for genuinely-different claims about
@@ -130,7 +130,7 @@ the Stop hook.
 lands in production, GetClaimsByProject returns ~62% of the previous size,
 proportionally reducing Analyze cost on every subsequent fire.
 
-The `legacy_load_bearer` detector handles the inverse case: an old claim
+The `legacy_unsourced_foundation` detector handles the inverse case: an old claim
 that IS being touched currently gets surfaced as a finding rather than
 archived. See `internal/analysis/legacy.go`.
 
