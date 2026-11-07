@@ -90,15 +90,15 @@ func TestSweepCandidates_StructuralDepsRescue(t *testing.T) {
 	now := time.Now()
 	old := now.Add(-40 * 24 * time.Hour)
 	claims := []types.Claim{
-		// Old vibes claim WITH structural deps → KEEP (it's load-bearing
-		// even though weak-basis; the legacy_load_bearer detector handles it).
-		{ID: "weak-but-load-bearing", Speaker: types.SpeakerAssistant, Basis: types.BasisVibes,
+		// Old vibes claim WITH structural deps → KEEP (it's still depended-on
+		// even though weak-basis; the legacy_unsourced_foundation detector handles it).
+		{ID: "weak-but-depended-on", Speaker: types.SpeakerAssistant, Basis: types.BasisVibes,
 			CreatedAt: old, LastReferencedAt: old},
 		{ID: "d1"}, {ID: "d2"},
 	}
 	edges := []types.Edge{
-		{ID: "e1", FromID: "d1", ToID: "weak-but-load-bearing", Relation: types.RelDependsOn},
-		{ID: "e2", FromID: "d2", ToID: "weak-but-load-bearing", Relation: types.RelSupports},
+		{ID: "e1", FromID: "d1", ToID: "weak-but-depended-on", Relation: types.RelDependsOn},
+		{ID: "e2", FromID: "d2", ToID: "weak-but-depended-on", Relation: types.RelSupports},
 	}
 	ids := SweepCandidates(claims, edges)
 	if len(ids) != 0 {
@@ -288,8 +288,8 @@ func TestSweepStaleClaims_CapAndOverflow(t *testing.T) {
 	}
 }
 
-// TestCreateEdge_TouchesLastReferencedAt verifies the load-bearing behavior
-// behind the sweep: when a new edge is created, BOTH endpoints' last_referenced_at
+// TestCreateEdge_TouchesLastReferencedAt verifies behavior the sweep depends
+// on: when a new edge is created, BOTH endpoints' last_referenced_at
 // timestamps must advance, otherwise the sweep would mistake currently-active
 // claims for stale ones. Regression guard against silently dropping the touch.
 func TestCreateEdge_TouchesLastReferencedAt(t *testing.T) {

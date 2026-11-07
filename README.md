@@ -218,7 +218,7 @@ can engineer away.
 
 Structural vulnerabilities map graph shape:
 
-**CHALLENGE: Load-Bearing Vibes.** A claim with basis "vibes" or
+**CHALLENGE: Unsourced Foundation.** A claim with basis "vibes" or
 "assumption" that supports two or more other claims. The reasoning
 depends on something nobody verified. In the conversations we have
 analyzed, this is the most common vulnerability. The AI states something
@@ -814,7 +814,7 @@ WARNING Unchallenged chain (26 claims): The images of future
   twentieth-century science
 ```
 
-Sixty-three claims tagged `research` — more citation density than most real papers. Sokal's hoax was *designed* to look rigorously sourced. But the structurally load-bearing claims — the ones other claims depend on — are overwhelmingly `vibes`: rhetorical synthesis statements about "postmodern science," "emancipatory mathematics," "the progressive political project." The three highest-centrality bottlenecks in the entire graph are unsourced grand claims that the rest of the argument flows through. The twenty-six-claim unchallenged chain threads from Sokal's "emancipatory mathematics" framing through Derrida's invocation of Einstein all the way to the paper's closing thesis without a single challenge or verifying edge — the citation-dense surface never actually intersects with the argument-bearing structure. The tool sees the hoax's exact mechanism: pad the page with real citations, carry the argument on vibes.
+Sixty-three claims tagged `research` — more citation density than most real papers. Sokal's hoax was *designed* to look rigorously sourced. But the unsourced-foundation claims — the ones other claims depend on — are overwhelmingly `vibes`: rhetorical synthesis statements about "postmodern science," "emancipatory mathematics," "the progressive political project." The three highest-centrality bottlenecks in the entire graph are unsourced grand claims that the rest of the argument flows through. The twenty-six-claim unchallenged chain threads from Sokal's "emancipatory mathematics" framing through Derrida's invocation of Einstein all the way to the paper's closing thesis without a single challenge or verifying edge — the citation-dense surface never actually intersects with the argument-bearing structure. The tool sees the hoax's exact mechanism: pad the page with real citations, carry the argument on vibes.
 
 </details>
 

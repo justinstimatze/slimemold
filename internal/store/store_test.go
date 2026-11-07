@@ -883,13 +883,13 @@ func TestExtractionCacheRoundtrip(t *testing.T) {
 func TestHookFireLogRoundtrip(t *testing.T) {
 	db := testDB(t)
 
-	if err := db.LogHookFire("test-project", "claim-a", "load_bearing_vibes", HookFireSnapshot{}); err != nil {
+	if err := db.LogHookFire("test-project", "claim-a", "unsourced_foundation", HookFireSnapshot{}); err != nil {
 		t.Fatalf("LogHookFire: %v", err)
 	}
 	if err := db.LogHookFire("test-project", "claim-b", "unchallenged_chain", HookFireSnapshot{}); err != nil {
 		t.Fatalf("LogHookFire b: %v", err)
 	}
-	if err := db.LogHookFire("other-project", "claim-a", "load_bearing_vibes", HookFireSnapshot{}); err != nil {
+	if err := db.LogHookFire("other-project", "claim-a", "unsourced_foundation", HookFireSnapshot{}); err != nil {
 		t.Fatalf("LogHookFire other: %v", err)
 	}
 
@@ -899,13 +899,13 @@ func TestHookFireLogRoundtrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RecentHookFires: %v", err)
 	}
-	if !fires["claim-a|load_bearing_vibes"] {
-		t.Error("missing claim-a|load_bearing_vibes")
+	if !fires["claim-a|unsourced_foundation"] {
+		t.Error("missing claim-a|unsourced_foundation")
 	}
 	if !fires["claim-b|unchallenged_chain"] {
 		t.Error("missing claim-b|unchallenged_chain")
 	}
-	if fires["claim-a|load_bearing_vibes"] && len(fires) > 2 {
+	if fires["claim-a|unsourced_foundation"] && len(fires) > 2 {
 		t.Errorf("cross-project leak: expected 2 entries, got %d", len(fires))
 	}
 
@@ -1171,7 +1171,7 @@ func TestRefreshRate_SkipsLegacyFires(t *testing.T) {
 	db := testDB(t)
 	c := stopClassClaim(t, db, "legacy-claim", "an unverified assertion")
 	// Legacy fire — stop_class=0 even though the claim is STOP-class.
-	if err := db.LogHookFire("test-project", c.ID, "load_bearing_vibes", HookFireSnapshot{}); err != nil {
+	if err := db.LogHookFire("test-project", c.ID, "unsourced_foundation", HookFireSnapshot{}); err != nil {
 		t.Fatalf("LogHookFire legacy: %v", err)
 	}
 	// Refresh the claim post-fire — challenged.
@@ -1199,7 +1199,7 @@ func TestRefreshRate_DetectsChallengeClose(t *testing.T) {
 		snap := HookFireSnapshot{
 			StopClass: true, TextAtFire: c.Text, BasisAtFire: string(c.Basis), TurnAtFire: 1,
 		}
-		if err := db.LogHookFire("test-project", c.ID, "load_bearing_vibes", snap); err != nil {
+		if err := db.LogHookFire("test-project", c.ID, "unsourced_foundation", snap); err != nil {
 			t.Fatalf("LogHookFire %s: %v", c.ID, err)
 		}
 	}
@@ -1239,7 +1239,7 @@ func TestRefreshRate_DetectsTextAndBasisChange(t *testing.T) {
 	snap := HookFireSnapshot{
 		StopClass: true, TextAtFire: c.Text, BasisAtFire: string(c.Basis), TurnAtFire: 5,
 	}
-	if err := db.LogHookFire("test-project", c.ID, "load_bearing_vibes", snap); err != nil {
+	if err := db.LogHookFire("test-project", c.ID, "unsourced_foundation", snap); err != nil {
 		t.Fatalf("LogHookFire: %v", err)
 	}
 	// Revise text AND basis — both signals should trip on one fire.
@@ -1300,12 +1300,12 @@ func TestRefreshRate_WindowTurnsFilter(t *testing.T) {
 	if err := db.CreateClaim(oldClaim); err != nil {
 		t.Fatalf("CreateClaim old: %v", err)
 	}
-	if err := db.LogHookFire("test-project", freshClaim.ID, "load_bearing_vibes", HookFireSnapshot{
+	if err := db.LogHookFire("test-project", freshClaim.ID, "unsourced_foundation", HookFireSnapshot{
 		StopClass: true, TextAtFire: freshClaim.Text, BasisAtFire: string(freshClaim.Basis), TurnAtFire: 9,
 	}); err != nil {
 		t.Fatalf("LogHookFire fresh: %v", err)
 	}
-	if err := db.LogHookFire("test-project", oldClaim.ID, "load_bearing_vibes", HookFireSnapshot{
+	if err := db.LogHookFire("test-project", oldClaim.ID, "unsourced_foundation", HookFireSnapshot{
 		StopClass: true, TextAtFire: oldClaim.Text, BasisAtFire: string(oldClaim.Basis), TurnAtFire: 1,
 	}); err != nil {
 		t.Fatalf("LogHookFire old: %v", err)
@@ -1373,7 +1373,7 @@ func TestRefreshRate_LegacyDBMigration(t *testing.T) {
 			t.Fatalf("create legacy hook_fire_log: %v", err)
 		}
 		_, err = raw.Exec(`INSERT INTO hook_fire_log (project, claim_id, finding_type, fired_at) VALUES (?, ?, ?, ?)`,
-			"test-project", "legacy-id", "load_bearing_vibes", time.Now().Format(time.RFC3339))
+			"test-project", "legacy-id", "unsourced_foundation", time.Now().Format(time.RFC3339))
 		if err != nil {
 			t.Fatalf("insert legacy row: %v", err)
 		}
@@ -1389,7 +1389,7 @@ func TestRefreshRate_LegacyDBMigration(t *testing.T) {
 
 	// New STOP-class fire writes cleanly through the upgraded schema.
 	c := stopClassClaim(t, db, "post-migration", "post-migration claim")
-	if err := db.LogHookFire("test-project", c.ID, "load_bearing_vibes", HookFireSnapshot{
+	if err := db.LogHookFire("test-project", c.ID, "unsourced_foundation", HookFireSnapshot{
 		StopClass: true, TextAtFire: c.Text, BasisAtFire: string(c.Basis), TurnAtFire: 1,
 	}); err != nil {
 		t.Fatalf("LogHookFire post-migration: %v", err)
@@ -1405,5 +1405,45 @@ func TestRefreshRate_LegacyDBMigration(t *testing.T) {
 	// Legacy fire skipped (stop_class=0), post-migration fire counted + refreshed.
 	if result.Total != 1 || result.Refreshed != 1 {
 		t.Errorf("post-migration: Total=%d Refreshed=%d, want 1/1", result.Total, result.Refreshed)
+	}
+}
+
+func TestMigrateFindingTypeNames(t *testing.T) {
+	dir := t.TempDir()
+	db, err := Open(dir, "p")
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().Format(time.RFC3339)
+	for _, ft := range []string{"load_bearing_vibes", "legacy_load_bearer", "bottleneck"} {
+		if _, err := db.db.Exec(`INSERT INTO hook_fire_log (project, claim_id, finding_type, fired_at) VALUES ('p', 'c', ?, ?)`, ft, now); err != nil {
+			t.Fatal(err)
+		}
+	}
+	db.Close()
+	db, err = Open(dir, "p")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	rows, err := db.db.Query(`SELECT finding_type FROM hook_fire_log ORDER BY id`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	var got []string
+	for rows.Next() {
+		var s string
+		_ = rows.Scan(&s)
+		got = append(got, s)
+	}
+	want := []string{"unsourced_foundation", "legacy_unsourced_foundation", "bottleneck"}
+	if len(got) != len(want) {
+		t.Fatalf("got %v", got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("got %v, want %v", got, want)
+		}
 	}
 }

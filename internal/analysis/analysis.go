@@ -44,7 +44,7 @@ func AnalyzeWithProfile(claims []types.Claim, edges []types.Edge, project string
 		run  func() []types.Vulnerability
 	}
 	detectors := []detector{
-		{"findLoadBearingVibes", func() []types.Vulnerability { return findLoadBearingVibes(claims, edges) }},
+		{"findUnsourcedFoundation", func() []types.Vulnerability { return findUnsourcedFoundation(claims, edges) }},
 		{"findBottlenecks", func() []types.Vulnerability { return findBottlenecks(claims, edges) }},
 		{"findUnchallengedChains", func() []types.Vulnerability { return findUnchallengedChains(claims, edges) }},
 		{"findFluencyTraps", func() []types.Vulnerability { return findFluencyTraps(claims, edges) }},
@@ -52,13 +52,13 @@ func AnalyzeWithProfile(claims []types.Claim, edges []types.Edge, project string
 		{"findAbandonedClusters", func() []types.Vulnerability { return findAbandonedClusters(claims, edges, topo) }},
 		{"findEchoChamber", func() []types.Vulnerability { return findEchoChamber(claims, edges) }},
 		{"findPrematureClosure", func() []types.Vulnerability { return findPrematureClosure(claims, edges) }},
-		{"findLegacyLoadBearers", func() []types.Vulnerability { return findLegacyLoadBearers(claims, edges) }},
+		{"findLegacyUnsourcedFoundations", func() []types.Vulnerability { return findLegacyUnsourcedFoundations(claims, edges) }},
 		{"findSycophancySaturation", func() []types.Vulnerability { return findSycophancySaturation(claims, edges) }},
 		{"findAbilityOverstatement", func() []types.Vulnerability { return findAbilityOverstatement(claims, edges) }},
 		{"findSentienceDrift", func() []types.Vulnerability { return findSentienceDrift(claims, edges) }},
 		{"findAmplificationCascade", func() []types.Vulnerability { return findAmplificationCascade(claims, edges) }},
 		{"findConsequentialAction", func() []types.Vulnerability { return findConsequentialAction(claims, edges) }},
-		{"findWellSourcedLoadBearer", func() []types.Vulnerability { return findWellSourcedLoadBearer(claims, edges) }},
+		{"findWellSourcedFoundation", func() []types.Vulnerability { return findWellSourcedFoundation(claims, edges) }},
 		{"findProductiveStressTest", func() []types.Vulnerability { return findProductiveStressTest(claims, edges) }},
 		{"findGroundedPremiseAdopted", func() []types.Vulnerability { return findGroundedPremiseAdopted(claims, edges) }},
 	}
@@ -138,8 +138,8 @@ func buildTopology(claims []types.Claim, edges []types.Edge, project string) *ty
 func findVulnerabilities(claims []types.Claim, edges []types.Edge, topo *types.Topology) *types.Vulnerabilities {
 	var items []types.Vulnerability
 
-	// Load-bearing vibes: claims with weak basis that support 2+ other claims
-	items = append(items, findLoadBearingVibes(claims, edges)...)
+	// Unsourced foundation: claims with weak basis that support 2+ other claims
+	items = append(items, findUnsourcedFoundation(claims, edges)...)
 
 	// Bottleneck detection: high betweenness centrality
 	items = append(items, findBottlenecks(claims, edges)...)
@@ -165,12 +165,12 @@ func findVulnerabilities(claims []types.Claim, edges []types.Edge, topo *types.T
 	// Legacy load-bearer: old claims still being touched in current reasoning.
 	// See legacy.go for the firing criteria — surfaces the "still relevant
 	// despite age" case so it doesn't get lost in a deep graph.
-	items = append(items, findLegacyLoadBearers(claims, edges)...)
+	items = append(items, findLegacyUnsourcedFoundations(claims, edges)...)
 
 	// Moore et al. 2026 inventory detectors (see internal/analysis/inventory.go).
 	// Fire on flagged assistant claims that are also doing structural work in
-	// the graph (load-bearing, in cascades, or paired with weak-basis user
-	// claims that are going unchallenged).
+	// the graph (heavily depended-on, in cascades, or paired with weak-basis
+	// user claims that are going unchallenged).
 	items = append(items, findSycophancySaturation(claims, edges)...)
 	items = append(items, findAbilityOverstatement(claims, edges)...)
 	items = append(items, findSentienceDrift(claims, edges)...)
@@ -180,7 +180,7 @@ func findVulnerabilities(claims []types.Claim, edges []types.Edge, topo *types.T
 	// Bright patterns — structural strengths (see brights.go). Emitted at
 	// severity=info so the hook formatter skips them; the audit formatter
 	// surfaces them in a separate "Strengths" section.
-	items = append(items, findWellSourcedLoadBearer(claims, edges)...)
+	items = append(items, findWellSourcedFoundation(claims, edges)...)
 	items = append(items, findProductiveStressTest(claims, edges)...)
 	items = append(items, findGroundedPremiseAdopted(claims, edges)...)
 
@@ -330,16 +330,16 @@ func findClusters(claims []types.Claim, edges []types.Edge, adj adjacency) []typ
 	return clusters
 }
 
-func findLoadBearingVibes(claims []types.Claim, edges []types.Edge) []types.Vulnerability {
+func findUnsourcedFoundation(claims []types.Claim, edges []types.Edge) []types.Vulnerability {
 	weakBases := map[types.Basis]bool{
 		types.BasisVibes:      true,
 		types.BasisLLMOutput:  true,
 		types.BasisAssumption: true,
 	}
 
-	// Hybrid load-bearing: a claim fires if EITHER it has recent activity
-	// (LoadBearingRecentThreshold dependents within HookConversationalWindow)
-	// OR persistent weight (LoadBearingPersistentThreshold total dependents
+	// Hybrid criterion: a claim fires if EITHER it has recent activity
+	// (UnsourcedFoundationRecentThreshold dependents within HookConversationalWindow)
+	// OR persistent weight (UnsourcedFoundationPersistentThreshold total dependents
 	// across all time). The recent-activity branch captures "what's currently
 	// being built on"; the persistent-weight branch ensures genuinely
 	// foundational claims keep surfacing even during dormant stretches when
@@ -405,9 +405,9 @@ func findLoadBearingVibes(claims []types.Claim, edges []types.Edge) []types.Vuln
 	for id, total := range totalDeps {
 		recent := recentDeps[id]
 		switch {
-		case recent >= LoadBearingRecentThreshold:
+		case recent >= UnsourcedFoundationRecentThreshold:
 			dependents[id] = recent
-		case total >= LoadBearingPersistentThreshold:
+		case total >= UnsourcedFoundationPersistentThreshold:
 			if !hasContradicts[id] && len(depSessions[id]) >= StressTestedSessionThreshold {
 				continue // stress-tested through use, suppress
 			}
@@ -426,7 +426,7 @@ func findLoadBearingVibes(claims []types.Claim, edges []types.Edge) []types.Vuln
 			continue
 		}
 		// Execution-status reports ("tests pass", "commit pushed") are
-		// structurally load-bearing but epistemically uninteresting —
+		// structurally central but epistemically uninteresting —
 		// see IsEphemeralStatus. Filtering here (not just in the hook
 		// renderer) cleans audit and analyze_kb output too.
 		if IsEphemeralStatus(*c) {
@@ -438,7 +438,7 @@ func findLoadBearingVibes(claims []types.Claim, edges []types.Edge) []types.Vuln
 		}
 		vulns = append(vulns, types.Vulnerability{
 			Severity:           "critical",
-			Type:               "load_bearing_vibes",
+			Type:               "unsourced_foundation",
 			Description:        fmt.Sprintf("%d claims rest on this %s claim, %s: %q%s", deg, c.Basis, challenge, truncate(c.Text, 60), originTag(*c)),
 			ClaimIDs:           []string{c.ID},
 			FiredViaPersistent: firedViaPersistent[id],
@@ -456,7 +456,7 @@ func findBottlenecks(claims []types.Claim, edges []types.Edge) []types.Vulnerabi
 	// the all-time graph. A bottleneck is interesting because many *current*
 	// reasoning paths flow through it; a node with high historical centrality
 	// but no recent connections isn't structurally relevant to what's
-	// happening now. Same recency principle as findLoadBearingVibes.
+	// happening now. Same recency principle as findUnsourcedFoundation.
 	//
 	// Filter rule: keep edges where at least one endpoint is recent. This
 	// includes "boundary" edges that touch an old claim from a recent one
@@ -787,7 +787,7 @@ func findFluencyTraps(claims []types.Claim, edges []types.Edge) []types.Vulnerab
 		types.BasisAssumption: 0.5,
 	}
 
-	// Hybrid structural importance, same as findLoadBearingVibes: a claim has
+	// Hybrid structural importance, same as findUnsourcedFoundation: a claim has
 	// "current" structural importance if FluencyTrapRecentThreshold or more
 	// recent claims depend on it, OR FluencyTrapPersistentThreshold or more
 	// total claims depend on it across all time. Recent activity catches
@@ -842,7 +842,7 @@ func findFluencyTraps(claims []types.Claim, edges []types.Edge) []types.Vulnerab
 		case recentDeps[id] >= FluencyTrapRecentThreshold:
 			hasDependents[id] = true
 		case total >= FluencyTrapPersistentThreshold:
-			// Stress-test suppression — same rationale as findLoadBearingVibes.
+			// Stress-test suppression — same rationale as findUnsourcedFoundation.
 			if !hasContradicts[id] && len(depSessions[id]) >= StressTestedSessionThreshold {
 				continue
 			}
@@ -856,7 +856,7 @@ func findFluencyTraps(claims []types.Claim, edges []types.Edge) []types.Vulnerab
 		if c.Challenged || !hasDependents[c.ID] {
 			continue
 		}
-		// Same ephemeral-status filter as findLoadBearingVibes: a status
+		// Same ephemeral-status filter as findUnsourcedFoundation: a status
 		// report stated at confidence 0.95 isn't a fluency trap — the
 		// speaker just watched the tests pass.
 		if IsEphemeralStatus(c) {
@@ -1265,10 +1265,10 @@ func clusterClaimIDs(cl types.ClusterInfo) []string {
 // is the substitute for session isolation (see README "Session Model").
 //
 // HookColdStartMinClaims gates the whole hook on graph size. On a tiny
-// graph (first few turns of a conversation), load-bearing analysis is
+// graph (first few turns of a conversation), dependent-count analysis is
 // unreliable regardless of whether individual claims cross the per-detector
-// dependent thresholds — three claims in a chain look load-bearing but
-// it's just small-N artifact. Imported from buddy's COLD_START_MIN_CLAIMS.
+// dependent thresholds — three claims in a chain look structurally central
+// but it's just small-N artifact. Imported from buddy's COLD_START_MIN_CLAIMS.
 const (
 	HookCooldownWindow = 24 * time.Hour
 
@@ -1284,10 +1284,11 @@ const (
 	HookColdStartMinClaims = 6
 
 	// HookConversationalWindow defines what counts as "current conversation"
-	// for the load-bearing / fluency / centrality detectors. A claim is
-	// conversationally load-bearing only if recent claims depend on it; a
-	// claim is a current bottleneck only if it sits on paths through the
-	// recent subgraph. This shifts these detectors from "graph-historical
+	// for the unsourced-foundation / fluency / centrality detectors. Recent
+	// claims depending on it is what makes a claim conversationally central.
+	// Sitting on paths through the recent subgraph specifically is what
+	// makes a bottleneck current, rather than merely historical. This shifts
+	// these detectors from "graph-historical
 	// weight" to "what's currently being built on" — what a thoughtful
 	// collaborator would surface, not what has the most cross-session
 	// graph centrality.
@@ -1299,8 +1300,8 @@ const (
 	// the change is non-breaking.
 	HookConversationalWindow = 6 * time.Hour
 
-	// LoadBearingRecentThreshold and LoadBearingPersistentThreshold define the
-	// hybrid load-bearing criterion. A claim fires as load-bearing if EITHER
+	// UnsourcedFoundationRecentThreshold and UnsourcedFoundationPersistentThreshold define the
+	// hybrid firing criterion. A claim fires as an unsourced foundation if EITHER
 	// it has Recent-Threshold or more dependents created within the
 	// HookConversationalWindow (current activity), OR it has Persistent-
 	// Threshold or more total dependents across all time (persistent weight).
@@ -1312,8 +1313,8 @@ const (
 	// supports. Persistent-only firings carry FiredViaPersistent=true so
 	// FormatHookFindings can apply HookPersistentCooldown (longer cooldown)
 	// rather than the standard 24h — they surface as occasional reminders.
-	LoadBearingRecentThreshold     = 2
-	LoadBearingPersistentThreshold = 8
+	UnsourcedFoundationRecentThreshold     = 2
+	UnsourcedFoundationPersistentThreshold = 8
 
 	// FluencyTrapRecentThreshold and FluencyTrapPersistentThreshold use the
 	// same hybrid logic. The original detector required ≥1 dependent (any
@@ -1327,7 +1328,7 @@ const (
 	// contradicts edges in the graph. The intuition: if the conversation has
 	// implicitly added support to a claim across multiple sessions over time
 	// without anyone pushing back, the claim has been stress-tested through
-	// use. It's still structurally load-bearing, but the conversation has
+	// use. It still has weight in the graph, but the conversation has
 	// effectively accepted it as a working premise — surfacing it as a finding
 	// adds noise rather than signal.
 	//
@@ -1372,8 +1373,8 @@ func FormatHookFindings(topo *types.Topology, vulns *types.Vulnerabilities, clai
 	if maxFindings < 1 {
 		maxFindings = 1
 	}
-	// Cold-start gate: below a minimum graph size, load-bearing analysis is
-	// dominated by small-sample artifacts. Suppress the hook entirely.
+	// Cold-start gate: below a minimum graph size, dependent-count analysis
+	// is dominated by small-sample artifacts. Suppress the hook entirely.
 	if len(claims) < HookColdStartMinClaims {
 		return "", "", "", false
 	}
@@ -1411,7 +1412,7 @@ func FormatHookFindings(topo *types.Topology, vulns *types.Vulnerabilities, clai
 			continue
 		}
 		switch v.Type {
-		case "load_bearing_vibes", "fluency_trap":
+		case "unsourced_foundation", "fluency_trap":
 			findings = append(findings, finding{0, v})
 		case "unchallenged_chain", "echo_chamber", "premature_closure":
 			findings = append(findings, finding{1, v})
@@ -1419,7 +1420,7 @@ func FormatHookFindings(topo *types.Topology, vulns *types.Vulnerabilities, clai
 			findings = append(findings, finding{2, v})
 		case "bottleneck":
 			findings = append(findings, finding{3, v})
-		case "legacy_load_bearer":
+		case "legacy_unsourced_foundation":
 			// Same priority as bottleneck — both surface structural-leverage
 			// findings the user wants visible but aren't urgent like vibes
 			// being believed. Cooldown (HookPersistentCooldown) prevents
@@ -1594,7 +1595,7 @@ func vulnerabilityHasInventoryFlag(v types.Vulnerability, claimByID map[string]*
 //     is real signal that justifies surfacing again.
 //  3. prior=recent, current=persistent: 7d cooldown applies. A recent fire
 //     within the last week suppresses any persistent reminder; we don't
-//     pile a "still load-bearing" reminder on top of a fresh recent fire.
+//     pile a "still depended-on" reminder on top of a fresh recent fire.
 //  4. prior=recent, current=recent: 24h cooldown applies. Standard
 //     recurring activity; fires again after 24h of new dependents.
 //
@@ -1771,7 +1772,7 @@ func IsSTOPClass(c types.Claim) bool {
 // claims about an action just performed ("tests pass", "commit pushed",
 // "build is clean"). These are true at utterance, verifiable from output
 // already in the conversation context, and stale within hours. Flagging
-// them as load-bearing or fluency traps is the dominant precision failure:
+// them as unsourced foundations or fluency traps is the dominant precision failure:
 // in the 41 historical hook fires on the slimemold project (2026-06-01 to
 // 06-09), ~28 anchored on this claim class, and interrogating any of them
 // would have been pure friction.
@@ -1812,7 +1813,7 @@ var ephemeralStatusPatterns = []*regexp.Regexp{
 // IsEphemeralStatus reports whether a claim is an execution-status report:
 // a self-report of an action just performed, verifiable from conversation
 // context at utterance time and stale shortly after. Detectors that anchor
-// on a single claim's believability (load_bearing_vibes, fluency_trap)
+// on a single claim's believability (unsourced_foundation, fluency_trap)
 // skip these — "All tests pass" supporting two other claims is structurally
 // true but epistemically uninteresting, and firing on it trains the
 // consumer to ignore the channel.

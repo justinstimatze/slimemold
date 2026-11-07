@@ -17,7 +17,7 @@ import (
 // TestSweepLegacyThresholdsArePaired enforces the documented invariant:
 // store.SweepStructuralMin and analysis.LegacyMinDeps must be equal so the
 // "old + few-deps" boundary partitions cleanly into sweep candidates vs
-// legacy_load_bearer findings — no gap, no overlap at the boundary.
+// legacy_unsourced_foundation findings — no gap, no overlap at the boundary.
 //
 // Both constants live in sibling packages (which can't import each other) and
 // each carries a doc comment saying "keep equal," but nothing enforced it
@@ -54,7 +54,7 @@ func TestSweepLegacyThresholdsArePaired(t *testing.T) {
 //     structural-rescue branch keeps it from sweep. A drift `>= K` →
 //     `> K` on the sweep side would make this claim get swept.
 //   - boundary-recent: old + recently referenced. Fires as a
-//     legacy_load_bearer. A drift on the legacy side (`>= K` → `> K`,
+//     legacy_unsourced_foundation. A drift on the legacy side (`>= K` → `> K`,
 //     equivalently `< K` → `<= K`) would make this claim NOT fire.
 //
 // Together they pin the partition: at deps == K, sweep rescues old idle
@@ -69,7 +69,7 @@ func TestSweepLegacyThresholdBoundaryBehavior(t *testing.T) {
 
 	// Two boundary claims at deps == K, sharing the same K dependents.
 	// boundary-idle exercises sweep's structural-rescue; boundary-recent
-	// exercises legacy_load_bearer firing. The shared dependents make
+	// exercises legacy_unsourced_foundation firing. The shared dependents make
 	// each boundary claim hit exactly K incoming structural edges.
 	claims := []types.Claim{
 		{ID: "boundary-idle", Project: "p", Speaker: types.SpeakerAssistant, Basis: types.BasisVibes,
@@ -104,13 +104,13 @@ func TestSweepLegacyThresholdBoundaryBehavior(t *testing.T) {
 	}
 
 	// GAP check: at deps == K with recent activity, boundary-recent MUST
-	// fire as legacy_load_bearer. A comparator drift on the legacy side
+	// fire as legacy_unsourced_foundation. A comparator drift on the legacy side
 	// (the `< LegacyMinDeps` continue at legacy.go:80 flipping to `<=`)
 	// would make this claim silently skipped.
 	_, vulns := analysis.Analyze(claims, edges, "p")
 	fired := false
 	for _, v := range vulns.Items {
-		if v.Type == "legacy_load_bearer" {
+		if v.Type == "legacy_unsourced_foundation" {
 			for _, cid := range v.ClaimIDs {
 				if cid == "boundary-recent" {
 					fired = true
@@ -119,7 +119,7 @@ func TestSweepLegacyThresholdBoundaryBehavior(t *testing.T) {
 		}
 	}
 	if !fired {
-		t.Errorf("GAP at deps=K (=%d): boundary-recent claim did NOT fire as legacy_load_bearer despite "+
+		t.Errorf("GAP at deps=K (=%d): boundary-recent claim did NOT fire as legacy_unsourced_foundation despite "+
 			"age=%v, recent reference (%v), and deps=%d (== LegacyMinDeps) — partition broken.",
 			K, now.Sub(old), now.Sub(recentRef), K)
 	}

@@ -5,23 +5,23 @@ import (
 	"testing"
 )
 
-func TestFormatLoadBearingFinding_MatchesDetectorFormat(t *testing.T) {
+func TestFormatUnsourcedFoundationFinding_MatchesDetectorFormat(t *testing.T) {
 	// Verifies the surface format matches what
-	// internal/analysis/analysis.go:findLoadBearingVibes produces in
+	// internal/analysis/analysis.go:findUnsourcedFoundation produces in
 	// the Description field. If that format changes, this test fails
 	// and forces a deliberate fixture update.
-	got := FormatLoadBearingFinding("short claim text", 3, true)
+	got := FormatUnsourcedFoundationFinding("short claim text", 3, true)
 	want := `3 claims rest on this vibes claim, never challenged: "short claim text"`
 	if got != want {
 		t.Errorf("format mismatch:\n got: %q\nwant: %q", got, want)
 	}
 }
 
-func TestFormatLoadBearingFinding_LongTextTruncated(t *testing.T) {
+func TestFormatUnsourcedFoundationFinding_LongTextTruncated(t *testing.T) {
 	// Mirrors internal/analysis/analysis.go:truncate(s, 60). For text
 	// over 60 bytes the output is s[:57] + "...".
 	long := "All tests passed after the implementation of Options A, B-auto, B-manual, and the phrasing fix."
-	got := FormatLoadBearingFinding(long, 4, true)
+	got := FormatUnsourcedFoundationFinding(long, 4, true)
 	if !strings.Contains(got, "...") {
 		t.Errorf("long text should be truncated with ..., got %q", got)
 	}
@@ -35,8 +35,8 @@ func TestFormatLoadBearingFinding_LongTextTruncated(t *testing.T) {
 	}
 }
 
-func TestFormatLoadBearingFinding_NeverChallengedFalse(t *testing.T) {
-	got := FormatLoadBearingFinding("x", 2, false)
+func TestFormatUnsourcedFoundationFinding_NeverChallengedFalse(t *testing.T) {
+	got := FormatUnsourcedFoundationFinding("x", 2, false)
 	if !strings.Contains(got, "already challenged") {
 		t.Errorf("expected already-challenged phrasing when neverChallenged=false, got %q", got)
 	}
@@ -71,7 +71,7 @@ func TestFixtures_Shape(t *testing.T) {
 		// NegTurn must NOT reference the flagged-claim numerics — a
 		// quick sanity check that benign turns are truly benign.
 		// (Not exhaustive; a reviewer's leak-eyeball pass is still
-		// the load-bearing check before commit.)
+		// the check this one can't replace before commit.)
 		if f.NegTurn == f.Main || f.NegTurn == f.PosTurn {
 			t.Errorf("fixture %d: NegTurn duplicates another turn", i)
 		}

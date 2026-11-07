@@ -7,7 +7,7 @@ import (
 	"github.com/justinstimatze/slimemold/types"
 )
 
-// LegacyLoadBearer is the detector for "old but still actively touched"
+// LegacyUnsourcedFoundation is the detector for "old but still actively touched"
 // claims — the case the user flagged as "would be very interesting" when we
 // discussed pruning. The hypothesis: most months-old claims are stale state
 // observations whose work has been done. A few are not — they're underpinning
@@ -29,7 +29,7 @@ import (
 // false negatives here.
 // LegacyMinDeps is paired with internal/store.SweepStructuralMin: together
 // they define the boundary between "structurally inert" (sweep archives) and
-// "load-bearing" (legacy_load_bearer fires). Keep them equal — at deps =
+// "still doing structural work" (legacy_unsourced_foundation fires). Keep them equal — at deps =
 // LegacyMinDeps an old claim must fall into exactly one bucket, not both
 // (overlap) or neither (gap).
 //
@@ -40,16 +40,16 @@ const (
 	LegacyMinDeps            = 2                   // paired with store.SweepStructuralMin — keep equal
 )
 
-// findLegacyLoadBearers surfaces claims that are old but still being actively
-// referenced in current reasoning. See the LegacyLoadBearer doc comment for
+// findLegacyUnsourcedFoundations surfaces claims that are old but still being actively
+// referenced in current reasoning. See the LegacyUnsourcedFoundation doc comment for
 // rationale and threshold semantics.
-func findLegacyLoadBearers(claims []types.Claim, edges []types.Edge) []types.Vulnerability {
+func findLegacyUnsourcedFoundations(claims []types.Claim, edges []types.Edge) []types.Vulnerability {
 	now := time.Now()
 
 	// Count incoming structural edges per claim. Supports and depends_on
 	// count as "structural" (the from claim is grounded in the to claim);
 	// contradicts and questions are deliberately excluded — being argued
-	// with isn't the same as load-bearing dependence.
+	// with isn't the same as other claims depending on it.
 	incomingDeps := make(map[string]int)
 	for _, e := range edges {
 		switch e.Relation {
@@ -82,7 +82,7 @@ func findLegacyLoadBearers(claims []types.Claim, edges []types.Edge) []types.Vul
 		}
 		out = append(out, types.Vulnerability{
 			Severity: "warning",
-			Type:     "legacy_load_bearer",
+			Type:     "legacy_unsourced_foundation",
 			Description: fmt.Sprintf(
 				"Old claim still doing work: %q (created %dd ago, referenced %s ago, %d incoming deps)",
 				truncate(c.Text, 60),
@@ -92,7 +92,7 @@ func findLegacyLoadBearers(claims []types.Claim, edges []types.Edge) []types.Vul
 			),
 			ClaimIDs: []string{c.ID},
 			// Mark as persistent so skipAnchor's HookMaxClaimAge (7-day) cap
-			// doesn't drop these — by definition every legacy_load_bearer
+			// doesn't drop these — by definition every legacy_unsourced_foundation
 			// is on a claim >30 days old. The 7-day cooldown applies, so
 			// the same legacy anchor won't repeat-fire daily.
 			FiredViaPersistent: true,

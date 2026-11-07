@@ -21,13 +21,13 @@ import (
 // where the user sees the model's reaction, not these strings directly.
 
 var phrasingsByType = map[string][]string{
-	"load_bearing_vibes_llm": {
+	"unsourced_foundation_llm": {
 		`"Actually — several of the things we've built depend on '%s', and I want to find where it comes from. If there's a real source behind it, everything resting on it gets stronger. Do you know where this originated?"`,
 		`"One thing I want to flag — a few later steps depend on '%s', and I don't think either of us has anchored it. Worth pinning down before we build further on top."`,
 		`"Hmm, '%s' — where did we get that from originally? A lot rests on it, and if it has a real source, the whole line firms up."`,
 		`"Noticing that other claims lean on '%s'. Is there an actual reference for it, or did we reason our way into it? Either is fine, I just want to know which."`,
 	},
-	"load_bearing_vibes_user": {
+	"unsourced_foundation_user": {
 		`"A few of our later steps depend on '%s'. If we can point to what backs it, this whole line gets more solid — what would you show someone who asked for evidence?"`,
 		`"I want to stress-test one thing: a lot depends on '%s', and I want to make sure we have it right. What's the strongest version — is there a source, or have we reasoned it out?"`,
 		`"Real quick — much of the argument depends on '%s'. If I tried to convince someone skeptical, what would I show them? Let's have that answer before we move on."`,
@@ -91,7 +91,7 @@ var phrasingsByType = map[string][]string{
 		`"Pausing on '%s' — that's a real-world commitment, and the worst time to discover the case isn't airtight is after you've sent it. Before the irreversible step: what's the one stress-test we haven't run yet?"`,
 		`"'%s' is the kind of move where the cost of being wrong is asymmetric — much higher than the cost of waiting a day to verify. What would a domain expert who hasn't seen our chat history say about it?"`,
 	},
-	"legacy_load_bearer": {
+	"legacy_unsourced_foundation": {
 		`"Worth flagging that '%s' is from a while back but current threads still depend on it. Is the original reasoning still as solid as we'd want, or has it just been around long enough to feel settled? Worth a fresh look."`,
 		`"'%s' is an old claim that keeps coming up — usually that means either it's genuinely foundational or it's calcified. Which is it here? If we re-derived it today, would we land on the same thing?"`,
 		`"Noticing that '%s' still gets referenced in current threads despite being old. Could be solid bedrock; could be an assumption that's calcified without re-examination. Worth checking which one before building further on it."`,
@@ -115,15 +115,15 @@ func pickPhrasing(findingType string, claimText string) string {
 }
 
 // phrasingKey maps a finding type + description hints to a phrasing table
-// key. The one special case is load_bearing_vibes which has distinct user
+// key. The one special case is unsourced_foundation which has distinct user
 // vs. llm_output phrasings — "the user is bringing vibes" reads differently
 // from "the AI is asserting confidently without a source."
 func phrasingKey(findingType, description string) string {
-	if findingType == "load_bearing_vibes" {
+	if findingType == "unsourced_foundation" {
 		if strings.Contains(description, "llm_output") {
-			return "load_bearing_vibes_llm"
+			return "unsourced_foundation_llm"
 		}
-		return "load_bearing_vibes_user"
+		return "unsourced_foundation_user"
 	}
 	return findingType
 }

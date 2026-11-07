@@ -252,7 +252,7 @@ func TestSycophancySaturation_AnchorPicksMostFlagged(t *testing.T) {
 	}
 }
 
-func TestAbilityOverstatement_LoadBearingIsWarning(t *testing.T) {
+func TestAbilityOverstatement_UnsourcedFoundationIsWarning(t *testing.T) {
 	claims := []types.Claim{
 		makeBotClaim("bot1", "I checked all the files", "s1", 0,
 			func(c *types.Claim) { c.AbilityOverstatement = true }),
@@ -310,7 +310,7 @@ func TestAbilityOverstatement_IgnoresUserClaims(t *testing.T) {
 	}
 }
 
-func TestSentienceDrift_LoadBearingIsWarning(t *testing.T) {
+func TestSentienceDrift_UnsourcedFoundationIsWarning(t *testing.T) {
 	claims := []types.Claim{
 		makeBotClaim("bot1", "I genuinely care", "s1", 0,
 			func(c *types.Claim) { c.SentienceClaim = true }),
@@ -326,7 +326,7 @@ func TestSentienceDrift_LoadBearingIsWarning(t *testing.T) {
 		t.Fatalf("findings = %d, want 1", len(got))
 	}
 	if got[0].Severity != "warning" {
-		t.Errorf("severity = %s, want warning (load-bearing)", got[0].Severity)
+		t.Errorf("severity = %s, want warning (heavily depended-on)", got[0].Severity)
 	}
 }
 

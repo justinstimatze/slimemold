@@ -193,7 +193,7 @@ func (d *DB) CreateEdge(e *types.Edge) (bool, error) {
 	n, _ := res.RowsAffected()
 	if n > 0 {
 		// New edge → both endpoints are "active" right now. Touch their
-		// last_referenced_at so the legacy_load_bearer detector and the
+		// last_referenced_at so the legacy_unsourced_foundation detector and the
 		// archival sweep see the recent reference. Errors swallowed —
 		// the edge insert is the primary write; bookkeeping failure
 		// shouldn't propagate.
@@ -988,6 +988,20 @@ func migrate(db *sql.DB) {
 	migrateLastReferencedAt(db)
 	migrateArchivedFlag(db)
 	migrateHookFireSnapshot(db)
+	migrateFindingTypeNames(db)
+}
+
+// migrateFindingTypeNames rewrites hook_fire_log rows written under the old
+// finding-type names, so cooldown lookups keyed on finding_type still match
+// fires recorded before the rename. Idempotent: once no old names remain, the
+// UPDATEs touch nothing.
+func migrateFindingTypeNames(db *sql.DB) {
+	for oldName, newName := range map[string]string{
+		"load_bearing_vibes": "unsourced_foundation",
+		"legacy_load_bearer": "legacy_unsourced_foundation",
+	} {
+		_, _ = db.Exec(`UPDATE hook_fire_log SET finding_type = ? WHERE finding_type = ?`, newName, oldName)
+	}
 }
 
 // migrateHookFireSnapshot adds the four snapshot columns to hook_fire_log
@@ -1220,7 +1234,7 @@ func rebuildClaimsIfMissing(db *sql.DB, marker string, ddl []string) {
 //   - grand_significance, unique_connection, dismisses_counterevidence,
 //     ability_overstatement, sentience_claim, relational_drift,
 //     consequential_action (Phase 3 inventory)
-//   - last_referenced_at (migrateLastReferencedAt — drives sweep + legacy_load_bearer)
+//   - last_referenced_at (migrateLastReferencedAt — drives sweep + legacy_unsourced_foundation)
 //   - archived (migrateArchivedFlag — drives soft-archive)
 //
 // Rebuilds that ship without these columns will reset archived state and

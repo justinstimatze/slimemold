@@ -58,8 +58,8 @@ func RenderASCII(topo *types.Topology, vulns *types.Vulnerabilities) string {
 				if vs, ok := vulnMap[c.ID]; ok {
 					for _, v := range vs {
 						switch v.Type {
-						case "load_bearing_vibes":
-							suffix += " ← LOAD-BEARING " + strings.ToUpper(string(c.Basis))
+						case "unsourced_foundation":
+							suffix += " ← UNSOURCED FOUNDATION " + strings.ToUpper(string(c.Basis))
 						case "bottleneck":
 							suffix += " ← BOTTLENECK"
 						}

@@ -1,5 +1,5 @@
 // Command quality is the CLI shim over internal/qualityharness. It
-// measures extraction substantiveness (load-bearing vs filler) using a
+// measures extraction substantiveness (substantive vs filler) using a
 // separate Haiku grader, gated by pos/neg control fixtures.
 //
 // Lives in cmd/ rather than as a //go:build ignore script in

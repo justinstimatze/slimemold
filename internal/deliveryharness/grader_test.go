@@ -9,7 +9,7 @@ func TestBuildGraderPrompt_ContainsAnchors(t *testing.T) {
 	in := GraderInput{
 		FindingText:       "2 claims rest on this vibes claim, never challenged: 'the auth uses JWT'",
 		UserTurn:          "we already established the auth uses JWT, so the rotation logic is fine",
-		AssistantResponse: "actually, you flagged JWT as load-bearing — do you have the source?",
+		AssistantResponse: "actually, you flagged JWT as an unsourced foundation — do you have the source?",
 	}
 	got := BuildGraderPrompt(in)
 	for _, must := range []string{

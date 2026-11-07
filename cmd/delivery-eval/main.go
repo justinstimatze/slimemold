@@ -51,7 +51,7 @@ const (
 	defaultHostTemp      = 0.7
 
 	// defaultHostSystem deliberately omits any directive about
-	// pushing back on load-bearing claims — milestone 6 showed the
+	// pushing back on unsourced-foundation claims — milestone 6 showed the
 	// previous directive sentence primed the host to surface findings
 	// even when the immediate user turn was tangential, confounding
 	// the A baseline. The bare "helpful assistant" framing is the

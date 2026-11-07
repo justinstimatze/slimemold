@@ -85,7 +85,7 @@ A claim is eligible for archival when it meets either branch, AND has not been t
 - ` + "`closed=true`" + ` — the model (you) explicitly retired it via ` + "`claims(close, ...)`" + `, OR
 - weak basis (vibes/llm_output/assumption) AND fewer than 2 incoming supports/depends_on edges (structurally inert chatter)
 
-Strong-basis claims (research/empirical/definition/convention) are kept regardless of dep count — they earned their position by being grounded. Claims with 2+ incoming structural edges are kept regardless of basis — those are picked up by the legacy_load_bearer detector instead.
+Strong-basis claims (research/empirical/definition/convention) are kept regardless of dep count — they earned their position by being grounded. Claims with 2+ incoming structural edges are kept regardless of basis — those are picked up by the legacy_unsourced_foundation detector instead.
 
 Archive is soft (sets a flag) and reversible. If a user asks "where did my claims go?" or "the graph looks smaller than I remember" or "did the sweep just eat something I needed?", the recovery path is shell-level, not an MCP tool:
 - ` + "`slimemold unarchive --all`" + ` restores every archived claim in the project

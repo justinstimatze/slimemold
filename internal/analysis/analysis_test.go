@@ -55,7 +55,7 @@ func TestOrphanDetection(t *testing.T) {
 	}
 }
 
-func TestLoadBearingVibes(t *testing.T) {
+func TestUnsourcedFoundation(t *testing.T) {
 	claims := []types.Claim{
 		makeClaim("vibes1", "just a feeling", types.BasisVibes),
 		makeClaim("dep1", "depends on vibes", types.BasisDeduction),
@@ -70,7 +70,7 @@ func TestLoadBearingVibes(t *testing.T) {
 
 	var found bool
 	for _, v := range vulns.Items {
-		if v.Type == "load_bearing_vibes" {
+		if v.Type == "unsourced_foundation" {
 			found = true
 			if v.Severity != "critical" {
 				t.Errorf("severity = %s, want critical", v.Severity)
@@ -81,11 +81,11 @@ func TestLoadBearingVibes(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Error("expected load_bearing_vibes vulnerability")
+		t.Error("expected unsourced_foundation vulnerability")
 	}
 }
 
-func TestNoLoadBearingVibesForResearch(t *testing.T) {
+func TestNoUnsourcedFoundationForResearch(t *testing.T) {
 	claims := []types.Claim{
 		makeClaim("solid", "well-sourced claim", types.BasisResearch),
 		makeClaim("dep1", "depends", types.BasisDeduction),
@@ -99,8 +99,8 @@ func TestNoLoadBearingVibesForResearch(t *testing.T) {
 	_, vulns := Analyze(claims, edges, "test")
 
 	for _, v := range vulns.Items {
-		if v.Type == "load_bearing_vibes" {
-			t.Errorf("unexpected load_bearing_vibes for research-basis claim")
+		if v.Type == "unsourced_foundation" {
+			t.Errorf("unexpected unsourced_foundation for research-basis claim")
 		}
 	}
 }
@@ -338,7 +338,7 @@ func TestFormatAuditSummary(t *testing.T) {
 	vulns := &types.Vulnerabilities{
 		Project: "test",
 		Items: []types.Vulnerability{
-			{Severity: "critical", Type: "load_bearing_vibes", Description: "test critical"},
+			{Severity: "critical", Type: "unsourced_foundation", Description: "test critical"},
 			{Severity: "warning", Type: "orphan", Description: "test warning"},
 		},
 		CriticalCount: 1,
@@ -760,7 +760,7 @@ func TestFormatHookFindings_Cooldown(t *testing.T) {
 	anchorID := "claim-anchor"
 	downstreamID := "claim-downstream"
 	claims := []types.Claim{
-		{ID: anchorID, Text: "load-bearing vibes anchor", Basis: types.BasisVibes, Speaker: types.SpeakerUser, CreatedAt: time.Now()},
+		{ID: anchorID, Text: "unsourced foundation vibes anchor", Basis: types.BasisVibes, Speaker: types.SpeakerUser, CreatedAt: time.Now()},
 		{ID: downstreamID, Text: "downstream A", Basis: types.BasisDeduction, Speaker: types.SpeakerUser, CreatedAt: time.Now()},
 		{ID: "claim-c", Text: "downstream B", Basis: types.BasisDeduction, Speaker: types.SpeakerUser, CreatedAt: time.Now()},
 		{ID: "claim-d", Text: "filler D", Basis: types.BasisDeduction, Speaker: types.SpeakerUser, CreatedAt: time.Now()},
@@ -773,15 +773,15 @@ func TestFormatHookFindings_Cooldown(t *testing.T) {
 	}
 
 	topo, vulns := Analyze(claims, edges, "test")
-	// Sanity: we should have produced a load-bearing vibes finding on anchorID.
+	// Sanity: we should have produced an unsourced-foundation finding on anchorID.
 	foundAnchor := false
 	for _, v := range vulns.Items {
-		if v.Type == "load_bearing_vibes" && len(v.ClaimIDs) > 0 && v.ClaimIDs[0] == anchorID {
+		if v.Type == "unsourced_foundation" && len(v.ClaimIDs) > 0 && v.ClaimIDs[0] == anchorID {
 			foundAnchor = true
 		}
 	}
 	if !foundAnchor {
-		t.Fatal("setup: expected load_bearing_vibes on anchorID")
+		t.Fatal("setup: expected unsourced_foundation on anchorID")
 	}
 
 	// Without cooldown, FormatHookFindings picks anchorID.
@@ -789,24 +789,24 @@ func TestFormatHookFindings_Cooldown(t *testing.T) {
 	if summary == "" {
 		t.Fatal("expected non-empty summary without cooldown")
 	}
-	if pickedID != anchorID || pickedType != "load_bearing_vibes" {
-		t.Errorf("without cooldown: picked (%q, %q), want (%q, load_bearing_vibes)", pickedID, pickedType, anchorID)
+	if pickedID != anchorID || pickedType != "unsourced_foundation" {
+		t.Errorf("without cooldown: picked (%q, %q), want (%q, unsourced_foundation)", pickedID, pickedType, anchorID)
 	}
 
 	// With cooldown set on that exact (claim, type), we should either pick
 	// something else or emit nothing — but definitely not pick anchorID again.
-	recent := map[string]time.Time{anchorID + "|load_bearing_vibes": time.Now()}
+	recent := map[string]time.Time{anchorID + "|unsourced_foundation": time.Now()}
 	_, pickedID2, pickedType2, _ := FormatHookFindings(topo, vulns, claims, recent, 0, 0, 5, nil)
-	if pickedID2 == anchorID && pickedType2 == "load_bearing_vibes" {
+	if pickedID2 == anchorID && pickedType2 == "unsourced_foundation" {
 		t.Error("cooldown failed: picked the suppressed finding")
 	}
 }
 
-// TestLoadBearingVibes_AncientDependentsDoNotCount verifies that a vibes
+// TestUnsourcedFoundation_AncientDependentsDoNotCount verifies that a vibes
 // anchor whose only dependents were created outside HookConversationalWindow
-// does NOT fire as load-bearing. Conversationally load-bearing means recent
-// claims rest on it, not that any claims ever rested on it.
-func TestLoadBearingVibes_AncientDependentsDoNotCount(t *testing.T) {
+// does NOT fire as an unsourced foundation. Conversationally central means
+// recent claims rest on it, not that any claims ever rested on it.
+func TestUnsourcedFoundation_AncientDependentsDoNotCount(t *testing.T) {
 	ancient := time.Now().Add(-2 * HookConversationalWindow)
 	claims := []types.Claim{
 		{ID: "anchor", Text: "old vibes", Basis: types.BasisVibes, Speaker: types.SpeakerUser, CreatedAt: ancient},
@@ -819,18 +819,18 @@ func TestLoadBearingVibes_AncientDependentsDoNotCount(t *testing.T) {
 	}
 	_, vulns := Analyze(claims, edges, "test")
 	for _, v := range vulns.Items {
-		if v.Type == "load_bearing_vibes" && len(v.ClaimIDs) > 0 && v.ClaimIDs[0] == "anchor" {
-			t.Error("anchor with only ancient dependents should not fire as load-bearing")
+		if v.Type == "unsourced_foundation" && len(v.ClaimIDs) > 0 && v.ClaimIDs[0] == "anchor" {
+			t.Error("anchor with only ancient dependents should not fire as unsourced foundation")
 		}
 	}
 }
 
-// TestLoadBearingVibes_RecentDependentsCount verifies that a vibes anchor
-// with recent dependents does fire as load-bearing, even if the anchor itself
-// is old. The anchor's age is checked separately at the priority-selection
-// step (HookMaxClaimAge); the load-bearing detection is about whether recent
-// claims rest on the anchor.
-func TestLoadBearingVibes_RecentDependentsCount(t *testing.T) {
+// TestUnsourcedFoundation_RecentDependentsCount verifies that a vibes anchor
+// with recent dependents does fire as an unsourced foundation, even if the
+// anchor itself is old. The anchor's age is checked separately at the
+// priority-selection step (HookMaxClaimAge); this detector is about whether
+// recent claims rest on the anchor.
+func TestUnsourcedFoundation_RecentDependentsCount(t *testing.T) {
 	now := time.Now()
 	claims := []types.Claim{
 		{ID: "anchor", Text: "older vibes", Basis: types.BasisVibes, Speaker: types.SpeakerUser, CreatedAt: now.Add(-30 * time.Minute)},
@@ -844,19 +844,19 @@ func TestLoadBearingVibes_RecentDependentsCount(t *testing.T) {
 	_, vulns := Analyze(claims, edges, "test")
 	var found bool
 	for _, v := range vulns.Items {
-		if v.Type == "load_bearing_vibes" && len(v.ClaimIDs) > 0 && v.ClaimIDs[0] == "anchor" {
+		if v.Type == "unsourced_foundation" && len(v.ClaimIDs) > 0 && v.ClaimIDs[0] == "anchor" {
 			found = true
 		}
 	}
 	if !found {
-		t.Error("anchor with 2 recent dependents should fire as load-bearing")
+		t.Error("anchor with 2 recent dependents should fire as unsourced foundation")
 	}
 }
 
-// TestLoadBearingVibes_MixedDependentsCountsOnlyRecent verifies the count is
+// TestUnsourcedFoundation_MixedDependentsCountsOnlyRecent verifies the count is
 // strictly limited to recent dependents — an anchor with 1 ancient + 1 recent
 // dependent has degree 1 (below the 2-threshold) and does not fire.
-func TestLoadBearingVibes_MixedDependentsCountsOnlyRecent(t *testing.T) {
+func TestUnsourcedFoundation_MixedDependentsCountsOnlyRecent(t *testing.T) {
 	now := time.Now()
 	ancient := now.Add(-2 * HookConversationalWindow)
 	claims := []types.Claim{
@@ -870,25 +870,25 @@ func TestLoadBearingVibes_MixedDependentsCountsOnlyRecent(t *testing.T) {
 	}
 	_, vulns := Analyze(claims, edges, "test")
 	for _, v := range vulns.Items {
-		if v.Type == "load_bearing_vibes" && len(v.ClaimIDs) > 0 && v.ClaimIDs[0] == "anchor" {
+		if v.Type == "unsourced_foundation" && len(v.ClaimIDs) > 0 && v.ClaimIDs[0] == "anchor" {
 			t.Error("anchor with only 1 recent dependent (out of 2 total) should not fire — recent count below threshold")
 		}
 	}
 }
 
-// TestLoadBearingVibes_PersistentWeightFiresWithoutRecent verifies that an
-// anchor with enough total dependents (>= LoadBearingPersistentThreshold)
+// TestUnsourcedFoundation_PersistentWeightFiresWithoutRecent verifies that an
+// anchor with enough total dependents (>= UnsourcedFoundationPersistentThreshold)
 // fires even when none of those dependents are recent. The persistent-weight
 // branch surfaces genuinely foundational claims that have gone dormant —
 // "something we said two weeks ago that's still underpinning everything"
 // should keep coming up even without fresh activity.
-func TestLoadBearingVibes_PersistentWeightFiresWithoutRecent(t *testing.T) {
+func TestUnsourcedFoundation_PersistentWeightFiresWithoutRecent(t *testing.T) {
 	ancient := time.Now().Add(-2 * HookConversationalWindow)
 	claims := []types.Claim{
 		{ID: "anchor", Text: "persistent vibes", Basis: types.BasisVibes, Speaker: types.SpeakerUser, CreatedAt: ancient},
 	}
 	edges := []types.Edge{}
-	for i := 0; i < LoadBearingPersistentThreshold; i++ {
+	for i := 0; i < UnsourcedFoundationPersistentThreshold; i++ {
 		depID := fmt.Sprintf("dep%d", i)
 		claims = append(claims, types.Claim{ID: depID, Text: depID, Basis: types.BasisDeduction, Speaker: types.SpeakerUser, CreatedAt: ancient})
 		edges = append(edges, types.Edge{FromID: "anchor", ToID: depID, Relation: types.RelSupports})
@@ -896,7 +896,7 @@ func TestLoadBearingVibes_PersistentWeightFiresWithoutRecent(t *testing.T) {
 	_, vulns := Analyze(claims, edges, "test")
 	var found bool
 	for _, v := range vulns.Items {
-		if v.Type == "load_bearing_vibes" && len(v.ClaimIDs) > 0 && v.ClaimIDs[0] == "anchor" {
+		if v.Type == "unsourced_foundation" && len(v.ClaimIDs) > 0 && v.ClaimIDs[0] == "anchor" {
 			found = true
 		}
 	}
@@ -905,19 +905,19 @@ func TestLoadBearingVibes_PersistentWeightFiresWithoutRecent(t *testing.T) {
 	}
 }
 
-// TestLoadBearingVibes_BelowPersistentThresholdDoesNotFire verifies the gap
+// TestUnsourcedFoundation_BelowPersistentThresholdDoesNotFire verifies the gap
 // between the recent and persistent thresholds — a claim with several ancient
 // dependents but below the persistent threshold and zero recent dependents
 // should not fire. This is the "implicitly resolved" range: enough dependents
 // that it was used a lot, but not so many that it qualifies as truly
 // foundational, and no current activity to suggest it's still relevant.
-func TestLoadBearingVibes_BelowPersistentThresholdDoesNotFire(t *testing.T) {
+func TestUnsourcedFoundation_BelowPersistentThresholdDoesNotFire(t *testing.T) {
 	ancient := time.Now().Add(-2 * HookConversationalWindow)
 	claims := []types.Claim{
 		{ID: "anchor", Text: "moderate-degree vibes", Basis: types.BasisVibes, Speaker: types.SpeakerUser, CreatedAt: ancient},
 	}
 	edges := []types.Edge{}
-	belowThreshold := LoadBearingPersistentThreshold - 1
+	belowThreshold := UnsourcedFoundationPersistentThreshold - 1
 	for i := 0; i < belowThreshold; i++ {
 		depID := fmt.Sprintf("dep%d", i)
 		claims = append(claims, types.Claim{ID: depID, Text: depID, Basis: types.BasisDeduction, Speaker: types.SpeakerUser, CreatedAt: ancient})
@@ -925,26 +925,26 @@ func TestLoadBearingVibes_BelowPersistentThresholdDoesNotFire(t *testing.T) {
 	}
 	_, vulns := Analyze(claims, edges, "test")
 	for _, v := range vulns.Items {
-		if v.Type == "load_bearing_vibes" && len(v.ClaimIDs) > 0 && v.ClaimIDs[0] == "anchor" {
+		if v.Type == "unsourced_foundation" && len(v.ClaimIDs) > 0 && v.ClaimIDs[0] == "anchor" {
 			t.Errorf("anchor below persistent threshold (%d ancient deps, 0 recent) should not fire", belowThreshold)
 		}
 	}
 }
 
-// TestLoadBearingVibes_StressTestedSuppressed verifies that a claim whose
+// TestUnsourcedFoundation_StressTestedSuppressed verifies that a claim whose
 // dependents span StressTestedSessionThreshold+ distinct sessions (no
 // contradicts) is treated as implicitly stress-tested and does NOT fire from
 // the persistent branch. The conversation has accepted it through use across
 // distinct contexts; surfacing adds noise rather than signal.
-func TestLoadBearingVibes_StressTestedSuppressed(t *testing.T) {
+func TestUnsourcedFoundation_StressTestedSuppressed(t *testing.T) {
 	ancient := time.Now().Add(-7 * 24 * time.Hour)
 	claims := []types.Claim{
 		{ID: "anchor", Text: "stress-tested vibes", Basis: types.BasisVibes, Speaker: types.SpeakerUser, CreatedAt: ancient},
 	}
 	edges := []types.Edge{}
-	// LoadBearingPersistentThreshold dependents, distributed across at least
+	// UnsourcedFoundationPersistentThreshold dependents, distributed across at least
 	// StressTestedSessionThreshold distinct sessions.
-	for i := 0; i < LoadBearingPersistentThreshold; i++ {
+	for i := 0; i < UnsourcedFoundationPersistentThreshold; i++ {
 		depID := fmt.Sprintf("dep%d", i)
 		sess := fmt.Sprintf("session-%d", i%StressTestedSessionThreshold)
 		claims = append(claims, types.Claim{ID: depID, Text: depID, Basis: types.BasisDeduction, Speaker: types.SpeakerUser, SessionID: sess, CreatedAt: ancient})
@@ -952,23 +952,23 @@ func TestLoadBearingVibes_StressTestedSuppressed(t *testing.T) {
 	}
 	_, vulns := Analyze(claims, edges, "test")
 	for _, v := range vulns.Items {
-		if v.Type == "load_bearing_vibes" && len(v.ClaimIDs) > 0 && v.ClaimIDs[0] == "anchor" {
+		if v.Type == "unsourced_foundation" && len(v.ClaimIDs) > 0 && v.ClaimIDs[0] == "anchor" {
 			t.Errorf("stress-tested anchor (deps span %d+ sessions, no contradicts) should be suppressed", StressTestedSessionThreshold)
 		}
 	}
 }
 
-// TestLoadBearingVibes_BurstPatternStillFires verifies that a claim with
+// TestUnsourcedFoundation_BurstPatternStillFires verifies that a claim with
 // many dependents all from a single session (concentrated burst) still fires
 // from the persistent branch — that's the high-risk "everything rested on
 // this for one session and we never came back" case.
-func TestLoadBearingVibes_BurstPatternStillFires(t *testing.T) {
+func TestUnsourcedFoundation_BurstPatternStillFires(t *testing.T) {
 	ancient := time.Now().Add(-7 * 24 * time.Hour)
 	claims := []types.Claim{
 		{ID: "anchor", Text: "burst-pattern vibes", Basis: types.BasisVibes, Speaker: types.SpeakerUser, CreatedAt: ancient},
 	}
 	edges := []types.Edge{}
-	for i := 0; i < LoadBearingPersistentThreshold; i++ {
+	for i := 0; i < UnsourcedFoundationPersistentThreshold; i++ {
 		depID := fmt.Sprintf("dep%d", i)
 		claims = append(claims, types.Claim{ID: depID, Text: depID, Basis: types.BasisDeduction, Speaker: types.SpeakerUser, SessionID: "single-burst-session", CreatedAt: ancient})
 		edges = append(edges, types.Edge{FromID: "anchor", ToID: depID, Relation: types.RelSupports, CreatedAt: ancient})
@@ -976,7 +976,7 @@ func TestLoadBearingVibes_BurstPatternStillFires(t *testing.T) {
 	_, vulns := Analyze(claims, edges, "test")
 	var found bool
 	for _, v := range vulns.Items {
-		if v.Type == "load_bearing_vibes" && len(v.ClaimIDs) > 0 && v.ClaimIDs[0] == "anchor" {
+		if v.Type == "unsourced_foundation" && len(v.ClaimIDs) > 0 && v.ClaimIDs[0] == "anchor" {
 			found = true
 		}
 	}
@@ -985,11 +985,11 @@ func TestLoadBearingVibes_BurstPatternStillFires(t *testing.T) {
 	}
 }
 
-// TestLoadBearingVibes_ContradictedSpreadStillFires verifies that even if
+// TestUnsourcedFoundation_ContradictedSpreadStillFires verifies that even if
 // dependents span many sessions, the presence of a contradicts edge
 // disqualifies the claim from stress-tested suppression — contested claims
 // aren't implicitly accepted.
-func TestLoadBearingVibes_ContradictedSpreadStillFires(t *testing.T) {
+func TestUnsourcedFoundation_ContradictedSpreadStillFires(t *testing.T) {
 	ancient := time.Now().Add(-7 * 24 * time.Hour)
 	claims := []types.Claim{
 		{ID: "anchor", Text: "contested vibes", Basis: types.BasisVibes, Speaker: types.SpeakerUser, CreatedAt: ancient},
@@ -998,7 +998,7 @@ func TestLoadBearingVibes_ContradictedSpreadStillFires(t *testing.T) {
 	edges := []types.Edge{
 		{FromID: "objector", ToID: "anchor", Relation: types.RelContradicts, CreatedAt: ancient},
 	}
-	for i := 0; i < LoadBearingPersistentThreshold; i++ {
+	for i := 0; i < UnsourcedFoundationPersistentThreshold; i++ {
 		depID := fmt.Sprintf("dep%d", i)
 		sess := fmt.Sprintf("session-%d", i%StressTestedSessionThreshold)
 		claims = append(claims, types.Claim{ID: depID, Text: depID, Basis: types.BasisDeduction, Speaker: types.SpeakerUser, SessionID: sess, CreatedAt: ancient})
@@ -1007,7 +1007,7 @@ func TestLoadBearingVibes_ContradictedSpreadStillFires(t *testing.T) {
 	_, vulns := Analyze(claims, edges, "test")
 	var found bool
 	for _, v := range vulns.Items {
-		if v.Type == "load_bearing_vibes" && len(v.ClaimIDs) > 0 && v.ClaimIDs[0] == "anchor" {
+		if v.Type == "unsourced_foundation" && len(v.ClaimIDs) > 0 && v.ClaimIDs[0] == "anchor" {
 			found = true
 		}
 	}
@@ -1023,7 +1023,7 @@ func TestLoadBearingVibes_ContradictedSpreadStillFires(t *testing.T) {
 func TestFormatHookFindings_DifferentialCooldown(t *testing.T) {
 	makeFixture := func(persistent bool) (*types.Topology, *types.Vulnerabilities, []types.Claim) {
 		claims := []types.Claim{
-			{ID: "anchor", Text: "load-bearing claim", Basis: types.BasisVibes, Speaker: types.SpeakerUser, CreatedAt: time.Now()},
+			{ID: "anchor", Text: "depended-on claim", Basis: types.BasisVibes, Speaker: types.SpeakerUser, CreatedAt: time.Now()},
 			{ID: "f1", Text: "f1", Basis: types.BasisDeduction, Speaker: types.SpeakerUser, CreatedAt: time.Now()},
 			{ID: "f2", Text: "f2", Basis: types.BasisDeduction, Speaker: types.SpeakerUser, CreatedAt: time.Now()},
 			{ID: "f3", Text: "f3", Basis: types.BasisDeduction, Speaker: types.SpeakerUser, CreatedAt: time.Now()},
@@ -1036,8 +1036,8 @@ func TestFormatHookFindings_DifferentialCooldown(t *testing.T) {
 			Items: []types.Vulnerability{
 				{
 					Severity:           "critical",
-					Type:               "load_bearing_vibes",
-					Description:        `8 claims rest on this vibes claim, never challenged: "load-bearing claim"`,
+					Type:               "unsourced_foundation",
+					Description:        `8 claims rest on this vibes claim, never challenged: "depended-on claim"`,
 					ClaimIDs:           []string{"anchor"},
 					FiredViaPersistent: persistent,
 				},
@@ -1047,7 +1047,7 @@ func TestFormatHookFindings_DifferentialCooldown(t *testing.T) {
 	}
 
 	twoDaysAgo := time.Now().Add(-2 * 24 * time.Hour)
-	cooldownMap := map[string]time.Time{"anchor|load_bearing_vibes": twoDaysAgo}
+	cooldownMap := map[string]time.Time{"anchor|unsourced_foundation": twoDaysAgo}
 
 	// Persistent-only finding: 2 days ago is INSIDE HookPersistentCooldown (7d)
 	// → cooldown still active → should not pick.
@@ -1069,27 +1069,27 @@ func TestFormatHookFindings_DifferentialCooldown(t *testing.T) {
 // TestFormatHookFindings_InventoryFlagPrioritized verifies that within the
 // same detector-priority tier, findings on claims with Moore inventory flags
 // (grand_significance, sentience_claim, etc.) are surfaced ahead of findings
-// on neutral claims. The inventory flags are explicit risk markers — a
-// load-bearing vibes claim that's also marked grand_significance is
+// on neutral claims. The inventory flags are explicit risk markers — an
+// unsourced-foundation claim that's also marked grand_significance is
 // structurally riskier than a neutral one and should win the priority slot.
 func TestFormatHookFindings_InventoryFlagPrioritized(t *testing.T) {
 	now := time.Now()
 	claims := []types.Claim{
-		{ID: "neutral-anchor", Text: "neutral load-bearing", Basis: types.BasisVibes, Speaker: types.SpeakerUser, CreatedAt: now},
-		{ID: "flagged-anchor", Text: "flagged load-bearing", Basis: types.BasisVibes, Speaker: types.SpeakerUser, CreatedAt: now, GrandSignificance: true},
+		{ID: "neutral-anchor", Text: "neutral foundation", Basis: types.BasisVibes, Speaker: types.SpeakerUser, CreatedAt: now},
+		{ID: "flagged-anchor", Text: "flagged foundation", Basis: types.BasisVibes, Speaker: types.SpeakerUser, CreatedAt: now, GrandSignificance: true},
 		{ID: "f1", Text: "f1", Basis: types.BasisDeduction, Speaker: types.SpeakerUser, CreatedAt: now},
 		{ID: "f2", Text: "f2", Basis: types.BasisDeduction, Speaker: types.SpeakerUser, CreatedAt: now},
 		{ID: "f3", Text: "f3", Basis: types.BasisDeduction, Speaker: types.SpeakerUser, CreatedAt: now},
 		{ID: "f4", Text: "f4", Basis: types.BasisDeduction, Speaker: types.SpeakerUser, CreatedAt: now},
 	}
 	topo := &types.Topology{Project: "test", ClaimCount: len(claims)}
-	// Both findings are critical load-bearing — same detector priority.
+	// Both findings are critical unsourced foundations — same detector priority.
 	// Neutral one listed first to ensure ordering reflects flag, not position.
 	vulns := &types.Vulnerabilities{
 		Project: "test",
 		Items: []types.Vulnerability{
-			{Severity: "critical", Type: "load_bearing_vibes", Description: `3 claims rest on this vibes claim, never challenged: "neutral"`, ClaimIDs: []string{"neutral-anchor"}},
-			{Severity: "critical", Type: "load_bearing_vibes", Description: `3 claims rest on this vibes claim, never challenged: "flagged"`, ClaimIDs: []string{"flagged-anchor"}},
+			{Severity: "critical", Type: "unsourced_foundation", Description: `3 claims rest on this vibes claim, never challenged: "neutral"`, ClaimIDs: []string{"neutral-anchor"}},
+			{Severity: "critical", Type: "unsourced_foundation", Description: `3 claims rest on this vibes claim, never challenged: "flagged"`, ClaimIDs: []string{"flagged-anchor"}},
 		},
 	}
 	_, pickedID, _, _ := FormatHookFindings(topo, vulns, claims, nil, 0, 0, 5, nil)
@@ -1141,7 +1141,7 @@ func TestFormatHookFindings_AgeDecay(t *testing.T) {
 	// Graph size must exceed HookColdStartMinClaims.
 	anchorID := "old-claim"
 	claims := []types.Claim{
-		{ID: anchorID, Text: "ancient load-bearing vibes", Basis: types.BasisVibes, Speaker: types.SpeakerUser, CreatedAt: time.Now().Add(-2 * HookMaxClaimAge)},
+		{ID: anchorID, Text: "ancient unsourced foundation vibes", Basis: types.BasisVibes, Speaker: types.SpeakerUser, CreatedAt: time.Now().Add(-2 * HookMaxClaimAge)},
 		{ID: "d1", Text: "d1", Basis: types.BasisDeduction, Speaker: types.SpeakerUser, CreatedAt: time.Now()},
 		{ID: "d2", Text: "d2", Basis: types.BasisDeduction, Speaker: types.SpeakerUser, CreatedAt: time.Now()},
 		{ID: "f1", Text: "filler 1", Basis: types.BasisDeduction, Speaker: types.SpeakerUser, CreatedAt: time.Now()},
@@ -1177,11 +1177,11 @@ func TestFormatHookFindings_PersistentBypassAgeCap(t *testing.T) {
 		{ID: anchorID, Text: "old foundational vibes", Basis: types.BasisVibes, Speaker: types.SpeakerUser, CreatedAt: veryOld},
 	}
 	var edges []types.Edge
-	// LoadBearingPersistentThreshold dependents, spread across
+	// UnsourcedFoundationPersistentThreshold dependents, spread across
 	// StressTestedSessionThreshold-1 sessions so the stress-test suppression
 	// doesn't eat the finding (we want the foundational-but-unverified path,
 	// not the stress-tested path).
-	for i := 0; i < LoadBearingPersistentThreshold; i++ {
+	for i := 0; i < UnsourcedFoundationPersistentThreshold; i++ {
 		depID := fmt.Sprintf("dep%d", i)
 		session := fmt.Sprintf("s%d", i%(StressTestedSessionThreshold-1))
 		claims = append(claims, types.Claim{ID: depID, Text: depID, Basis: types.BasisDeduction, Speaker: types.SpeakerUser, CreatedAt: veryOld, SessionID: session})
@@ -1192,15 +1192,15 @@ func TestFormatHookFindings_PersistentBypassAgeCap(t *testing.T) {
 	// Confirm the analyzer produced a persistent-branch finding.
 	var found bool
 	for _, v := range vulns.Items {
-		if v.Type == "load_bearing_vibes" && len(v.ClaimIDs) > 0 && v.ClaimIDs[0] == anchorID {
+		if v.Type == "unsourced_foundation" && len(v.ClaimIDs) > 0 && v.ClaimIDs[0] == anchorID {
 			if !v.FiredViaPersistent {
-				t.Fatalf("expected FiredViaPersistent=true for %q with %d ancient deps and zero recent; got false", anchorID, LoadBearingPersistentThreshold)
+				t.Fatalf("expected FiredViaPersistent=true for %q with %d ancient deps and zero recent; got false", anchorID, UnsourcedFoundationPersistentThreshold)
 			}
 			found = true
 		}
 	}
 	if !found {
-		t.Fatalf("analyzer did not produce a load_bearing_vibes finding for %q", anchorID)
+		t.Fatalf("analyzer did not produce a unsourced_foundation finding for %q", anchorID)
 	}
 
 	// Now confirm FormatHookFindings does NOT filter it out via age cap.
@@ -1217,7 +1217,7 @@ func TestFormatHookFindings_PersistentBypassAgeCap(t *testing.T) {
 // are counted in StrengthCount and not double-counted in InfoCount.
 func TestStrengthCount_SeparateFromInfo(t *testing.T) {
 	// Graph with a well-sourced load-bearer (strong basis, 2+ dependents) —
-	// should produce a strength_well_sourced_load_bearer finding.
+	// should produce a strength_well_sourced_foundation finding.
 	claims := []types.Claim{
 		{ID: "anchor", Text: "research-backed anchor", Basis: types.BasisResearch, Source: "Schultz 1997", Speaker: types.SpeakerUser, CreatedAt: time.Now()},
 		{ID: "d1", Text: "d1", Basis: types.BasisDeduction, Speaker: types.SpeakerUser, CreatedAt: time.Now()},
@@ -1293,7 +1293,7 @@ func TestProductiveStressTest_ContradictsProxy(t *testing.T) {
 // detectors would otherwise fire.
 func TestFormatHookFindings_ColdStart(t *testing.T) {
 	// 3-claim graph — below HookColdStartMinClaims (6). Construct a shape
-	// that WOULD trigger load_bearing_vibes in a larger graph.
+	// that WOULD trigger unsourced_foundation in a larger graph.
 	claims := []types.Claim{
 		{ID: "anchor", Text: "vibes anchor", Basis: types.BasisVibes, Speaker: types.SpeakerUser, CreatedAt: time.Now()},
 		{ID: "d1", Text: "d1", Basis: types.BasisDeduction, Speaker: types.SpeakerUser, CreatedAt: time.Now()},
@@ -1304,15 +1304,15 @@ func TestFormatHookFindings_ColdStart(t *testing.T) {
 		{FromID: "d2", ToID: "anchor", Relation: types.RelDependsOn},
 	}
 	topo, vulns := Analyze(claims, edges, "test")
-	// Sanity: without cold-start, there IS a load-bearing vibes finding in vulns.
+	// Sanity: without cold-start, there IS an unsourced-foundation finding in vulns.
 	foundInVulns := false
 	for _, v := range vulns.Items {
-		if v.Type == "load_bearing_vibes" {
+		if v.Type == "unsourced_foundation" {
 			foundInVulns = true
 		}
 	}
 	if !foundInVulns {
-		t.Fatal("setup: expected load_bearing_vibes in vulns for a below-cold-start graph")
+		t.Fatal("setup: expected unsourced_foundation in vulns for a below-cold-start graph")
 	}
 
 	// FormatHookFindings should return empty despite vulns having items —
@@ -1453,7 +1453,7 @@ func (s *stubVerifier) Wait(_ context.Context) error { return nil }
 func TestFormatHookFindings_InlineExternalCheckOnSTOPClass(t *testing.T) {
 	now := time.Now()
 	claims := []types.Claim{
-		{ID: "doc-anchor", Text: "the README's load-bearing positioning claim", Basis: types.BasisVibes, SessionID: "doc:abc123", CreatedAt: now},
+		{ID: "doc-anchor", Text: "the README's unsourced positioning claim", Basis: types.BasisVibes, SessionID: "doc:abc123", CreatedAt: now},
 		{ID: "f1", Text: "f1", Basis: types.BasisDeduction, CreatedAt: now},
 		{ID: "f2", Text: "f2", Basis: types.BasisDeduction, CreatedAt: now},
 		{ID: "f3", Text: "f3", Basis: types.BasisDeduction, CreatedAt: now},
@@ -1465,11 +1465,11 @@ func TestFormatHookFindings_InlineExternalCheckOnSTOPClass(t *testing.T) {
 	vulns := &types.Vulnerabilities{
 		Project: "test",
 		Items: []types.Vulnerability{
-			{Severity: "critical", Type: "load_bearing_vibes", Description: `3 claims rest on this vibes claim, never challenged: "the README's load-bearing positioning claim" [doc-origin]`, ClaimIDs: []string{"doc-anchor"}},
+			{Severity: "critical", Type: "unsourced_foundation", Description: `3 claims rest on this vibes claim, never challenged: "the README's unsourced positioning claim" [doc-origin]`, ClaimIDs: []string{"doc-anchor"}},
 		},
 	}
 	stub := &stubVerifier{
-		want:    "the README's load-bearing positioning claim",
+		want:    "the README's unsourced positioning claim",
 		snippet: "external check disagrees with the README's framing — current state of the field is X",
 		source:  "https://example.com/state-of-the-field",
 	}
@@ -1483,7 +1483,7 @@ func TestFormatHookFindings_InlineExternalCheckOnSTOPClass(t *testing.T) {
 	// Stub should have been prefetched for at least the STOP-class anchor.
 	foundPrefetch := false
 	for _, p := range stub.prefetched {
-		if p == "the README's load-bearing positioning claim" {
+		if p == "the README's unsourced positioning claim" {
 			foundPrefetch = true
 			break
 		}
@@ -1529,7 +1529,7 @@ func TestFormatHookFindings_NoInlineForEmptySnippet(t *testing.T) {
 	vulns := &types.Vulnerabilities{
 		Project: "test",
 		Items: []types.Vulnerability{
-			{Severity: "critical", Type: "load_bearing_vibes", Description: `3 claims rest on this vibes claim, never challenged: "doc claim" [doc-origin]`, ClaimIDs: []string{"doc-anchor"}},
+			{Severity: "critical", Type: "unsourced_foundation", Description: `3 claims rest on this vibes claim, never challenged: "doc claim" [doc-origin]`, ClaimIDs: []string{"doc-anchor"}},
 		},
 	}
 	// Hit, but snippet is empty — gating must suppress the inline line.
@@ -1561,7 +1561,7 @@ func TestFormatHookFindings_SecondaryAnchorGetsInlineCheck(t *testing.T) {
 	vulns := &types.Vulnerabilities{
 		Project: "test",
 		Items: []types.Vulnerability{
-			{Severity: "critical", Type: "load_bearing_vibes", Description: `4 claims rest on this vibes claim, never challenged: "primary claim" [doc-origin]`, ClaimIDs: []string{"primary"}},
+			{Severity: "critical", Type: "unsourced_foundation", Description: `4 claims rest on this vibes claim, never challenged: "primary claim" [doc-origin]`, ClaimIDs: []string{"primary"}},
 			{Severity: "warning", Type: "fluency_trap", Description: `Fluency trap: "secondary claim" stated at confidence 0.9 but basis is vibes [doc-origin]`, ClaimIDs: []string{"secondary"}},
 		},
 	}
@@ -1606,7 +1606,7 @@ func TestTruncateRuneAware(t *testing.T) {
 }
 
 // TestFormatHookFindings_NoExternalCheckOnTranscriptOrigin verifies that
-// a load-bearing vibes finding on a transcript-origin claim does NOT
+// an unsourced-foundation finding on a transcript-origin claim does NOT
 // trigger the inline External check, even with a verifier wired in.
 // Ambient findings remain ambient — only STOP-class anchors are
 // candidates for active verification.
@@ -1625,7 +1625,7 @@ func TestFormatHookFindings_NoExternalCheckOnTranscriptOrigin(t *testing.T) {
 	vulns := &types.Vulnerabilities{
 		Project: "test",
 		Items: []types.Vulnerability{
-			{Severity: "critical", Type: "load_bearing_vibes", Description: `3 claims rest on this vibes claim, never challenged: "an ephemeral conversation claim"`, ClaimIDs: []string{"ts-anchor"}},
+			{Severity: "critical", Type: "unsourced_foundation", Description: `3 claims rest on this vibes claim, never challenged: "an ephemeral conversation claim"`, ClaimIDs: []string{"ts-anchor"}},
 		},
 	}
 	stub := &stubVerifier{
@@ -1652,7 +1652,7 @@ func TestFormatHookFindings_NoExternalCheckOnTranscriptOrigin(t *testing.T) {
 func TestIsEphemeralStatus_HistoricalFireFixture(t *testing.T) {
 	noise := []string{
 		"The disable → push branch + tag → re-enable cycle completed: main pushed (fddef9e..18180f5, 20 commits), v0.8.0 tagged and pushed, branch protection disabled then re-enabled.",
-		"19 unit tests now exist in internal/store/ + internal/analysis/legacy_test.go covering sweep criteria, archive round-trip, project-scoped defense, cap+overflow, no-cap, debounce, edge-touch, edge-filter, plus 7 legacy_load_bearer scenarios.",
+		"19 unit tests now exist in internal/store/ + internal/analysis/legacy_test.go covering sweep criteria, archive round-trip, project-scoped defense, cap+overflow, no-cap, debounce, edge-touch, edge-filter, plus 7 legacy_unsourced_foundation scenarios.",
 		"All tests pass: 12 store + 7 legacy + 2 mcp auto-sweep + existing suite, all green; build is clean.",
 		"Both auto-sweep tests (TestCoreParseTranscript_TriggersAutoSweep and TestCoreParseTranscript_AutoSweepRespectsDisable) pass.",
 		"The commit was made as '0555232' — 21 files, +2798/-141 lines — using a subject + numbered body following the repo's established multi-section style.",
@@ -1704,7 +1704,7 @@ func TestIsEphemeralStatus_HistoricalFireFixture(t *testing.T) {
 	}
 }
 
-// TestFindLoadBearingVibes_SkipsEphemeralStatus verifies the detector-level
+// TestFindUnsourcedFoundation_SkipsEphemeralStatus verifies the detector-level
 // wiring: a weak-basis anchor with enough dependents fires normally, but an
 // equally-supported execution-status anchor does not.
 func TestAnalyze_SkipsEphemeralStatusAnchors(t *testing.T) {
@@ -1726,7 +1726,7 @@ func TestAnalyze_SkipsEphemeralStatusAnchors(t *testing.T) {
 	_, vulns := Analyze(claims, edges, "test")
 	var statusFired, realFired bool
 	for _, v := range vulns.Items {
-		if v.Type != "load_bearing_vibes" && v.Type != "fluency_trap" {
+		if v.Type != "unsourced_foundation" && v.Type != "fluency_trap" {
 			continue
 		}
 		for _, id := range v.ClaimIDs {
@@ -1739,7 +1739,7 @@ func TestAnalyze_SkipsEphemeralStatusAnchors(t *testing.T) {
 		}
 	}
 	if statusFired {
-		t.Error("ephemeral-status anchor fired a load-bearing/fluency finding — filter not applied")
+		t.Error("ephemeral-status anchor fired an unsourced-foundation/fluency finding — filter not applied")
 	}
 	if !realFired {
 		t.Error("non-status weak-basis anchor did not fire — filter is over-broad or detector broke")

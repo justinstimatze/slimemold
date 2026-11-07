@@ -61,8 +61,8 @@ func TestEmit_HappyPath(t *testing.T) {
 	}
 }
 
-// Pins the load-bearing contract: caller's extra map cannot override
-// kind/project/duration_ms. The kind taxonomy is what downstream
+// Pins a contract downstream tooling depends on: caller's extra map cannot
+// override kind/project/duration_ms. The kind taxonomy is what downstream
 // `mlr stats1 -g kind` depends on; silently allowing override would
 // corrupt the partition.
 func TestEmit_FixedFieldsNotOverridable(t *testing.T) {
@@ -113,8 +113,8 @@ func (panickyMarshaler) MarshalJSON() ([]byte, error) {
 	panic("boom in MarshalJSON")
 }
 
-// Pins the load-bearing strict-additive contract: write() (and therefore
-// Emit) must NEVER propagate a panic, because cmdHook calls Emit FROM
+// Pins a strict-additive contract the panic-safety of the hook depends on:
+// write() (and therefore Emit) must NEVER propagate a panic, because cmdHook calls Emit FROM
 // its outer recover defer — a panic-in-panic would escape and leak a
 // stack trace to Claude Code. This test actually triggers a panic
 // (unlike the prior chan-int test, which only exercised the

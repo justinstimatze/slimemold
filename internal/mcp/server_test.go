@@ -384,7 +384,7 @@ func TestCoreGetVulnerabilities(t *testing.T) {
 	db := testDB(t)
 	ctx := context.Background()
 
-	// Create load-bearing vibes scenario
+	// Create an unsourced-foundation scenario
 	CoreRegisterClaim(ctx, db, "test-project", "vibes foundation", types.BasisVibes, 0.5, "", nil, nil, nil)
 	CoreRegisterClaim(ctx, db, "test-project", "dependent A", types.BasisDeduction, 0.8, "", []string{"vibes foundation"}, nil, nil)
 	CoreRegisterClaim(ctx, db, "test-project", "dependent B", types.BasisDeduction, 0.8, "", []string{"vibes foundation"}, nil, nil)
@@ -394,7 +394,7 @@ func TestCoreGetVulnerabilities(t *testing.T) {
 		t.Fatalf("CoreGetVulnerabilities: %v", err)
 	}
 	if vulns.CriticalCount == 0 {
-		t.Error("expected critical vulnerabilities for load-bearing vibes")
+		t.Error("expected critical vulnerabilities for unsourced foundation")
 	}
 }
 

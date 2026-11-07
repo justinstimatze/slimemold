@@ -81,9 +81,8 @@ func TestCache_KeyFieldsAffectHash(t *testing.T) {
 
 func TestCache_StableAcrossInstances(t *testing.T) {
 	// Two CacheKey values with identical fields must hash identically.
-	// Hash stability across runs is the load-bearing property of the
-	// cache — if it drifts, every existing entry effectively
-	// invalidates.
+	// The cache depends on hash stability across runs — if it drifts,
+	// every existing entry effectively invalidates.
 	a := NewKey("host", "m", "p", "label", 0.7, 1024, 0, 0)
 	b := NewKey("host", "m", "p", "label", 0.7, 1024, 0, 0)
 	ha, err := a.Hash()
