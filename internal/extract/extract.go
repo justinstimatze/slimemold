@@ -74,6 +74,12 @@ func ReadTranscriptChunk(transcriptPath string, sinceTurn int) (chunk string, re
 	return readRecentTranscript(transcriptPath, sinceTurn)
 }
 
+// ReadTranscriptChunkFrom is ReadTranscriptChunk resuming from a saved cursor (used only when it matches the path
+// and sinceTurn exactly), and returning the cursor at readThroughTurn to save for the next fire.
+func ReadTranscriptChunkFrom(transcriptPath string, sinceTurn int, from Cursor) (chunk string, readThroughTurn int, end Cursor, err error) {
+	return readRecentTranscriptFrom(transcriptPath, sinceTurn, from)
+}
+
 // Extract sends a text chunk to the LLM and returns extracted claims.
 func (e *Extractor) Extract(ctx context.Context, text string, existingClaims []ExistingClaimRef) (*types.ExtractionResult, error) {
 	existingContext := formatExistingClaims(existingClaims)
@@ -235,20 +241,64 @@ func buildExtractionSchema() anthropic.ToolInputSchemaParam {
 	}
 }
 
+// Cursor is a resume point in a transcript: Offset is the byte just past the line that holds turn Turn. Transcripts
+// are append-only, so a cursor saved by one fire lets the next seek straight to the new lines instead of scanning a
+// multi-GB file from turn 1 (twice: once to count, once to find the chunk).
+type Cursor struct {
+	Path   string `json:"path"`
+	Turn   int    `json:"turn"`
+	Offset int64  `json:"offset"`
+}
+
+// usable reports whether c can stand in for a scan of path up to and including turn `turn`: same file, same turn,
+// and the byte before Offset is still the newline that ended that turn's line. Anything else falls back to a scan.
+func (c Cursor) usable(f *os.File, path string, turn int) bool {
+	if c.Path != path || c.Turn != turn || turn <= 0 || c.Offset <= 0 {
+		return false
+	}
+	var b [1]byte
+	_, err := f.ReadAt(b[:], c.Offset-1)
+	return err == nil && b[0] == '\n'
+}
+
+// lineScanner is the transcript scanner, plus the byte position just past the line Scan last returned.
+func lineScanner(r io.Reader, start int64) (*bufio.Scanner, *int64) {
+	pos := start
+	s := bufio.NewScanner(r)
+	s.Buffer(make([]byte, 0, 1024*1024), 10*1024*1024)
+	s.Split(func(data []byte, atEOF bool) (int, []byte, error) {
+		adv, tok, err := bufio.ScanLines(data, atEOF)
+		pos += int64(adv)
+		return adv, tok, err
+	})
+	return s, &pos
+}
+
 // CountTranscriptTurns returns the total number of user/assistant turns in a transcript.
 func CountTranscriptTurns(path string) (int, error) {
+	c, err := CountTranscriptTurnsFrom(path, Cursor{})
+	return c.Turn, err
+}
+
+// CountTranscriptTurnsFrom counts the turns in a transcript, starting from `from` when it is usable (see
+// Cursor.usable) and from the top otherwise, and returns a cursor at the last turn.
+func CountTranscriptTurnsFrom(path string, from Cursor) (Cursor, error) {
 	f, err := os.Open(path)
 	if err != nil {
-		return 0, err
+		return Cursor{}, err
 	}
 	defer func() { _ = f.Close() }()
 
-	count := 0
-	scanner := bufio.NewScanner(f)
-	scanner.Buffer(make([]byte, 0, 1024*1024), 10*1024*1024)
+	out := Cursor{Path: path}
+	if from.usable(f, path, from.Turn) {
+		if _, err := f.Seek(from.Offset, io.SeekStart); err == nil {
+			out.Turn, out.Offset = from.Turn, from.Offset
+		}
+	}
+	scanner, pos := lineScanner(f, out.Offset)
 	for scanner.Scan() {
 		var entry map[string]interface{}
-		if err := json.Unmarshal([]byte(scanner.Text()), &entry); err != nil {
+		if err := json.Unmarshal(scanner.Bytes(), &entry); err != nil {
 			continue
 		}
 		role, _ := entry["role"].(string)
@@ -258,10 +308,11 @@ func CountTranscriptTurns(path string) (int, error) {
 			}
 		}
 		if role == "user" || role == "assistant" {
-			count++
+			out.Turn++
+			out.Offset = *pos
 		}
 	}
-	return count, scanner.Err()
+	return out, scanner.Err()
 }
 
 // maxTailBytes is the maximum number of bytes read from the end of a transcript
@@ -274,13 +325,23 @@ const maxTailBytes = 2 * 1024 * 1024
 // recent conversation turns. See ReadTranscriptChunk for the meaning of the
 // returned turn boundary.
 func readRecentTranscript(path string, sinceTurn int) (chunk string, readThroughTurn int, err error) {
+	chunk, readThroughTurn, _, err = readRecentTranscriptFrom(path, sinceTurn, Cursor{})
+	return chunk, readThroughTurn, err
+}
+
+// readRecentTranscriptFrom is readRecentTranscript that, for an incremental read, seeks to `from` when it is a
+// usable cursor for sinceTurn instead of scanning turns 1..sinceTurn. It also returns a cursor at readThroughTurn
+// (zero for baseline reads, which have no meaningful boundary).
+func readRecentTranscriptFrom(path string, sinceTurn int, from Cursor) (chunk string, readThroughTurn int, end Cursor, err error) {
 	f, err := os.Open(path)
 	if err != nil {
-		return "", 0, err
+		return "", 0, Cursor{}, err
 	}
 	defer func() { _ = f.Close() }()
 
 	skipFirstLine := false
+	turnCount := 0
+	var start, lastTurnEnd int64
 	if sinceTurn == 0 {
 		// For baseline reads (sinceTurn==0), seek to the tail so a large session
 		// file doesn't force full I/O before the LLM timeout starts.
@@ -289,19 +350,22 @@ func readRecentTranscript(path string, sinceTurn int) (chunk string, readThrough
 				skipFirstLine = true // the seek may land mid-line; discard the first
 			}
 		}
-	} else {
-		// For incremental reads (sinceTurn > 0), warn if the file is very large —
-		// we still do a forward scan to count turns, which can be slow on huge files.
+	} else if from.usable(f, path, sinceTurn) {
+		if _, err := f.Seek(from.Offset, io.SeekStart); err == nil {
+			start, lastTurnEnd, turnCount = from.Offset, from.Offset, sinceTurn
+		}
+	}
+	if sinceTurn > 0 && turnCount == 0 {
+		// No usable cursor: warn if the file is very large — the forward scan
+		// to reach sinceTurn can be slow on huge files.
 		if info, err := f.Stat(); err == nil && info.Size() > 10*1024*1024 {
 			fmt.Fprintf(os.Stderr, "slimemold: transcript is %.0fMB — extraction may be slow\n", float64(info.Size())/(1024*1024))
 		}
 	}
 
-	scanner := bufio.NewScanner(f)
-	scanner.Buffer(make([]byte, 0, 1024*1024), 10*1024*1024)
+	scanner, pos := lineScanner(f, start)
 
 	var messages []string
-	turnCount := 0
 
 	for scanner.Scan() {
 		if skipFirstLine {
@@ -327,6 +391,7 @@ func readRecentTranscript(path string, sinceTurn int) (chunk string, readThrough
 		}
 
 		turnCount++
+		lastTurnEnd = *pos
 		if sinceTurn > 0 && turnCount <= sinceTurn {
 			continue
 		}
@@ -354,10 +419,10 @@ func readRecentTranscript(path string, sinceTurn int) (chunk string, readThrough
 	// arbitrary offset with no relation to sinceTurn or preCountedTurns;
 	// report 0 there and let the caller fall back to a full-file count.
 	if sinceTurn == 0 {
-		turnCount = 0
+		return strings.Join(messages, "\n\n"), 0, Cursor{}, nil
 	}
 
-	return strings.Join(messages, "\n\n"), turnCount, nil
+	return strings.Join(messages, "\n\n"), turnCount, Cursor{Path: path, Turn: turnCount, Offset: lastTurnEnd}, nil
 }
 
 func extractTextContent(entry map[string]interface{}) string {

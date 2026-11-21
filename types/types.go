@@ -202,9 +202,10 @@ type AuditResult struct {
 	TotalClaims     int             `json:"total_claims"`
 	TotalEdges      int             `json:"total_edges"`
 	Vulnerabilities Vulnerabilities `json:"vulnerabilities"`
-	Summary         string          `json:"summary"`      // Full audit for storage/CLI
-	HookSummary     string          `json:"hook_summary"` // Terse, directive output for hook injection
-	LastTurn        int             `json:"last_turn"`    // Total turns in transcript at extraction time
+	Summary         string          `json:"summary"`               // Full audit for storage/CLI
+	HookSummary     string          `json:"hook_summary"`          // Terse, directive output for hook injection
+	LastTurn        int             `json:"last_turn"`             // Total turns in transcript at extraction time
+	LastOffset      int64           `json:"last_offset,omitempty"` // Byte just past turn LastTurn's line; 0 when unknown
 }
 
 // ClaimResult is returned after registering a claim.
