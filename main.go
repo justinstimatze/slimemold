@@ -607,7 +607,15 @@ func cmdHook() {
 	// the file. Saves ~100-200ms per fire on multi-MB transcripts. We always
 	// count (not only when sinceTurn>0) so CoreParseTranscript gets the hint
 	// regardless of whether we're in baseline or incremental mode.
-	turnCount, _ := extract.CountTranscriptTurns(input.TranscriptPath)
+	//
+	// The count and the chunk read resume from a saved byte cursor when it
+	// matches this transcript and sinceTurn exactly; on a multi-GB transcript
+	// the two full scans otherwise ate most of the 4-minute budget before the
+	// API call went out. Any mismatch falls back to the full scan.
+	posFile := filepath.Join(logDir, "lastTurnPos-"+hash+".json")
+	resume := readCursor(posFile, sinceTurn)
+	pre, _ := extract.CountTranscriptTurnsFrom(input.TranscriptPath, resume)
+	turnCount := pre.Turn
 	if sinceTurn > 0 && turnCount > 0 && sinceTurn >= turnCount {
 		logf("new session detected (sinceTurn=%d >= actualTurns=%d), resetting", sinceTurn, turnCount)
 		sinceTurn = 0
@@ -639,11 +647,11 @@ func cmdHook() {
 	} else {
 		logf("verifier construction failed: %s", vErr)
 	}
-	audit, err := mcp.CoreParseTranscript(ctx, db, extractor, verifier, project, input.TranscriptPath, sinceTurn, sessionID, turnCount)
+	audit, err := mcp.CoreParseTranscriptFrom(ctx, db, extractor, verifier, project, input.TranscriptPath, sinceTurn, sessionID, pre, resume)
 	if err != nil {
 		logf("extraction error: %s", err)
 		emit("error", map[string]any{"phase": "extract", "model": cfg.Model, "reason": err.Error()})
-		recordExtractionFailure(logf, emit, lastTurnFile, failCountFile, sinceTurn, turnCount)
+		recordExtractionFailure(logf, emit, lastTurnFile, failCountFile, posFile, sinceTurn, pre)
 		return
 	}
 	_ = os.Remove(failCountFile) // reset on any successful fire
@@ -662,6 +670,7 @@ func cmdHook() {
 	// Persist last turn for incremental extraction on next run
 	if audit.LastTurn > 0 {
 		_ = os.WriteFile(lastTurnFile, []byte(strconv.Itoa(audit.LastTurn)), 0600)
+		writeCursor(posFile, extract.Cursor{Path: input.TranscriptPath, Turn: audit.LastTurn, Offset: audit.LastOffset})
 	}
 
 	// Write status (project-scoped so `slimemold status` can find it regardless of session).
@@ -696,7 +705,8 @@ func cmdHook() {
 // nothing about it changes between fires — so without a forced skip a
 // single bad chunk stalls extraction forever. See
 // FEEDBACK-extraction-backlog-ratchet.md.
-func recordExtractionFailure(logf func(string, ...interface{}), emit func(string, map[string]any), lastTurnFile, failCountFile string, sinceTurn, turnCount int) {
+func recordExtractionFailure(logf func(string, ...interface{}), emit func(string, map[string]any), lastTurnFile, failCountFile, posFile string, sinceTurn int, pre extract.Cursor) {
+	turnCount := pre.Turn
 	fails := 1
 	if data, err := os.ReadFile(failCountFile); err == nil {
 		if n, err := strconv.Atoi(strings.TrimSpace(string(data))); err == nil {
@@ -712,6 +722,7 @@ func recordExtractionFailure(logf func(string, ...interface{}), emit func(string
 		logf("extraction failed %d times at turn %d — forcing cursor to %d to break the stall", fails, sinceTurn, turnCount)
 		emit("skip_forward", map[string]any{"from_turn": sinceTurn, "to_turn": turnCount, "consecutive_failures": fails})
 		_ = os.WriteFile(lastTurnFile, []byte(strconv.Itoa(turnCount)), 0600)
+		writeCursor(posFile, pre)
 		_ = os.Remove(failCountFile)
 		return
 	}
@@ -1771,4 +1782,27 @@ func detectProject() string {
 		return parts[len(parts)-1]
 	}
 	return "default"
+}
+
+// readCursor loads the saved byte cursor, or a zero cursor (meaning: scan)
+// when there is none or it was saved for a turn other than sinceTurn.
+func readCursor(posFile string, sinceTurn int) extract.Cursor {
+	var c extract.Cursor
+	if data, err := os.ReadFile(posFile); err != nil || json.Unmarshal(data, &c) != nil || c.Turn != sinceTurn {
+		return extract.Cursor{}
+	}
+	return c
+}
+
+// writeCursor saves the byte cursor that pairs with the turn just written to
+// lastTurn-*.txt, or removes a stale one when the offset is unknown, so a
+// later fire can never seek with a cursor for a different turn.
+func writeCursor(posFile string, c extract.Cursor) {
+	if c.Offset <= 0 || c.Path == "" {
+		_ = os.Remove(posFile)
+		return
+	}
+	if data, err := json.Marshal(c); err == nil {
+		_ = os.WriteFile(posFile, data, 0600)
+	}
 }

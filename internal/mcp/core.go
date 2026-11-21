@@ -47,6 +47,15 @@ func autoSweepDisabled() bool {
 // inside its debounce window. Set SLIMEMOLD_AUTO_SWEEP=off (or false/0/no)
 // to disable; SLIMEMOLD_SWEEP_CAP=N caps the per-fire archive count.
 func CoreParseTranscript(ctx context.Context, db *store.DB, extractor *extract.Extractor, verifier analysis.HookVerifier, project, transcriptPath string, sinceTurn int, sessionID string, preCountedTurns int) (*types.AuditResult, error) {
+	return CoreParseTranscriptFrom(ctx, db, extractor, verifier, project, transcriptPath, sinceTurn, sessionID,
+		extract.Cursor{Turn: preCountedTurns}, extract.Cursor{})
+}
+
+// CoreParseTranscriptFrom is CoreParseTranscript with cursors: pre is the full-file count (its Turn is
+// preCountedTurns, its Offset the byte past that turn, 0 if unknown) and resume is the saved cursor for sinceTurn,
+// used to seek instead of scan when it matches. The result's LastOffset pairs with LastTurn for the next fire.
+func CoreParseTranscriptFrom(ctx context.Context, db *store.DB, extractor *extract.Extractor, verifier analysis.HookVerifier, project, transcriptPath string, sinceTurn int, sessionID string, pre, resume extract.Cursor) (*types.AuditResult, error) {
+	preCountedTurns := pre.Turn
 	// Validate transcript path — restrict to JSONL files in expected locations
 	if err := validateTranscriptPath(transcriptPath); err != nil {
 		return nil, err
@@ -80,7 +89,7 @@ func CoreParseTranscript(ctx context.Context, db *store.DB, extractor *extract.E
 	// chunk is fine (no API call needed) and the function continues to the
 	// extract path; a real IO error should fail loudly rather than silently
 	// skip extraction.
-	chunk, readThroughTurn, err := extract.ReadTranscriptChunk(transcriptPath, sinceTurn)
+	chunk, readThroughTurn, readEnd, err := extract.ReadTranscriptChunkFrom(transcriptPath, sinceTurn, resume)
 	if err != nil {
 		return nil, fmt.Errorf("reading transcript: %w", err)
 	}
@@ -317,11 +326,12 @@ func CoreParseTranscript(ctx context.Context, db *store.DB, extractor *extract.E
 	// readThroughTurn is the raw turn the scan actually reached; it equals
 	// the transcript total when the backlog fit inside one read, so this is
 	// a strict improvement over preCountedTurns, never a regression.
-	lastTurn := preCountedTurns
+	lastTurn, lastOffset := preCountedTurns, pre.Offset
 	if sinceTurn > 0 && readThroughTurn > 0 {
-		lastTurn = readThroughTurn
+		lastTurn, lastOffset = readThroughTurn, readEnd.Offset
 	} else if lastTurn <= 0 {
 		lastTurn, _ = extract.CountTranscriptTurns(transcriptPath)
+		lastOffset = 0
 	}
 
 	return &types.AuditResult{
@@ -333,6 +343,7 @@ func CoreParseTranscript(ctx context.Context, db *store.DB, extractor *extract.E
 		Summary:         summary,
 		HookSummary:     hookSummary,
 		LastTurn:        lastTurn,
+		LastOffset:      lastOffset,
 	}, nil
 }
 
