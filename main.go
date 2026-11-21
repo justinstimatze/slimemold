@@ -613,13 +613,7 @@ func cmdHook() {
 	// the two full scans otherwise ate most of the 4-minute budget before the
 	// API call went out. Any mismatch falls back to the full scan.
 	posFile := filepath.Join(logDir, "lastTurnPos-"+hash+".json")
-	var resume extract.Cursor
-	if data, err := os.ReadFile(posFile); err == nil {
-		_ = json.Unmarshal(data, &resume)
-	}
-	if resume.Turn != sinceTurn {
-		resume = extract.Cursor{}
-	}
+	resume := readCursor(posFile, sinceTurn)
 	pre, _ := extract.CountTranscriptTurnsFrom(input.TranscriptPath, resume)
 	turnCount := pre.Turn
 	if sinceTurn > 0 && turnCount > 0 && sinceTurn >= turnCount {
@@ -1788,6 +1782,16 @@ func detectProject() string {
 		return parts[len(parts)-1]
 	}
 	return "default"
+}
+
+// readCursor loads the saved byte cursor, or a zero cursor (meaning: scan)
+// when there is none or it was saved for a turn other than sinceTurn.
+func readCursor(posFile string, sinceTurn int) extract.Cursor {
+	var c extract.Cursor
+	if data, err := os.ReadFile(posFile); err != nil || json.Unmarshal(data, &c) != nil || c.Turn != sinceTurn {
+		return extract.Cursor{}
+	}
+	return c
 }
 
 // writeCursor saves the byte cursor that pairs with the turn just written to
