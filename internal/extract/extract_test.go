@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 // writeTranscript writes n user/assistant turns (alternating) as a JSONL file
@@ -79,5 +80,23 @@ func TestReadRecentTranscript_BaselineReportsNoBoundary(t *testing.T) {
 	}
 	if readThroughTurn != 0 {
 		t.Fatalf("readThroughTurn = %d, want 0 for a baseline (sinceTurn=0) read", readThroughTurn)
+	}
+}
+
+func TestCapMessage(t *testing.T) {
+	short := strings.Repeat("a", maxMessageChars)
+	if got := capMessage(short); got != short {
+		t.Fatalf("message at the cap was changed")
+	}
+	long := strings.Repeat("é", 5000) // two bytes per rune, so every cut point needs a boundary check
+	got := capMessage(long)
+	if !utf8.ValidString(got) {
+		t.Fatalf("cap split a rune")
+	}
+	if len(got) > maxMessageChars+64 {
+		t.Fatalf("capped message is %d bytes, want about %d", len(got), maxMessageChars)
+	}
+	if !strings.Contains(got, "chars elided") {
+		t.Fatalf("no elision marker in %q", got[len(got)-80:])
 	}
 }
