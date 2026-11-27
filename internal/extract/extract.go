@@ -9,6 +9,7 @@ import (
 	"os"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
@@ -321,6 +322,32 @@ func CountTranscriptTurnsFrom(path string, from Cursor) (Cursor, error) {
 // LLM timeout even starts.
 const maxTailBytes = 2 * 1024 * 1024
 
+// maxMessageChars bounds one message in the extraction prompt. On a long live session, messages over 4000
+// characters (pasted logs, file dumps, long plans) carried most of the input characters, and each fire
+// pays for them at the uncached input rate. The head holds the claim being made and the tail the conclusion,
+// so the middle is what gets dropped.
+const (
+	maxMessageChars = 4000
+	messageHeadKeep = 2800
+	messageTailKeep = 1000
+)
+
+// capMessage shortens text longer than maxMessageChars to its head and tail around an elision marker,
+// cutting on rune boundaries.
+func capMessage(text string) string {
+	if len(text) <= maxMessageChars {
+		return text
+	}
+	head, tail := messageHeadKeep, len(text)-messageTailKeep
+	for head > 0 && !utf8.RuneStart(text[head]) {
+		head--
+	}
+	for tail < len(text) && !utf8.RuneStart(text[tail]) {
+		tail++
+	}
+	return text[:head] + fmt.Sprintf("\n[… %d chars elided …]\n", tail-head) + text[tail:]
+}
+
 // readRecentTranscript reads a Claude Code transcript (.jsonl) and extracts
 // recent conversation turns. See ReadTranscriptChunk for the meaning of the
 // returned turn boundary.
@@ -396,7 +423,7 @@ func readRecentTranscriptFrom(path string, sinceTurn int, from Cursor) (chunk st
 			continue
 		}
 
-		text := extractTextContent(entry)
+		text := capMessage(extractTextContent(entry))
 		if text != "" {
 			messages = append(messages, fmt.Sprintf("[%s]: %s", role, text))
 		}
